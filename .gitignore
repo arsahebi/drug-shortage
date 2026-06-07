@@ -1,0 +1,95 @@
+# ── Data files (stay in Google Drive only) ──────────────────────────────────
+*.csv
+*.parquet
+*.pkl
+*.feather
+*.db
+*.zip
+*.gz
+*.tar
+
+# Spreadsheets
+*.xlsx
+*.xls
+*.ods
+
+# Office documents
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.rtf
+*.gslides
+
+# PDFs
+*.pdf
+
+# XML (DailyMed labels, Word document internals)
+*.xml
+
+# Images and figures (output artifacts, not code)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+
+# JSON data outputs
+*.json
+
+# Log files
+*.log
+
+# HTML outputs (dashboards)
+*.html
+
+# Text data files — but keep requirements files
+*.txt
+!requirements*.txt
+!requirements_*.txt
+
+# ── Specific large raw data folders ─────────────────────────────────────────
+# FAERS raw quarterly downloads (hundreds of large .txt files)
+Data/15 - FDA - Adverse Event/raw/
+# DailyMed unzipped label archive
+Data/02 - DailyMed - Labels/dm_spl_monthly_update_mar2025/
+
+# ── Pipeline generated artifacts ─────────────────────────────────────────────
+logs/
+outputs/figures/
+outputs/tables/
+
+# ── Word document internals (unpacked .docx folders) ────────────────────────
+unpack_working/
+unpacked_manuscript/
+
+# ── JavaScript dependencies ───────────────────────────────────────────────────
+node_modules/
+
+# ── OS / editor files ────────────────────────────────────────────────────────
+.DS_Store
+*.DS_Store.active_code_folder
+.Rhistory
+.Rdata
+*.Rproj.user
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+.env
+*.egg-info/
+.venv/
+venv/
+
+# ── Claude Code local settings ───────────────────────────────────────────────
+.claude/
+
+# ── Personal files ────────────────────────────────────────────────────────────
+Sahebi_CV_SAS.tex
+
+# ── Nested git repositories ───────────────────────────────────────────────────
+Paper/Data Paper/Data Sources/
+
+# ── SAS work files ───────────────────────────────────────────────────────────
+*.sas7bdat
+*.sas7bcat

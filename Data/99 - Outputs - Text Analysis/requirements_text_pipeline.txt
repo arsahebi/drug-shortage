@@ -1,0 +1,8 @@
+# LLM pipeline dependencies (scripts 04–05)
+# Install with:  pip install -r requirements_text_pipeline.txt
+#
+# Core pipeline (01–03) only needs: pip install pandas openpyxl pyvis networkx
+
+openai>=1.0
+pandas>=2.0
+openpyxl>=3.1
