@@ -118,10 +118,7 @@ Manufacturing Quality Risk Index. Current version: `20260408_v02_mqri_pipeline.p
 
 ## Git Workflow
 
-### Branches
-- `main` — stable, working code only
-- Feature branches: `YYYYMMDD-short-description` (e.g., `20260607-faers-monthly-pipeline`)
-- Always create a new branch for new work; never commit directly to `main`
+Solo project — commit directly to `main`. No feature branches or PRs.
 
 ### Commits
 - One logical change per commit
@@ -131,32 +128,9 @@ Manufacturing Quality Risk Index. Current version: `20260408_v02_mqri_pipeline.p
   - `Refactor Redica loader to handle all 14 drugs`
 - Keep messages under 72 characters; add a blank line + detail if needed
 
-### Pull Requests
-When asked to create a PR, always:
-1. Summarize **what changed and why** (not just what files were touched)
-2. List any **data dependencies** — which Drive folders/files the code reads
-3. Note if the PR changes **output schema** (column names, parquet structure) that downstream scripts depend on
-4. Flag any **known limitations or TODOs** still remaining
-
-PR description template:
-```
-## What
-<1-3 sentences on the change>
-
-## Why
-<motivation — new data source, bug fix, paper deadline, etc.>
-
-## Data dependencies
-<which Drive folders this reads from>
-
-## Output changes
-<any changes to output file names, columns, or format>
-
-## Notes
-<limitations, follow-up work, or things to test>
-```
-
-### Merging
-- Prefer **squash merge** for feature branches to keep `main` history clean
-- After merging, delete the feature branch
-- Never force-push to `main`
+### Reviewing changes
+Use VS Code's built-in diff view — zero token cost:
+1. Open this folder in VS Code: `File → Open Folder`
+2. Source Control panel (Cmd+Shift+G) lists changed files
+3. Click any file → inline diff; click the split-editor icon (top-right) → side-by-side
+4. After committing, past diffs are in the **Timeline** panel (bottom of Explorer sidebar)
