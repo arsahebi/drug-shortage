@@ -64,8 +64,14 @@ COMPILED_SIGNALS = {
     for name, pattern in SIGNAL_PATTERNS.items()
 }
 
-CFR_RE = re.compile(
-    r"21\s*C\.?\s*F\.?\s*R\.?\s*(?:§|Part)?\s*(\d{3}(?:\.\d+)?(?:\([^)]+\))*)",
+# Certain: requires section number (21 CFR NNN.NN[x][(sub)]...)
+CFR_FULL_RE = re.compile(
+    r"21\s*C\.?\s*F\.?\s*R\.?\s*(?:§|Part)?\s*(\d{3}\.\d+(?:[a-z])?(?:\([^)]+\))*)",
+    re.IGNORECASE,
+)
+# Uncertain: bare part number only, NOT followed by a section (21 CFR NNN)
+CFR_BARE_RE = re.compile(
+    r"21\s*C\.?\s*F\.?\s*R\.?\s*(?:§|Part)?\s*(\d{3})(?!\.\d)",
     re.IGNORECASE,
 )
 OBSERVATION_RE = re.compile(
@@ -73,6 +79,19 @@ OBSERVATION_RE = re.compile(
 )
 NUMBERED_OBSERVATION_RE = re.compile(r"\n\s*(\d{1,2})\.\s+(?=[A-Z(])")
 LETTERED_EXAMPLE_RE = re.compile(r"(?m)^\s*[A-Z][.)]\s+")
+
+# Header-splitting helpers (Action Item 1)
+_LETTER_LABEL_RE = re.compile(r"^[A-Z][.)]\s+")
+_BARE_PERIOD_RE = re.compile(r"^\.\s*")
+_MIN_HEADER_CHARS = 30  # period must follow at least this many chars to be a sentence end
+
+# OCR quality detection (Action Item 2)
+_COMMON_SHORT_WORDS = frozenset({
+    "a", "an", "the", "is", "in", "of", "to", "be", "as", "at", "by", "or",
+    "if", "on", "no", "do", "so", "we", "i", "it", "up", "us", "he", "she",
+    "its", "not", "has", "had", "was", "are", "for", "and", "but", "nor",
+    "yet", "per", "all", "any", "was", "may", "can", "did", "new", "use",
+})
 
 PAGE_FURNITURE_PATTERNS = [
     r"DEPARTMENT\s+OF\s+HEALTH\s+AND\s+HUMAN\s+SERVICES",
@@ -327,22 +346,92 @@ def split_observations(text: str) -> tuple[list[tuple[int, str]], str]:
     return split_on_numbered_lines(text), "numbered_line_fallback"
 
 
-def split_header_body(obs_text: str) -> tuple[str, str]:
+def estimate_ocr_quality(text: str) -> bool:
+    """Return True when character-drop OCR artifacts are likely (Action Item 2).
+
+    Heuristic: if >6% of tokens are 1-2 chars and not common short words,
+    the scan probably dropped characters mid-word.
+    """
+    words = text.split()
+    if len(words) < 10:
+        return False
+    n_fragments = sum(
+        1 for w in words
+        if len(re.sub(r"[^a-zA-Z]", "", w)) <= 2
+        and w.lower() not in _COMMON_SHORT_WORDS
+    )
+    return n_fragments / len(words) > 0.06
+
+
+def split_header_body(obs_text: str) -> tuple[str, str, str]:
+    """Return (header, body, header_quality).
+
+    header_quality values
+    ---------------------
+    ok              normal extraction
+    stripped_label  leading letter label (A., B.) removed
+    stripped_period leading bare period removed
+    truncated       text began mid-sentence (lowercase); header is empty
+    """
     cleaned = re.sub(r"\s+", " ", obs_text).strip()
     cleaned = re.sub(r"^OBSERVAT\S*\s+\d+\s*", "", cleaned, flags=re.IGNORECASE)
-    first_period = cleaned.find(".")
-    if first_period == -1:
-        return cleaned, ""
-    return cleaned[: first_period + 1], cleaned[first_period + 1 :].strip()
+
+    quality = "ok"
+
+    # Strip leading letter label, e.g. "A. " or "B) "
+    m = _LETTER_LABEL_RE.match(cleaned)
+    if m:
+        cleaned = cleaned[m.end():].strip()
+        quality = "stripped_label"
+
+    # Strip leading bare period, e.g. ". Appropriate controls…"
+    m = _BARE_PERIOD_RE.match(cleaned)
+    if m:
+        cleaned = cleaned[m.end():].strip()
+        if quality == "ok":
+            quality = "stripped_period"
+
+    if not cleaned:
+        return "", "", quality
+
+    # Text starting with lowercase is a mid-sentence fragment from a bad split.
+    if cleaned[0].islower():
+        return "", cleaned, "truncated"
+
+    # Find the first period that ends a substantive sentence.
+    # Require at least _MIN_HEADER_CHARS of content before the period so that
+    # abbreviation dots (e.g. "U.S.", "21 C.F.R.") are skipped.
+    pos = 0
+    while pos < len(cleaned):
+        period_pos = cleaned.find(".", pos)
+        if period_pos == -1:
+            return cleaned, "", quality
+        if len(cleaned[:period_pos].strip()) >= _MIN_HEADER_CHARS:
+            return cleaned[:period_pos + 1], cleaned[period_pos + 1:].strip(), quality
+        pos = period_pos + 1
+
+    return cleaned, "", quality
 
 
 def normalize_cfr(raw_cfr: str) -> str:
     return re.sub(r"\s+", "", raw_cfr)
 
 
-def extract_cfrs(text: str) -> list[str]:
-    cfrs = {f"21 CFR {normalize_cfr(match)}" for match in CFR_RE.findall(text)}
-    return sorted(cfrs)
+def extract_cfrs(text: str) -> tuple[list[str], list[str]]:
+    """Return (certain, uncertain) CFR lists.
+
+    certain   — full citations with section number: '21 CFR 211.192'
+    uncertain — bare part citations without section: '21 CFR 820'
+                stored separately so downstream code can treat them differently.
+    """
+    certain = sorted({f"21 CFR {normalize_cfr(m)}" for m in CFR_FULL_RE.findall(text)})
+    # Exclude bare parts already covered by a certain citation for the same part
+    certain_parts = {c.split(".")[0] for c in certain}  # e.g. "21 CFR 211"
+    uncertain = sorted(
+        {f"21 CFR {m}" for m in CFR_BARE_RE.findall(text)}
+        - certain_parts
+    )
+    return certain, uncertain
 
 
 def count_lettered_examples(obs_text: str) -> int:
@@ -353,17 +442,21 @@ def count_lettered_examples(obs_text: str) -> int:
 
 def analyze_observation(obs_text_raw: str) -> dict:
     obs_text_clean = remove_page_furniture(obs_text_raw)
-    cfrs = extract_cfrs(obs_text_clean)
-    header, body = split_header_body(obs_text_clean)
+    cfrs, cfrs_uncertain = extract_cfrs(obs_text_clean)
+    header, body, header_quality = split_header_body(obs_text_clean)
 
     row = {
         "obs_header": header,
         "obs_body": body,
+        "header_quality": header_quality,
         "obs_text": obs_text_clean,
         "obs_text_raw": obs_text_raw,
         "obs_text_clean": obs_text_clean,
         "cfr_codes": "; ".join(cfrs),
+        "cfr_codes_uncertain": "; ".join(cfrs_uncertain),
         "n_cfrs": len(cfrs),
+        "n_cfrs_uncertain": len(cfrs_uncertain),
+        "ocr_quality_warning": estimate_ocr_quality(obs_text_clean),
         "obs_total_chars": len(obs_text_clean),
         "obs_raw_chars": len(obs_text_raw),
         "obs_clean_chars": len(obs_text_clean),
@@ -472,6 +565,26 @@ def aggregate_fei_features(inventory: pd.DataFrame, observations: pd.DataFrame) 
         row["n_unique_cfrs_in_483"] = len(all_cfrs)
         row["cfr_codes_in_483"] = "; ".join(sorted(all_cfrs))
 
+        all_cfrs_uncertain: set[str] = set()
+        if "cfr_codes_uncertain" in obs_group.columns:
+            for cfr_string in obs_group["cfr_codes_uncertain"].dropna():
+                all_cfrs_uncertain.update(c.strip() for c in str(cfr_string).split(";") if c.strip())
+        row["n_unique_cfrs_uncertain_in_483"] = len(all_cfrs_uncertain)
+
+        if "ocr_quality_warning" in obs_group.columns and n_obs:
+            row["n_obs_ocr_warning"] = int(obs_group["ocr_quality_warning"].sum())
+            row["any_ocr_warning"] = bool(obs_group["ocr_quality_warning"].any())
+        else:
+            row["n_obs_ocr_warning"] = 0
+            row["any_ocr_warning"] = False
+
+        if "header_quality" in obs_group.columns and n_obs:
+            row["n_obs_truncated_header"] = int((obs_group["header_quality"] == "truncated").sum())
+            row["n_obs_stripped_label"] = int((obs_group["header_quality"] == "stripped_label").sum())
+        else:
+            row["n_obs_truncated_header"] = 0
+            row["n_obs_stripped_label"] = 0
+
         rows.append(row)
 
     return pd.DataFrame(rows)
@@ -490,6 +603,15 @@ def print_summary(inventory: pd.DataFrame, observations: pd.DataFrame, fei_featu
     print(f"  Extractable PDFs:      {int(inventory['is_extractable'].sum())}")
     print(f"  Observations extracted:{len(observations):>7}")
     print(f"  FEIs with PDFs:        {inventory['fei'].nunique()}")
+
+    dates = pd.to_datetime(inventory["insp_date"], errors="coerce").dropna()
+    if len(dates):
+        print(f"  PDF date range:        {dates.min().date()} to {dates.max().date()}")
+        cutoff = pd.Timestamp.now() - pd.DateOffset(years=2)
+        if dates.max() < cutoff:
+            print(f"\n  WARNING: No PDFs with insp_date in the last 2 years (after {cutoff.date()}).")
+            print(f"           Latest date found: {dates.max().date()}.")
+            print("           Add recent 483 PDFs to RAW_DIR and re-run.")
 
     if observations.empty:
         return
