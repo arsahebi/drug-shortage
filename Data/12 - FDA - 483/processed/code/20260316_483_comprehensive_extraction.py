@@ -12,6 +12,12 @@ It writes three files one level above this code folder:
 
 The feature logic is intentionally concentrated near the top of the file so it
 is easy to change after reading the PDFs.
+
+Version history
+---------------
+2026-03-16  Initial version (pdfplumber-based extraction)
+2026-06-08  Switched to pytesseract (200 DPI); fixed splitter labels,
+            CFR validation, OCR quality flag, date range warning
 """
 
 from __future__ import annotations
