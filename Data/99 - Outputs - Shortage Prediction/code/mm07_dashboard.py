@@ -113,15 +113,49 @@ def compute_data() -> dict:
 
     # ── Annual lift table ──────────────────────────────────────────────────────
     lt = _read("eda_lead_time_means.csv", OUT_TABS)
+    _RECALL_SIGNALS = {
+        "recall_total","recall_cgmp","recall_class_I","recall_class_II","recall_class_III",
+        "recall_contam","recall_potency","recall_mislabel","recall_stability","recall_foreign",
+        "recall_dissolution","recall_total_w3","recall_cgmp_w3","recall_class_I_w3",
+    }
     if lt is not None:
         d["lift"] = [{
             "signal": r.iloc[0],
             "mean0":  round(float(r["y_next=0"]),  4),
             "mean1":  round(float(r["y_next=1"]),  4),
             "lift":   round(float(r["lift"]),       3),
-        } for _, r in lt.iterrows()]
+        } for _, r in lt.iterrows() if r.iloc[0] not in _RECALL_SIGNALS]
     else:
         d["lift"] = []
+
+    # ── 483 text feature lift + drug-group comparison ─────────────────────────
+    _TEXT_LIFT_COLS = ["tri_mean", "scri_mean", "irwi_mean", "qci_mean"]
+    if ap is not None:
+        q = ap.dropna(subset=["y_next_year_shortage"])
+        for c in [c for c in _TEXT_LIFT_COLS if c in q.columns]:
+            grp = q.groupby("y_next_year_shortage")[c].mean()
+            m0  = float(grp.get(0, 0))
+            m1  = float(grp.get(1, 0))
+            d["lift"].append({"signal": c, "mean0": round(m0, 2), "mean1": round(m1, 2),
+                               "lift": round(m1 / m0, 3) if m0 > 0 else 1.0})
+        dm = ap.groupby("drug_norm").agg(
+            starts=("shortage_started", "sum"),
+            tri=("tri_mean", "first"), scri=("scri_mean", "first"),
+            irwi=("irwi_mean", "first"), qci=("qci_mean", "first"),
+        ).reset_index()
+        g_has = dm[dm["starts"] > 0][["tri","scri","irwi","qci"]].mean().round(2)
+        g_no  = dm[dm["starts"] == 0][["tri","scri","irwi","qci"]].mean().round(2)
+        d["text_group"] = {
+            "labels":      ["TRI", "SCRI", "IRWI", "QCI"],
+            "shortage":    [float(g_has.get("tri",0)), float(g_has.get("scri",0)),
+                            float(g_has.get("irwi",0)), float(g_has.get("qci",0))],
+            "no_shortage": [float(g_no.get("tri",0)),  float(g_no.get("scri",0)),
+                            float(g_no.get("irwi",0)),  float(g_no.get("qci",0))],
+            "n_shortage":    int((dm["starts"] > 0).sum()),
+            "n_no_shortage": int((dm["starts"] == 0).sum()),
+        }
+    else:
+        d["text_group"] = {}
 
     # ── Annual event study (lead_time_valisure.csv) ────────────────────────────
     ls = _read("lead_time_valisure.csv", OUT_TABS)
@@ -238,6 +272,7 @@ def _lift_rows(lift: list[dict]) -> str:
         "faers_n_reports": "FAERS — all reports",
         "tri_mean": "483 Text — Text Risk Index (TRI)",
         "scri_mean": "483 Text — Sterility/Contamination Risk (SCRI)",
+        "irwi_mean": "483 Text — Investigation/Remediation Weakness (IRWI)",
         "qci_mean": "483 Text — Quality Culture Index (QCI)",
     }
     cls_map = lambda x: "high" if x >= 5 else ("mid" if x >= 1.5 else "low")
@@ -348,6 +383,34 @@ new Chart(document.getElementById('triScatterChart'),{{
     scales:{{
       x:{{title:{{display:true,text:'Text Risk Index (TRI)'}},min:50,max:70}},
       y:{{title:{{display:true,text:'# shortage starts 2015–2024'}},beginAtZero:true,ticks:{{stepSize:1}}}}
+    }}
+  }}
+}});"""
+
+    # ── 483 text group comparison: shortage vs no-shortage drugs ─────────────
+    tg = d.get("text_group", {})
+    text_group_js = ""
+    if tg:
+        n_s  = tg.get("n_shortage", "?")
+        n_ns = tg.get("n_no_shortage", "?")
+        text_group_js = f"""
+new Chart(document.getElementById('textGroupChart'),{{
+  type:'bar',
+  data:{{
+    labels:{_j(tg["labels"])},
+    datasets:[
+      {{label:'≥1 shortage (n={n_s} drugs)',data:{_j(tg["shortage"])},
+        backgroundColor:'rgba(224,122,95,0.8)',borderRadius:3}},
+      {{label:'No shortage (n={n_ns} drugs)',data:{_j(tg["no_shortage"])},
+        backgroundColor:'rgba(28,114,147,0.7)',borderRadius:3}}
+    ]
+  }},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
+    scales:{{
+      x:{{grid:{{display:false}}}},
+      y:{{beginAtZero:false,min:40,max:70,
+           title:{{display:true,text:'Mean index score (0–100)'}}}}
     }}
   }}
 }});"""
@@ -724,7 +787,10 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <!-- ═══ SECTION 5: ANNUAL LIFT TABLE ═══ -->
 <section>
   <div class="section-head"><span class="step-num">5</span><h2>Annual signals: lift in the year before shortage</h2></div>
-  <div class="sub">For each feature, we compare the mean in drug-years where a shortage started the next year vs years with no upcoming shortage.</div>
+  <div class="sub">
+    For each feature, mean value in drug-years where shortage started next year vs years with no upcoming shortage.
+    Recalls excluded (concurrent/lagging). FAERS flat pre-onset and shown for reference only.
+  </div>
   <div class="card">
     <table class="signals">
       <thead>
@@ -740,15 +806,22 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
     </table>
   </div>
   <div class="card" style="margin-top:14px;">
-    <h3>FAERS trajectory around shortage onset (annual)</h3>
-    <div class="csub">Years T−4 to T. Recall signals excluded — concurrent/lagging w.r.t. onset.</div>
-    <div class="chart-host"><canvas id="chartLeadFaers"></canvas></div>
+    <h3>483 Text Indices: shortage vs no-shortage drugs (drug-level comparison)</h3>
+    <div class="csub">
+      Mean TRI / SCRI / IRWI / QCI for drugs with ≥1 shortage start vs drugs with zero starts (2015–2024).
+      Indices are facility-level aggregates — higher = higher risk signal.
+      IRWI and SCRI show the largest separation.
+    </div>
+    <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
   </div>
   <div class="note dark">
-    <strong>Annual finding:</strong> FAERS adverse-event signals are essentially flat in years before shortage —
-    consistent with reduced prescribing/reporting before official declaration.
-    Redica OAI and 483 critical signals show stronger pre-shortage elevation (see monthly analysis below).
-    <strong>Recalls excluded</strong> from this analysis — they are concurrent or post-onset signals, not leading indicators.
+    <strong>Key lift pattern:</strong>
+    IRWI (Investigation/Remediation Weakness) and SCRI (Sterility/Contamination Risk) are notably
+    higher for shortage drugs, reflecting chronic process failures and injection/sterility risks.
+    QCI (Quality Culture Index) is <em>lower</em> for shortage drugs — consistent with weaker
+    compliance culture predicting supply disruption.
+    Redica OAI shows modest lift (~1.4×). FAERS adverse-event signals are flat before onset
+    (possible reporting suppression pre-shortage) and are excluded from these charts.
   </div>
 </section>
 
@@ -981,8 +1054,6 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 // ── Embedded data ──────────────────────────────────────────────────────────
 const BY_YEAR   = {_j(d["by_year"])};
 const BY_DRUG   = {_j(d["by_drug"])};
-const LEAD      = {_j(d["annual_lead"])};
-const CTRL      = {{ faers_sev:{d["lift"][1]["mean0"] if len(d["lift"])>1 else 1274}, faers_serious:{d["lift"][0]["mean0"] if d["lift"] else 858} }};
 
 // ── Chart defaults ─────────────────────────────────────────────────────────
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -1015,28 +1086,15 @@ new Chart(document.getElementById("chartDrug"),{{
             scales:{{x:{{beginAtZero:true,ticks:{{stepSize:1}}}},y:{{grid:{{display:false}}}}}}}}
 }});
 
-// ── Annual: FAERS lead-time ───────────────────────────────────────────────
-new Chart(document.getElementById("chartLeadFaers"),{{
-  type:"line",
-  data:{{labels:LEAD.rel,
-         datasets:[
-           {{label:"FAERS severity",data:LEAD.faers_sev,    borderColor:C.deep, tension:0.25,pointRadius:4}},
-           {{label:"FAERS serious", data:LEAD.faers_serious,borderColor:C.teal, tension:0.25,pointRadius:4}},
-           {{label:"Baseline: sev", data:LEAD.rel.map(()=>CTRL.faers_sev),    borderColor:C.deep, borderDash:[4,4],pointRadius:0,fill:false}},
-           {{label:"Baseline: ser", data:LEAD.rel.map(()=>CTRL.faers_serious),borderColor:C.teal, borderDash:[4,4],pointRadius:0,fill:false}}
-         ]}},
-  options:{{responsive:true,maintainAspectRatio:false,
-            plugins:{{legend:{{position:"bottom",labels:{{boxWidth:14,font:{{size:10.5}}}}}}}},
-            scales:{{x:{{title:{{display:true,text:"Years relative to onset"}},grid:{{display:false}}}},
-                     y:{{title:{{display:true,text:"Mean count / score"}}}}}}}}
-}});
-
 // ── Monthly lead-lag charts ────────────────────────────────────────────────
 {redica_js}
 {faers_js}
 
 // ── 483 text analysis charts ──────────────────────────────────────────────
 {text_js}
+
+// ── 483 text group comparison (shortage vs no-shortage drugs) ─────────────
+{text_group_js}
 
 // ── RF model results ──────────────────────────────────────────────────────
 {model_js}
