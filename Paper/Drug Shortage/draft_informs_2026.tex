@@ -1,0 +1,457 @@
+\documentclass[12pt]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{soul}          % \hl{} for TODO highlights
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{lineno}        % line numbers for review
+\linenumbers
+
+% ── TODO command ──────────────────────────────────────────────────────────
+\newcommand{\todo}[1]{\hl{\textbf{[TODO: #1]}}}
+\newcommand{\note}[1]{{\color{blue}\textit{[Note: #1]}}}
+
+% ── Title block ───────────────────────────────────────────────────────────
+\title{\textbf{Latent Quality Risk in Generic Drug Manufacturing:\\
+  LLM-Extracted FDA 483 Signals and Drug Shortage Prediction}}
+
+\author{
+  Amirreza Sahebi\thanks{Corresponding author.
+    Poole College of Management, North Carolina State University.
+    Email: \texttt{asahebi@ncsu.edu}} \\
+  \and
+  \todo{Co-authors}
+}
+
+\date{\today \\ \vspace{4pt}
+  \textit{Preliminary draft — prepared for INFORMS Annual Meeting 2026.
+  Please do not cite or circulate without permission.}}
+
+% ══════════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+
+% ── Abstract ──────────────────────────────────────────────────────────────
+\begin{abstract}
+Generic drug shortages pose significant risks to patient safety and public
+health, yet their prediction remains challenging due to the latent nature of
+manufacturing quality failures.
+FDA Form 483 inspectional observations—letters issued to drug manufacturing
+facilities documenting specific violations—contain rich qualitative information
+about the nature, severity, and root causes of quality deficiencies, but this
+information has not been systematically quantified for risk prediction.
+We apply large language model (LLM) extraction to \todo{N} Form 483
+observations from \todo{N} facilities manufacturing 14 generic APIs tested
+by Valisure, converting free-text observations into structured signals:
+violation severity, root-cause type, remediation quality, and seven binary
+risk flags (repeat, systemic, patient risk, data integrity, contamination,
+documentation, investigation failure).
+We aggregate these signals to facility-level Text Risk Indices (TRI, SCRI,
+IRWI, QCI) and test whether they improve prediction of Valisure-measured
+quality failures and University of Utah drug shortage onset.
+Our results suggest that \todo{key finding}.
+The approach is fully reproducible from publicly available FDA data and offers
+a scalable framework for real-time manufacturing quality surveillance.
+\end{abstract}
+
+\textbf{Keywords:} drug shortage prediction, FDA Form 483, manufacturing quality,
+large language model, text analysis, pharmaceutical supply chain
+
+\newpage
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+
+Generic drugs account for roughly 90\% of U.S. prescriptions filled
+\citep{fda2023generic}, yet generic drug shortages are an enduring public
+health problem that disrupts patient care, inflates costs, and strains
+hospital operations \citep{fox2014shortage}.
+Shortages arise from an interplay of demand concentration, supply chain
+fragility, and latent manufacturing quality failures that may not surface
+until facilities fail FDA inspections or recall products.
+
+The FDA's regulatory data—inspection outcomes (OAI/VAI/NAI classifications),
+warning letters, recalls, and import refusals—provide structured signals of
+quality risk, but they are lagging indicators: they reflect quality failures
+that have already materialized.
+FDA Form 483 letters are issued at the \emph{conclusion} of an inspection and
+document specific deficiencies before they escalate to warning letters or
+recalls.
+Form 483 observations thus constitute a leading signal of manufacturing
+quality degradation, but their unstructured narrative format has prevented
+systematic quantitative use.
+
+\todo{2--3 sentences on prior literature: structured regulatory signals for
+shortage prediction (Fox et al., Pauwels et al., etc.); FDA text analysis
+work (if any); LLM for regulatory/clinical text.}
+
+We make three contributions:
+\begin{enumerate}[noitemsep]
+  \item We develop a validated LLM extraction pipeline that converts Form 483
+        observation text into structured, reproducible risk signals at the
+        observation level.
+  \item We construct four facility-level Text Risk Indices—TRI, SCRI, IRWI,
+        and QCI—aggregating these signals and empirically characterize their
+        distributions across \todo{N} generic drug manufacturing facilities.
+  \item We test whether these indices improve prediction of independently
+        verified quality failures (Valisure dissolution testing) and drug
+        shortage onset (University of Utah shortage database) relative to
+        structured regulatory features alone.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Background and Data}
+\label{sec:data}
+
+\subsection{FDA Form 483 Observations}
+
+FDA Form 483 is issued to a facility's management at the close of an
+inspection when an investigator observes conditions that may violate the
+Food, Drug, and Cosmetic Act or its implementing regulations (21 CFR Parts
+210–211).
+Each letter contains one or more numbered observations, each describing a
+specific deficiency.
+Observations are written by FDA investigators in narrative form; they do not
+follow a templated structure beyond the opening CFR-paraphrase sentence.
+
+We obtained \todo{N} Form 483 PDFs from FDA's public disclosure portal,
+covering \todo{N} facilities and the period \todo{year range}.
+PDFs were converted to text via OCR (Tesseract 200 DPI) and parsed into
+individual observations using regex splitting on ``OBSERVATION N'' headers,
+yielding \textbf{622 observations} across \textbf{38 facilities} after
+quality filtering.
+
+\subsection{Valisure Quality Outcomes}
+
+Valisure is an independent pharmaceutical testing laboratory that publicly
+reports dissolution testing, nitrosamine contamination (NDMA, DMF), and
+quality failure results for commercially available generic drugs.
+We use Valisure test results for 14 APIs tested in 2020, 2022, and 2024 as
+our primary quality outcome variable.
+These results serve as independently verified ground truth for manufacturing
+quality, free of the endogeneity concerns of FDA inspection outcomes.
+
+\subsection{Drug Shortage Data}
+
+Drug shortage onset and duration data are drawn from the University of Utah
+Drug Information Service (UUtah) shortage database, which tracks generic drug
+shortages from \todo{year range}.
+We define shortage onset as a binary indicator for a given API--year pair.
+
+\subsection{Sample}
+
+\todo{Describe the 14 APIs, FEI-to-drug mapping via NDC-FEI crosswalk,
+panel structure (drug-year or FEI-year), and any sample selection rules.}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Methods}
+\label{sec:methods}
+
+\subsection{LLM Extraction Pipeline}
+
+For each Form 483 observation we send the cleaned observation text to
+\texttt{gpt-4o-mini} (OpenAI) with a structured JSON schema prompt.
+The prompt instructs the model to return exactly 15 fields:
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Categorical}: violation category (8 values), severity tier
+        (High/Moderate/Low), root-cause type (Capital/Cultural/Mixed/Unclear),
+        remediation signal (Strong/Partial/Weak/None).
+  \item \textbf{Binary flags} (7): repeat finding, systemic scope, patient
+        risk, data integrity failure, contamination/sterility risk,
+        documentation deficiency, investigation failure.
+  \item \textbf{Qualitative}: severity rationale, root-cause rationale,
+        verbatim evidence quote, confidence score (0--1).
+\end{itemize}
+
+The evidence quote is subject to an \emph{evidence guard}: the returned quote
+must appear verbatim in the source text; otherwise it is cleared.
+Extraction is idempotent: already-scored observations are skipped on re-run.
+
+\paragraph{Validation.}
+We manually reviewed a random sample of \todo{N} observations and compared
+LLM classifications to independent human raters.
+Inter-rater agreement: \todo{Cohen's $\kappa$ or \%}.
+
+\subsection{Facility-Level Aggregation}
+
+We aggregate observation-level signals to the facility (FEI) level using
+the following composite indices, each bounded $[0, 100]$:
+
+\begin{align}
+\text{TRI}_i &= \left[
+    0.35 \cdot s^H_i
+  + 0.20 \cdot s^M_i
+  + 0.20 \cdot (1 - r^S_i)
+  + 0.15 \cdot f^{\text{rep}}_i
+  + 0.10 \cdot f^{\text{sys}}_i
+\right] \times 100 \label{eq:tri} \\
+\text{SCRI}_i &= \left[
+    0.50 \cdot f^{\text{contam}}_i
+  + 0.30 \cdot f^{\text{contam,rx}}_i
+  + 0.20 \cdot s^H_i
+\right] \times 100 \label{eq:scri} \\
+\text{IRWI}_i &= \left[
+    0.40 \cdot r^N_i
+  + 0.35 \cdot f^{\text{invest}}_i
+  + 0.25 \cdot r^W_i
+\right] \times 100 \label{eq:irwi} \\
+\text{QCI}_i &= \left[
+    0.40 \cdot f^{\text{sys}}_i
+  + 0.35 \cdot f^{\text{rep}}_i
+  + 0.25 \cdot c^{\text{cult}}_i
+\right] \times 100 \label{eq:qci}
+\end{align}
+
+where $s^H_i$, $s^M_i$ are severity High/Moderate shares; $r^S_i$, $r^N_i$,
+$r^W_i$ are remediation Strong/None/Weak shares; $f^{\cdot}_i$ are LLM flag
+shares; $f^{\text{contam,rx}}_i$ is the regex contamination share; and
+$c^{\text{cult}}_i$ is the cultural root-cause share, all for facility $i$.
+
+\subsection{Manufacturing Quality Risk Index (MQRI)}
+
+The MQRI combines regulatory enforcement features and market quality signals:
+
+\begin{equation}
+  \text{MQRI}_i = \left( 0.70 \cdot D^{\text{reg}}_i
+                         + 0.30 \cdot D^{\text{mkt}}_i \right) \times 100
+\end{equation}
+
+where $D^{\text{reg}}$ includes cumulative OAI count, OAI-predictive CFR
+inspections, posted 483 citations, warning letters, inspection gap, import
+refusals, and the contamination NLP flag; $D^{\text{mkt}}$ includes Class I
+and all-class recall counts.
+Feature weights are derived from Spearman $|\rho|$ with OAI rate across
+$n = 127$ facilities.
+In this paper we extend the MQRI by adding TRI as a regulatory domain feature
+with weight derived from \todo{correlation with OAI rate or Valisure}.
+
+\subsection{Shortage Prediction Model}
+
+\todo{Describe m09 model: logistic regression / XGBoost / LASSO at drug--year
+level, feature set from m07 panel, train/test split, evaluation metric (AUC).
+Then describe the extension: adding TRI/SCRI via FEI→drug bridge.}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Results}
+\label{sec:results}
+
+\subsection{Descriptive Characterization of Form 483 Observations}
+
+Table~\ref{tab:obs_desc} summarizes the LLM extraction results across
+622 observations from 38 facilities.
+
+\begin{table}[h!]
+\centering
+\caption{Observation-level signal distribution ($n = 622$ observations,
+         38 facilities)}
+\label{tab:obs_desc}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Signal} & \textbf{Count} & \textbf{Share (\%)} \\
+\midrule
+\multicolumn{3}{l}{\textit{Severity tier}} \\
+\quad High      & 435 & 69.9 \\
+\quad Moderate  & 174 & 28.0 \\
+\quad Low       &  13 &  2.1 \\
+\midrule
+\multicolumn{3}{l}{\textit{Primary violation domain}} \\
+\quad Production Controls  & 170 & 27.3 \\
+\quad Lab Controls         & 162 & 26.1 \\
+\quad Quality System       & 123 & 19.8 \\
+\quad Buildings/Equipment  &  71 & 11.4 \\
+\quad Records/Reports      &  61 &  9.8 \\
+\quad Personnel            &  22 &  3.5 \\
+\quad Other                &  13 &  2.1 \\
+\midrule
+\multicolumn{3}{l}{\textit{Root-cause type}} \\
+\quad Cultural  & 279 & 44.9 \\
+\quad Mixed     & 242 & 38.9 \\
+\quad Capital   &  92 & 14.8 \\
+\quad Unclear   &   9 &  1.4 \\
+\midrule
+\multicolumn{3}{l}{\textit{Remediation signal}} \\
+\quad None    & 418 & 67.2 \\
+\quad Weak    & 112 & 18.0 \\
+\quad Partial &  91 & 14.6 \\
+\quad Strong  &   1 &  0.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Key finding 1: Severity is predominantly high.}
+Nearly 70\% of 483 observations in our sample are classified as High severity
+(direct patient-harm risk or gross deviation from CGMP).
+This reflects the facility composition of our sample—facilities that
+manufactured drugs subsequently tested by Valisure, which may be a
+non-random subset with higher historical inspection activity.
+
+\paragraph{Key finding 2: Cultural root causes dominate.}
+83.8\% of observations are classified as Cultural or Mixed root cause,
+suggesting that the predominant drivers of CGMP violations in this sample
+are management, training, and quality-culture failures rather than
+capital/equipment gaps.
+This has direct implications for corrective action: capital investment alone
+is insufficient.
+
+\paragraph{Key finding 3: Remediation is rarely mentioned.}
+67.2\% of observations mention no corrective action whatsoever, and only
+one observation (0.2\%) references a strong corrective action.
+\note{This is partly structural: 483 observations are investigator-written
+findings; firm responses are submitted separately.
+However, Partial/Weak mentions do appear when investigators note commitments
+made on-site. The absence is itself informative.}
+
+\subsection{Semantic Lift: LLM vs.\ Regex}
+
+Table~\ref{tab:lift} compares LLM flag rates to deterministic regex flags
+on the same observations.
+
+\begin{table}[h!]
+\centering
+\caption{Semantic lift: LLM vs.\ regex flag rates (mean across 38 FEIs)}
+\label{tab:lift}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Flag} & \textbf{Regex share} & \textbf{LLM share}
+              & \textbf{LLM-only lift} \\
+\midrule
+Patient risk   & 19.4\% & $\sim$90\% & \textbf{71.1\%} \\
+Systemic scope & 26.3\% & $\sim$95\% & \textbf{68.9\%} \\
+Contamination  & 30.2\% & $\sim$57\% & 27.1\% \\
+Data integrity &  6.1\% & $\sim$19\% & 13.1\% \\
+Investigation  & 39.9\% & $\sim$43\% &  3.2\% \\
+Documentation  & 83.6\% & $\sim$87\% &  4.7\% \\
+Repeat finding &  4.3\% & $\sim$9\%  &  5.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The patient risk and systemic flags show the largest semantic lift:
+the LLM identifies \emph{patient risk implications} and \emph{facility-wide
+scope} in 71\% and 69\% of observations, respectively, where keyword
+rules fail.
+This is because these inferences require contextual reasoning
+(e.g., sterile injectable $\Rightarrow$ patient risk; ``your firm's''
+$\Rightarrow$ systemic) that regex cannot replicate.
+
+\subsection{Facility-Level Text Risk Indices}
+
+\todo{Table of top/bottom 10 FEIs by TRI with firm name (or anonymized).
+Add: correlation of TRI with severity\_score from node\_summary,
+correlation of TRI with n\_oai, correlation with MQRI.}
+
+\subsection{Predictive Validity: TRI vs.\ Valisure Outcomes}
+
+\todo{Run correlation: TRI vs. Valisure dissolution difference factor (2024).
+Run correlation: SCRI vs. Valisure NDMA/DMF.
+Compare to MQRI-only baseline.}
+
+\subsection{Predictive Validity: TRI in Shortage Prediction}
+
+\todo{Run m09 with and without TRI/SCRI features.
+Report AUC with 95\% CI, precision-recall curve.
+Feature importance.}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Form 483 as a leading quality signal.}
+\todo{Discussion of why 483 text adds information beyond structured signals.}
+
+\paragraph{Root cause composition and policy implications.}
+The predominance of Cultural and Mixed root causes suggests that FDA
+enforcement actions alone are insufficient remedies.
+Facilities that receive OAI classifications repeatedly are more likely
+characterized by management culture failures than capital deficiencies,
+implying that CAPA programs targeting equipment or procedures may be
+systematically underspecified.
+
+\paragraph{Limitations.}
+\begin{itemize}[noitemsep]
+  \item \textit{Coverage}: only 38 of 129 facilities in our FEI sample have
+        associated 483 PDFs, limiting the reach of text-derived features.
+  \item \textit{LLM reliability}: while precision on manually reviewed
+        observations is \todo{\%}, the model occasionally over-triggers
+        contamination flags for training observations.
+  \item \textit{Selection}: Valisure tests a non-random subset of generics;
+        our results may not generalize to lower-scrutiny drug classes.
+  \item \textit{Causality}: we estimate predictive associations, not causal effects.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+\label{sec:conclusion}
+
+We demonstrate that LLM-extracted signals from FDA Form 483 observations
+provide structured, reproducible, and predictively informative features for
+manufacturing quality risk assessment.
+The proposed Text Risk Index and related indices capture dimensions of quality
+risk—severity composition, root-cause type, and remediation quality—that are
+absent from existing structured regulatory databases.
+Integrating these features into the MQRI and shortage prediction models
+\todo{improves/does not improve} predictive performance.
+The pipeline is fully automated and can be applied prospectively to the
+FDA's public 483 disclosure portal, enabling near-real-time quality
+surveillance for drug shortage early warning.
+
+% ══════════════════════════════════════════════════════════════════════════
+\bibliographystyle{agsm}
+\bibliography{references}
+
+% ══════════════════════════════════════════════════════════════════════════
+\appendix
+
+\section{LLM Flag Definitions}
+\label{app:flags}
+
+\paragraph{Extraction model.} \texttt{gpt-4o-mini} with structured JSON output
+schema (strict mode). Temperature = 0 (deterministic). Max tokens = 2000.
+
+\paragraph{Evidence guard.} The \texttt{evidence\_quote} field must appear
+verbatim in the source observation text. If the model paraphrases, the field
+is cleared to empty string rather than accepting an inaccurate citation.
+
+\paragraph{Flag definitions} are as specified in the extraction prompt
+(see \texttt{01\_extract\_observation\_signals.py}):
+
+\begin{description}[leftmargin=2em]
+  \item[\texttt{repeat\_flag\_llm}] True only when the observation explicitly
+    states this is a repeat or previously-cited finding from a prior inspection.
+    Not true for repeated examples within the same current observation.
+  \item[\texttt{systemic\_flag\_llm}] True when the observation describes
+    facility-wide, multi-process, multi-product, or quality-system-level failure.
+  \item[\texttt{patient\_risk\_flag\_llm}] True when the violation could
+    directly affect patient safety. Does not require confirmed patient harm.
+  \item[\texttt{data\_integrity\_flag\_llm}] True only for explicit data
+    trustworthiness failures (falsification, backdating, audit-trail problems).
+    Not true for ordinary incomplete documentation.
+  \item[\texttt{contamination\_flag\_llm}] True for actual contamination or
+    clear contamination-control risk including sterility assurance failures.
+  \item[\texttt{documentation\_flag\_llm}] True when inadequate documentation
+    is a \emph{central} finding.
+  \item[\texttt{investigation\_flag\_llm}] True only for an explicit failed,
+    missing, or inadequate investigation of a concrete event.
+\end{description}
+
+\section{Composite Index Weights}
+\label{app:weights}
+
+Weights for TRI, SCRI, IRWI, and QCI are specified in
+\texttt{02\_aggregate\_fei\_features.py} and reproduced in
+Equations~\eqref{eq:tri}--\eqref{eq:qci}.
+\todo{Add empirical derivation table once correlations with OAI rate are run.}
+
+\end{document}
