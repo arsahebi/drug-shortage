@@ -46,7 +46,7 @@ import pandas as pd
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-BASE    = Path(__file__).parents[2]
+BASE    = Path(__file__).parents[3]
 OUT     = Path(__file__).parent
 
 EVENTS_CSV   = OUT / "fei_events_timeline.csv"
@@ -56,8 +56,8 @@ CFR_JSON     = OUT / "fei_cfr_data.json"
 SIGNALS_483  = BASE / "Data/12 - FDA - 483/processed/483_fei_features.csv"
 WL_REC_CSV   = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv"
 VALISURE     = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
-RISK_CSV     = OUT / "483_fei_context_features.csv"          # produced by 05
-OBS_SIGNALS  = OUT / "483_observation_context_signals.csv"   # produced by 04
+RISK_CSV     = OUT.parent / "483_fei_context_features.csv"          # produced by 05
+OBS_SIGNALS  = OUT.parent / "483_observation_context_signals.csv"   # produced by 04
 HTML_OUT     = OUT / "fei_dashboard.html"
 
 # ══════════════════════════════════════════════════════════════════════════

@@ -47,7 +47,7 @@ from pathlib import Path
 from difflib import SequenceMatcher
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-BASE = Path(__file__).parents[2]
+BASE = Path(__file__).parents[3]
 OUT  = Path(__file__).parent
 
 VALISURE   = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
