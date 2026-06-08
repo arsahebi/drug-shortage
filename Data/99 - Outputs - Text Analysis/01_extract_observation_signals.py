@@ -1,6 +1,6 @@
 # %%
 """
-04_extract_observation_signals.py
+01_extract_observation_signals.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PURPOSE
@@ -10,7 +10,7 @@ PURPOSE
   quote verbatim from the observation text.
 
   This is step 1 of the optional LLM pipeline:
-      04 → 05 → (07 optional merge)
+      01 → 02 → (03 optional merge)
 
   The core combined dataset (01 → 03) does NOT need this script.
 
@@ -528,7 +528,7 @@ if _RUNNING_AS_SCRIPT:
 # %%
 # ── Load observations ──────────────────────────────────────────────────────
 print("=" * 70)
-print("04_extract_observation_signals.py")
+print("01_extract_observation_signals.py")
 print("FDA Form 483 -> LLM Context Signal Extraction")
 print("=" * 70)
 print(f"Mode                 : {'CLI' if _RUNNING_AS_SCRIPT else 'interactive'}")
@@ -673,4 +673,4 @@ if not DRY_RUN and client is not None:
     print(f"Total rows in output  : {len(combined)}")
     print(f"Output                : {SIGNALS_CSV}")
     print()
-    print("Next step: python 05_aggregate_fei_features.py")
+    print("Next step: python 02_aggregate_fei_features.py")

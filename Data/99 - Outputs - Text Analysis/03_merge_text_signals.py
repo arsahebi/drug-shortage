@@ -1,26 +1,26 @@
 """
-07_merge_text_signals.py
+03_merge_text_signals.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PURPOSE
-  Left-joins the LLM FEI-level features (from 05) onto the FEI node summary
-  (from 01) so that every FEI carries both its structured regulatory event counts
-  and its LLM-derived Text Risk Index in a single analysis-ready table.
+  Left-joins the LLM FEI-level features (from 02) onto the FEI node summary
+  (from analytics/01) so that every FEI carries both its structured regulatory
+  event counts and its LLM-derived Text Risk Index in a single analysis-ready table.
 
-  This is the optional final step of the LLM pipeline (04 → 05 → 07).
+  This is the optional final step of the LLM pipeline (01 → 02 → 03).
   The original fei_node_summary.csv is NOT modified.
 
 WHEN TO RUN
-  Run after 05_aggregate_fei_features.py.
+  Run after 02_aggregate_fei_features.py.
   Fast (<1 min). No API key needed.
 
 REQUIRED FOR COMBINED DATASET?
   NO — optional. The enriched CSV is useful for the downstream prediction model
-  but is not required to run the dashboard (03 reads the two files separately).
+  but is not required to run the analytics dashboard.
 
-INPUTS (in this folder)
-  fei_node_summary.csv            ← produced by 01 (all 129 FEIs)
-  483_fei_context_features.csv    ← produced by 05 (LLM-scored FEIs only)
+INPUTS
+  analytics/fei_node_summary.csv      ← produced by analytics/01 (all 129 FEIs)
+  483_fei_context_features.csv        ← produced by 02 (LLM-scored FEIs only)
 
 OUTPUTS (in this folder)
   fei_node_summary_enriched.csv   ← left join: all 129 FEIs + LLM columns (NaN if unscored)
@@ -32,15 +32,15 @@ from pathlib import Path
 import pandas as pd
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-OUT          = Path(__file__).parent
-NODES_CSV    = OUT / "fei_node_summary.csv"
-RISK_CSV     = OUT / "483_fei_context_features.csv"   # produced by 05
-ENRICHED_CSV = OUT / "fei_node_summary_enriched.csv"
+HERE         = Path(__file__).parent
+NODES_CSV    = HERE / "analytics" / "fei_node_summary.csv"
+RISK_CSV     = HERE / "483_fei_context_features.csv"   # produced by 02
+ENRICHED_CSV = HERE / "fei_node_summary_enriched.csv"
 
 
 def main():
     print("=" * 65)
-    print("07_merge_text_signals.py — Enrich node summary with TRI signals")
+    print("03_merge_text_signals.py — Enrich node summary with TRI signals")
     print("=" * 65)
 
     if not NODES_CSV.exists():

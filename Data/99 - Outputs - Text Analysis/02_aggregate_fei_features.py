@@ -1,19 +1,19 @@
 """
-05_aggregate_fei_features.py
+02_aggregate_fei_features.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PURPOSE
-  Aggregates observation-level signals from Step 4 up to FEI-level features
+  Aggregates observation-level signals from Step 1 up to FEI-level features
   in five interpretable layers, enabling separate evaluation of each signal source.
 
 PIPELINE POSITION
-  Step 4  (04_extract_observation_signals.py)
+  Step 1  (01_extract_observation_signals.py)
       Reads : Data/12 - FDA - 483/processed/483_observations.csv
       Writes: Data/99 - Outputs - Text Analysis/483_observation_context_signals.csv
               → one row per observation; regex flags + LLM semantic fields
 
-  Step 5  (this script)
-      Reads : 483_observation_context_signals.csv  (from Step 4)
+  Step 2  (this script)
+      Reads : 483_observation_context_signals.csv  (from Step 1)
       Writes: 483_fei_context_features.csv
               → one row per FEI; layered text-derived features
 
@@ -95,7 +95,7 @@ SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
 FEI_CSV     = HERE / "483_fei_context_features.csv"
 
 # Rows with confidence below this threshold are flagged as low-quality OCR fragments.
-# Based on Step 4 data: min=0.12, mean=0.83; 13 rows fall below 0.70.
+# Based on Step 1 data: min=0.12, mean=0.83; 13 rows fall below 0.70.
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
 # ── Composite index weights ────────────────────────────────────────────────
@@ -228,7 +228,7 @@ def _layer2_regex(grp: pd.DataFrame) -> dict:
         ("laboratory_regex_share",         "has_laboratory_regex"),
         ("equipment_facility_regex_share", "has_equipment_facility_regex"),
         ("process_control_regex_share",    "has_process_control_regex"),
-        # extra flags present in Step 4 output — kept for completeness
+        # extra flags present in Step 1 output — kept for completeness
         ("wl_ref_regex_share",             "has_wl_ref_regex"),
         ("oos_oot_regex_share",            "has_oos_oot_regex"),
     ]
@@ -443,13 +443,13 @@ _COL_ORDER = [
 def main() -> None:
     sep = "=" * 70
     print(sep)
-    print("05_aggregate_fei_features.py — Layered FEI feature aggregation")
+    print("02_aggregate_fei_features.py — Layered FEI feature aggregation")
     print(sep)
 
     if not SIGNALS_CSV.exists():
         sys.exit(
             f"\n[ERROR] Observation signals file not found:\n  {SIGNALS_CSV}\n"
-            "Run 04_extract_observation_signals.py first.\n"
+            "Run 01_extract_observation_signals.py first.\n"
         )
 
     df = pd.read_csv(SIGNALS_CSV)
