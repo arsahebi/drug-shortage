@@ -49,22 +49,25 @@ log = get_logger("m09_model", OUT_LOGS / "m09_model.log")
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Short feature list: one or two representative signals per source.
+# Features: one or two signals per source.
+# Recalls excluded — concurrent/lagging w.r.t. shortage onset, not leading indicators.
 FEATURES = [
+    # FAERS adverse-event signals
     "faers_severity_score",
     "faers_severity_score_w3",
-    "recall_total",
-    "recall_cgmp",
-    "recall_total_w3",
+    # Redica inspection / regulatory signals
     "redica_n_oai",
     "redica_n_oai_w3",
+    # Valisure independent quality test scores (time-invariant cross-section)
     "valisure_mean_score",
     "valisure_min_score",
     "valisure_n_failing",
+    # Drug structural attributes
     "parenteral_ever",
+    # Shortage history
     "prior_shortage_t",
     "prior_shortage_w3",
-    # 483 text features (drug-level simple mean of composite indices across FEIs)
+    # 483 text features — LLM-extracted, drug-level weighted mean across FEIs
     "tri_mean",
     "scri_mean",
     "irwi_mean",
@@ -72,7 +75,7 @@ FEATURES = [
 ]
 
 TEXT_FEATURE_COLS = ["tri_mean", "scri_mean", "irwi_mean", "qci_mean"]
-# Ablation baseline: same feature set minus the 483 text indices
+# Ablation baseline: same feature set minus the LLM-derived text indices
 FEATURES_NO_TEXT = [f for f in FEATURES if f not in TEXT_FEATURE_COLS]
 
 

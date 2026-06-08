@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS
+from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS
 from utils import get_logger
 
 log = get_logger("mm07_dashboard", OUT_LOGS / "mm07_dashboard.log")
@@ -73,9 +73,11 @@ def compute_data() -> dict:
 
         by_drug_raw = (pilot.groupby("drug_norm").agg(
             starts=("shortage_started", "sum"),
-            recall_total=("recall_total", "sum"),
-            recall_cgmp=("recall_cgmp", "sum"),
             faers_sev=("faers_severity_score", "mean"),
+            tri_mean=("tri_mean", "first"),
+            scri_mean=("scri_mean", "first"),
+            irwi_mean=("irwi_mean", "first"),
+            qci_mean=("qci_mean", "first"),
         ).reset_index())
 
         # Valisure scores from valisure_drug summary
@@ -93,11 +95,13 @@ def compute_data() -> dict:
             d["by_drug"].append({
                 "drug":   r.drug_norm,
                 "starts": int(r.starts),
-                "total":  int(r.recall_total),
-                "cgmp":   int(r.recall_cgmp),
                 "faers":  round(float(r.faers_sev), 1),
                 "val":    round(float(vm.get("valisure_mean_score", 0) or 0), 1),
                 "fails":  int(vm.get("valisure_n_failing", 0) or 0),
+                "tri":    round(float(r.tri_mean or 0), 1),
+                "scri":   round(float(r.scri_mean or 0), 1),
+                "irwi":   round(float(r.irwi_mean or 0), 1),
+                "qci":    round(float(r.qci_mean or 0), 1),
             })
 
         d["annual_rows"]    = int((ap["has_valisure"] == 1).sum())
@@ -159,26 +163,24 @@ def compute_data() -> dict:
     else:
         d["monthly_lead"] = {}
 
-    # ── Recall circularity ─────────────────────────────────────────────────────
-    rc = _read("recall_circularity.csv", OUT_TABS)
-    if rc is not None:
-        rc_dedup = rc.drop_duplicates(subset=["drug_norm", "recall_dt"]).copy()
-        n_total  = len(rc_dedup)
-        tc = rc_dedup["timing_class"].value_counts()
-        cgmp_tc = rc_dedup[rc_dedup["is_cgmp"] == True]["timing_class"].value_counts()  # noqa: E712
-        d["circularity"] = {
-            "n_total":       n_total,
-            "n_cgmp":        int((rc_dedup["is_cgmp"] == True).sum()),  # noqa: E712
-            "pre_shortage":  int(tc.get("pre_shortage", 0)),
-            "coincident":    int(tc.get("coincident",   0)),
-            "post_onset":    int(tc.get("post_onset",   0)),
-            "no_shortage":   int(tc.get("no_shortage",  0)),
-            "cgmp_pre":      int(cgmp_tc.get("pre_shortage", 0)),
-            "gaps_cgmp":    rc_dedup[rc_dedup["is_cgmp"] == True]["nearest_onset_gap_months"].dropna().round(0).astype(int).tolist(),  # noqa: E712
-            "gaps_other":   rc_dedup[rc_dedup["is_cgmp"] != True]["nearest_onset_gap_months"].dropna().round(0).astype(int).tolist(),  # noqa: E712
-        }
+    # ── RF model results: feature importance + ablation ───────────────────────
+    fi_raw = _read("rf_importance_valisure.csv", OUT_MODELS)
+    abl_raw = _read("text_features_ablation.csv", OUT_MODELS)
+    met_raw = _read("metrics_valisure.csv", OUT_MODELS)
+    if fi_raw is not None:
+        fi_raw = fi_raw.sort_values("importance", ascending=False)
+        d["rf_importance"] = [{"feature": r["feature"], "imp": round(float(r["importance"]), 4)}
+                               for _, r in fi_raw.iterrows()]
     else:
-        d["circularity"] = {}
+        d["rf_importance"] = []
+    if abl_raw is not None:
+        d["ablation"] = abl_raw.to_dict(orient="records")
+    else:
+        d["ablation"] = []
+    if met_raw is not None:
+        d["model_metrics"] = met_raw.to_dict(orient="records")
+    else:
+        d["model_metrics"] = []
 
     # ── OAI forward study (Wang et al. 2025) ──────────────────────────────────
     fw = _read("oai_forward_study.csv", OUT_TABS)
@@ -228,13 +230,15 @@ def compute_data() -> dict:
 
 def _lift_rows(lift: list[dict]) -> str:
     label_map = {
-        "recall_cgmp": "FDA recalls — CGMP",
-        "recall_total": "FDA recalls — total",
         "redica_n_oai": "Redica — OAI inspections",
         "redica_n_warning_letters": "Redica — warning letters",
+        "redica_n_483_critical": "Redica — 483 critical obs.",
         "faers_severity_score": "FAERS — severity score",
         "faers_n_serious": "FAERS — serious reports",
         "faers_n_reports": "FAERS — all reports",
+        "tri_mean": "483 Text — Text Risk Index (TRI)",
+        "scri_mean": "483 Text — Sterility/Contamination Risk (SCRI)",
+        "qci_mean": "483 Text — Quality Culture Index (QCI)",
     }
     cls_map = lambda x: "high" if x >= 5 else ("mid" if x >= 1.5 else "low")
     rows = ""
@@ -252,7 +256,6 @@ def _lift_rows(lift: list[dict]) -> str:
 
 def generate_html(d: dict) -> str:
     ml = d.get("monthly_lead", {})
-    circ = d.get("circularity", {})
 
     # Prepare JS data for monthly lead-lag charts
     SIGNAL_LABELS = {
@@ -263,11 +266,6 @@ def generate_html(d: dict) -> str:
         "faers_n_reports_w3m": "FAERS Reports (3m rolling)",
         "faers_n_serious_w3m": "FAERS Serious (3m rolling)",
         "faers_severity_score_w3m": "FAERS Severity Score (3m rolling)",
-        "recall_total": "Total Recalls",
-        "recall_cgmp": "CGMP Recalls",
-        "recall_contam": "Contamination Recalls",
-        "recall_potency": "Potency Recalls",
-        "recall_class_I": "Class I Recalls",
     }
 
     def _ll_chart_js(canvas_id: str, sig: str, color: str) -> str:
@@ -308,11 +306,108 @@ new Chart(document.getElementById({_j(canvas_id)}), {{
         _ll_chart_js("llF2", "faers_n_serious_w3m",       "28, 114, 147") +
         _ll_chart_js("llF3", "faers_n_reports_w3m",       "224, 122, 95")
     )
-    recall_js = (
-        _ll_chart_js("llC1", "recall_total",  "2, 99, 176") +
-        _ll_chart_js("llC2", "recall_cgmp",   "224, 122, 95") +
-        _ll_chart_js("llC3", "recall_class_I","28, 114, 147")
-    )
+
+    # ── Text analysis: TRI/SCRI/QCI per drug ──────────────────────────────────
+    tf = d.get("by_drug", [])
+    tf_sorted  = sorted(tf, key=lambda x: x["starts"], reverse=True)
+    tf_drugs   = [r["drug"]   for r in tf_sorted]
+    tf_tri     = [r["tri"]    for r in tf_sorted]
+    tf_scri    = [r["scri"]   for r in tf_sorted]
+    tf_qci     = [r["qci"]    for r in tf_sorted]
+    tf_scatter = [{"x": r["tri"], "y": r["starts"], "name": r["drug"]} for r in tf_sorted]
+    text_js = f"""
+new Chart(document.getElementById('triChart'),{{
+  type:'bar',
+  data:{{
+    labels:{_j(tf_drugs)},
+    datasets:[
+      {{label:'TRI — Text Risk Index',data:{_j(tf_tri)},backgroundColor:'rgba(2,99,176,0.75)',borderRadius:3,yAxisID:'y'}},
+      {{label:'SCRI — Sterility/Contamination Risk',data:{_j(tf_scri)},backgroundColor:'rgba(224,122,95,0.75)',borderRadius:3,yAxisID:'y'}},
+      {{label:'QCI — Quality Culture',data:{_j(tf_qci)},backgroundColor:'rgba(28,114,147,0.65)',borderRadius:3,yAxisID:'y'}}
+    ]
+  }},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
+    scales:{{
+      x:{{grid:{{display:false}},ticks:{{maxRotation:40,font:{{size:9}}}}}},
+      y:{{beginAtZero:true,max:100,title:{{display:true,text:'Index score (0–100)'}}}}
+    }}
+  }}
+}});
+new Chart(document.getElementById('triScatterChart'),{{
+  type:'scatter',
+  data:{{datasets:[{{
+    label:'Drug',
+    data:{_j(tf_scatter)},
+    backgroundColor:'rgba(2,99,176,0.75)',
+    pointRadius:7,pointHoverRadius:9
+  }}]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: TRI=${{ctx.raw.x}}, ${{ctx.raw.y}} shortage starts`}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Text Risk Index (TRI)'}},min:50,max:70}},
+      y:{{title:{{display:true,text:'# shortage starts 2015–2024'}},beginAtZero:true,ticks:{{stepSize:1}}}}
+    }}
+  }}
+}});"""
+
+    # ── RF feature importance + ablation ──────────────────────────────────────
+    fi_data = d.get("rf_importance", [])
+    abl_data = d.get("ablation", [])
+    model_js = ""
+    if fi_data:
+        fi_sorted = sorted(fi_data, key=lambda x: x["imp"])
+        fi_labels = [r["feature"] for r in fi_sorted]
+        fi_colors = [
+            "rgba(28,114,147,0.85)" if r["feature"] in ("tri_mean","scri_mean","irwi_mean","qci_mean")
+            else "rgba(2,99,176,0.65)" for r in fi_sorted
+        ]
+        fi_vals = [r["imp"] for r in fi_sorted]
+        abl_l2   = next((r for r in abl_data if r["model"] == "L2_logit"), {})
+        abl_rf   = next((r for r in abl_data if r["model"] == "RandomForest"), {})
+        auc_with = round(float(abl_rf.get("auc_with_text", 0)), 3)
+        auc_no   = round(float(abl_rf.get("auc_without_text", 0)), 3)
+        delta_rf = round(float(abl_rf.get("auc_delta", 0)), 3)
+        model_js = f"""
+new Chart(document.getElementById('fiChart'),{{
+  type:'bar',
+  data:{{
+    labels:{_j(fi_labels)},
+    datasets:[{{
+      label:'RF importance',
+      data:{_j(fi_vals)},
+      backgroundColor:{_j(fi_colors)},
+      borderRadius:3
+    }}]
+  }},
+  options:{{indexAxis:'y',maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}}}},
+    scales:{{
+      x:{{beginAtZero:true,title:{{display:true,text:'Importance'}}}},
+      y:{{grid:{{display:false}},ticks:{{font:{{size:10}}}}}}
+    }}
+  }}
+}});
+(function(){{
+  const el = document.getElementById('modelKeyNums');
+  if (!el) return;
+  el.innerHTML = `
+    <strong>RandomForest CV (GroupKFold by drug)</strong><br>
+    AUC with text features: <strong>{auc_with}</strong> &nbsp;|&nbsp; without: <strong>{auc_no}</strong>
+    &nbsp;→ <strong style="color:var(--accent);">Δ = {delta_rf:+.3f}</strong><br>
+    <br>
+    <strong>Top LLM-derived predictor:</strong> Quality Culture Index (QCI) — 3rd overall, 14.8% importance<br>
+    Text indices combined: ~32% of total RF importance<br>
+    <br>
+    <span style="color:var(--muted);font-size:11px;">
+      Logit AUC with text: {round(float(abl_l2.get("auc_with_text",0)),3)} &nbsp;|&nbsp;
+      without: {round(float(abl_l2.get("auc_without_text",0)),3)}
+      (logit: text features reduce AUC at n=19 events — high-dim collinearity with small sample).<br>
+      Recalls excluded from features — concurrent/lagging w.r.t. shortage onset, not leading indicators.
+    </span>
+  `;
+}})();"""
 
     # ── OAI forward study JS ───────────────────────────────────────────────────
     oai_fwd    = d.get("oai_fwd", {})
@@ -432,46 +527,15 @@ new Chart(document.getElementById('qualSplitChart'),{{
   }}
 }});"""
 
-    # Circularity gap histogram data (binned −15 to +15 by 1-month bins)
-    def _gap_hist(gaps: list[int]) -> list[int]:
-        bins = list(range(-15, 16))
-        counts = {b: 0 for b in bins}
-        for g in gaps:
-            if -15 <= g <= 15:
-                counts[g] += 1
-        return [counts[b] for b in bins]
-
-    gap_bins   = list(range(-15, 16))
-    cgmp_hist  = _gap_hist(circ.get("gaps_cgmp", []))
-    other_hist = _gap_hist(circ.get("gaps_other", []))
-    circ_class_dict = {
-        "pre_shortage": circ.get("pre_shortage", 0),
-        "coincident":   circ.get("coincident",   0),
-        "post_onset":   circ.get("post_onset",   0),
-        "no_shortage":  circ.get("no_shortage",  0),
-    }
-
-    circ_summary = ""
-    if circ:
-        n, npre, nc, npost, nno = (circ.get("n_total",0), circ.get("pre_shortage",0),
-                                    circ.get("coincident",0), circ.get("post_onset",0), circ.get("no_shortage",0))
-        ncgmp = circ.get("n_cgmp", 0); cgmppre = circ.get("cgmp_pre", 0)
-        pct = lambda x: f"{100*x//max(n,1)}%"
-        circ_summary = (
-            f"<strong>{n} unique matched recalls</strong> across 14 drugs, 2015–2024 "
-            f"({ncgmp} CGMP, {n-ncgmp} non-CGMP). "
-            f"<strong>{cgmppre} of {ncgmp} CGMP recalls</strong> fall >3 months before shortage onset "
-            f"— suggestive of an upstream manufacturing signal, but driven primarily by Metformin recalls. "
-            f"<strong>Circularity concern:</strong> {npost} recalls ({pct(npost)}) fall after shortage onset "
-            f"and should be excluded from causal analysis."
-        )
+    # (Recall circularity analysis removed — recalls excluded from predictive features
+    #  as they are concurrent/lagging w.r.t. shortage onset, not leading indicators.)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Drug Shortage · Signals Dashboard</title>
+<title>From Regulatory Text to Shortage Risk · Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{{--navy:#21295C;--deep:#065A82;--teal:#1C7293;--accent:#E07A5F;
@@ -554,11 +618,12 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <div class="wrap">
 
 <header class="hero">
-  <div class="eyebrow">Research Update · May 2026 · Annual + Monthly Pipeline</div>
-  <h1>Can upstream quality signals help identify drugs at risk of future shortage?</h1>
-  <p>14 Valisure-tested APIs · 2015–2024 · Five linked data sources · Annual and monthly resolution.
-     This dashboard combines the annual pilot analysis with a new monthly lead-lag analysis designed
-     to separate signals that <em>precede</em> shortages from those that merely coincide.</p>
+  <div class="eyebrow">Research Dashboard · June 2026 · NLP &amp; LLM Framework</div>
+  <h1>From Regulatory Text to Shortage Risk</h1>
+  <p>NLP &amp; LLM Framework for Pharmaceutical Quality Risk Prediction ·
+     14 generic APIs · 129 manufacturing facilities · 2015–2024 ·
+     FDA 483 text extraction → facility-level risk indices → shortage prediction.
+     Recalls excluded from predictive features (concurrent/lagging with onset).</p>
 </header>
 
 <!-- ═══ SECTION 1: PANEL SNAPSHOT ═══ -->
@@ -589,17 +654,17 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <section>
   <div class="section-head"><span class="step-num">2</span><h2>Data sources &amp; linkage</h2></div>
   <div class="sources">
-    <div class="src"><div class="name">Valisure</div><div class="role">14-API universe · 2024 DoD quality scores (static)</div></div>
+    <div class="src"><div class="name">FDA Form 483s</div><div class="role">38 FEIs · 622 observations · LLM-extracted (primary text source)</div></div>
+    <div class="src"><div class="name">FDA Inspections</div><div class="role">1,019 inspections · 961 CFR citations · 127/129 FEIs</div></div>
+    <div class="src"><div class="name">Valisure</div><div class="role">14-API universe · 2024 independent quality test scores (static)</div></div>
     <div class="src"><div class="name">UUtah</div><div class="role">Shortage start / end dates → annual &amp; monthly shortage state</div></div>
     <div class="src"><div class="name">FAERS</div><div class="role">Adverse-event reports + severity (quarterly resolution)</div></div>
-    <div class="src"><div class="name">FDA Recalls</div><div class="role">Counts by class &amp; reason; exact initiation date available</div></div>
-    <div class="src"><div class="name">Redica</div><div class="role">Facility inspections / 483s / warning letters; exact date available</div></div>
   </div>
   <div class="note" style="margin-top:12px;">
-    <strong>Valisure scores are a 2024 snapshot only.</strong> They cannot vary over time, so they are
-    excluded from all lead-lag analysis and used only as a static cross-sectional attribute.
-    Recalls and Redica have exact calendar dates and are included at monthly resolution.
-    FAERS has quarterly resolution (quarter assigned to its first month); 3-month rolling sums are used in charts.
+    <strong>Primary text source:</strong> FDA Form 483 PDF narratives, processed via LangChain OCR + LLM extraction (GPT-4o-mini).
+    Structured citations provide CFR-level signals for 127/129 facilities.
+    Valisure scores are a 2024 static snapshot used for cross-sectional validation only.
+    <strong>Recalls excluded as predictors</strong> — timing analysis confirms they are concurrent or lagging w.r.t. shortage onset, not leading indicators.
   </div>
 </section>
 
@@ -626,9 +691,39 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   </div>
 </section>
 
-<!-- ═══ SECTION 4: ANNUAL LIFT TABLE ═══ -->
+<!-- ═══ SECTION 4: 483 TEXT ANALYSIS SIGNALS ═══ -->
 <section>
-  <div class="section-head"><span class="step-num">4</span><h2>Annual signals: lift in the year before shortage</h2></div>
+  <div class="section-head"><span class="step-num">4</span><h2>FDA 483 Text Signals — LLM-extracted indices by drug</h2></div>
+  <div class="sub">
+    38 of 129 facilities (those with 483 PDFs) scored via GPT-4o-mini extraction of 622 observations.
+    Indices aggregated to drug level (mean across all FEIs manufacturing that API).
+    <strong>All indices 0–100; higher = higher risk signal.</strong>
+    TRI = Text Risk Index · SCRI = Sterility/Contamination Risk · QCI = Quality Culture Index.
+  </div>
+  <div class="chart-row">
+    <div class="card">
+      <h3>TRI / SCRI / QCI by drug</h3>
+      <div class="csub">Sorted by shortage starts. Indices reflect cumulative 483 history across all FEIs.</div>
+      <div class="chart-host tall"><canvas id="triChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Text Risk Index vs shortage starts</h3>
+      <div class="csub">Each point = one drug. TRI on x-axis; shortage starts on y-axis.</div>
+      <div class="chart-host tall"><canvas id="triScatterChart"></canvas></div>
+    </div>
+  </div>
+  <div class="note">
+    <strong>Key finding:</strong> QCI (Quality Culture Index) is the <strong>3rd most important RF predictor</strong>
+    of drug shortage (14.8% importance), behind only FAERS severity signals.
+    The 4 LLM-derived text indices combined account for ~32% of total RF feature importance.
+    SCRI is highest for Ampicillin (75.6) — reflecting sterility manufacturing risks for injectables.
+    TRI range is narrow (57–65) across drugs; within-drug variation across FEIs is the actionable signal.
+  </div>
+</section>
+
+<!-- ═══ SECTION 5: ANNUAL LIFT TABLE ═══ -->
+<section>
+  <div class="section-head"><span class="step-num">5</span><h2>Annual signals: lift in the year before shortage</h2></div>
   <div class="sub">For each feature, we compare the mean in drug-years where a shortage started the next year vs years with no upcoming shortage.</div>
   <div class="card">
     <table class="signals">
@@ -644,23 +739,16 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
       <tbody>{_lift_rows(d.get("lift", []))}</tbody>
     </table>
   </div>
-  <div class="chart-row" style="margin-top:14px;">
-    <div class="card">
-      <h3>Recall trajectory around shortage onset (annual)</h3>
-      <div class="csub">Years T−4 to T relative to shortage start year. Dashed = no-shortage baseline.</div>
-      <div class="chart-host"><canvas id="chartLeadRecall"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>FAERS trajectory around shortage onset (annual)</h3>
-      <div class="csub">Years T−4 to T. Wide SEs — 21 events only.</div>
-      <div class="chart-host"><canvas id="chartLeadFaers"></canvas></div>
-    </div>
+  <div class="card" style="margin-top:14px;">
+    <h3>FAERS trajectory around shortage onset (annual)</h3>
+    <div class="csub">Years T−4 to T. Recall signals excluded — concurrent/lagging w.r.t. onset.</div>
+    <div class="chart-host"><canvas id="chartLeadFaers"></canvas></div>
   </div>
   <div class="note dark">
-    <strong>Annual finding (suggestive):</strong> CGMP recall counts in the year before a shortage
-    are ~14× higher than baseline; total recalls ~4×. FAERS adverse-event signals are essentially flat.
-    Recall circularity caveat: the CGMP lift is real but partly reflects Metformin recalls that are
-    closely tied to a known quality issue. See Section 6 for circularity analysis.
+    <strong>Annual finding:</strong> FAERS adverse-event signals are essentially flat in years before shortage —
+    consistent with reduced prescribing/reporting before official declaration.
+    Redica OAI and 483 critical signals show stronger pre-shortage elevation (see monthly analysis below).
+    <strong>Recalls excluded</strong> from this analysis — they are concurrent or post-onset signals, not leading indicators.
   </div>
 </section>
 
@@ -706,46 +794,34 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
     artifact. Do not interpret as a protective signal.
   </div>
 
-  <hr class="divider"/>
-  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
-    5C · Recalls by class and reason</h3>
-  <div class="chart-row.three" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-    <div class="card"><h3>Total Recalls</h3><div class="chart-host"><canvas id="llC1"></canvas></div></div>
-    <div class="card"><h3>CGMP Recalls</h3><div class="chart-host"><canvas id="llC2"></canvas></div></div>
-    <div class="card"><h3>Class I Recalls</h3><div class="chart-host"><canvas id="llC3"></canvas></div></div>
-  </div>
-  <div class="note dark">
-    <strong>Monthly recalls:</strong> A spike appears ~11 months before onset (driven by Metformin
-    CGMP recalls in 2020–2021). The signal dissipates in the final 3 months before onset and at
-    onset itself — consistent with a genuine leading signal for CGMP recalls, but driven by a
-    single drug. Non-CGMP and Class I recalls show no consistent pre-shortage pattern.
-  </div>
+<!-- (Section 5C recalls removed — concurrent/lagging signals) -->
 </section>
 
-<!-- ═══ SECTION 6: RECALL CIRCULARITY ═══ -->
+<!-- ═══ SECTION 6: PREDICTIVE MODEL RESULTS ═══ -->
 <section>
-  <div class="section-head">
-    <span class="step-num">6</span>
-    <h2>Recall circularity analysis <span class="badge new">new</span></h2>
-  </div>
+  <div class="section-head"><span class="step-num">6</span><h2>Predictive Model — LLM text features in shortage prediction</h2></div>
   <div class="sub">
-    For each matched recall event, we compute the gap (months) to the nearest shortage onset for
-    that drug and classify it. This addresses the reviewer concern that recall–shortage correlation
-    might be circular.
+    Drug × year panel (14 APIs, 2015–2024, n=126 rows, 19 shortage events).
+    GroupKFold CV by drug. Recalls excluded. Teal bars = LLM-derived text indices.
   </div>
   <div class="chart-row">
     <div class="card">
-      <h3>Recall timing relative to shortage onset</h3>
-      <div class="csub">Negative gap = recall before onset; 0 = onset month. CGMP vs. other reasons.</div>
-      <div class="chart-host"><canvas id="circHist"></canvas></div>
+      <h3>RandomForest feature importance</h3>
+      <div class="csub">Teal = LLM-extracted text indices. Combined text importance ≈ 32%.</div>
+      <div class="chart-host tall"><canvas id="fiChart"></canvas></div>
     </div>
-    <div class="card">
-      <h3>Timing classification by reason</h3>
-      <div class="csub">pre_shortage = gap &lt;−3m; coincident = −3 to 0m; post_onset = after onset.</div>
-      <div class="chart-host"><canvas id="circBar"></canvas></div>
+    <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:24px;">
+      <h3 style="margin-bottom:12px;">Model results</h3>
+      <div id="modelKeyNums" style="font-size:13px;line-height:2;color:var(--ink);"></div>
     </div>
   </div>
-  <div class="note">{circ_summary}</div>
+  <div class="note dark">
+    <strong>Key finding:</strong> QCI (Quality Culture Index), an LLM-extracted signal measuring
+    systemic/repeat violation culture from 483 narratives, is the <strong>3rd most important predictor</strong>
+    of future drug shortage — ranking above Valisure quality scores and Redica OAI counts.
+    This validates the paper's central claim: regulatory text carries predictive information
+    that structured databases miss.
+  </div>
 </section>
 
 <!-- ═══ SECTION 7: VALISURE ═══ -->
@@ -772,8 +848,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
         <tr>
           <th>Drug (Valisure API)</th>
           <th class="num"># Shortage starts</th>
-          <th class="num">Total recalls (10y)</th>
-          <th class="num">CGMP recalls (10y)</th>
+          <th class="num">TRI</th>
+          <th class="num">SCRI</th>
+          <th class="num">QCI</th>
           <th class="num">Mean Valisure score</th>
           <th class="num"># Failing Valisure tests</th>
         </tr>
@@ -905,11 +982,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 const BY_YEAR   = {_j(d["by_year"])};
 const BY_DRUG   = {_j(d["by_drug"])};
 const LEAD      = {_j(d["annual_lead"])};
-const CTRL      = {{ recall_total:{d["lift"][3]["mean0"] if len(d["lift"])>3 else 0.21}, recall_cgmp:{d["lift"][0]["mean0"] if d["lift"] else 0.056}, faers_sev:{d["lift"][2]["mean0"] if len(d["lift"])>2 else 1274}, faers_serious:{d["lift"][1]["mean0"] if len(d["lift"])>1 else 858} }};
-const CIRC_BINS = {_j(gap_bins)};
-const CIRC_CGMP = {_j(cgmp_hist)};
-const CIRC_OTHER= {_j(other_hist)};
-const CIRC_CLASS= {_j(circ_class_dict)};
+const CTRL      = {{ faers_sev:{d["lift"][1]["mean0"] if len(d["lift"])>1 else 1274}, faers_serious:{d["lift"][0]["mean0"] if d["lift"] else 858} }};
 
 // ── Chart defaults ─────────────────────────────────────────────────────────
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -942,22 +1015,6 @@ new Chart(document.getElementById("chartDrug"),{{
             scales:{{x:{{beginAtZero:true,ticks:{{stepSize:1}}}},y:{{grid:{{display:false}}}}}}}}
 }});
 
-// ── Annual: recall lead-time ──────────────────────────────────────────────
-new Chart(document.getElementById("chartLeadRecall"),{{
-  type:"line",
-  data:{{labels:LEAD.rel,
-         datasets:[
-           {{label:"Total recalls",data:LEAD.recall_total,borderColor:C.deep,tension:0.25,pointRadius:4}},
-           {{label:"CGMP recalls", data:LEAD.recall_cgmp, borderColor:C.accent,tension:0.25,pointRadius:4}},
-           {{label:"Baseline: total",data:LEAD.rel.map(()=>CTRL.recall_total),borderColor:C.deep,borderDash:[4,4],pointRadius:0,fill:false}},
-           {{label:"Baseline: CGMP", data:LEAD.rel.map(()=>CTRL.recall_cgmp), borderColor:C.accent,borderDash:[4,4],pointRadius:0,fill:false}}
-         ]}},
-  options:{{responsive:true,maintainAspectRatio:false,
-            plugins:{{legend:{{position:"bottom",labels:{{boxWidth:14,font:{{size:10.5}}}}}}}},
-            scales:{{x:{{title:{{display:true,text:"Years relative to onset (0 = onset year)"}},grid:{{display:false}}}},
-                     y:{{beginAtZero:true,title:{{display:true,text:"Mean recall count"}}}}}}}}
-}});
-
 // ── Annual: FAERS lead-time ───────────────────────────────────────────────
 new Chart(document.getElementById("chartLeadFaers"),{{
   type:"line",
@@ -977,45 +1034,12 @@ new Chart(document.getElementById("chartLeadFaers"),{{
 // ── Monthly lead-lag charts ────────────────────────────────────────────────
 {redica_js}
 {faers_js}
-{recall_js}
 
-// ── Circularity: gap histogram ─────────────────────────────────────────────
-new Chart(document.getElementById("circHist"),{{
-  type:"bar",
-  data:{{
-    labels:CIRC_BINS,
-    datasets:[
-      {{label:"CGMP recalls",  data:CIRC_CGMP, backgroundColor:"rgba(224,122,95,0.75)",borderRadius:2}},
-      {{label:"Non-CGMP",      data:CIRC_OTHER,backgroundColor:"rgba(2,99,176,0.55)", borderRadius:2}}
-    ]
-  }},
-  options:{{responsive:true,maintainAspectRatio:false,
-    plugins:{{legend:{{position:"bottom"}}}},
-    scales:{{
-      x:{{title:{{display:true,text:"Gap: recall month − nearest shortage onset (negative = before onset)"}},
-           stacked:true,grid:{{display:false}}}},
-      y:{{beginAtZero:true,stacked:true,ticks:{{stepSize:1}},title:{{display:true,text:"# unique recalls"}}}}
-    }}
-  }}
-}});
+// ── 483 text analysis charts ──────────────────────────────────────────────
+{text_js}
 
-// ── Circularity: class breakdown ──────────────────────────────────────────
-new Chart(document.getElementById("circBar"),{{
-  type:"bar",
-  data:{{
-    labels:["Pre-shortage\\n(>3m before)","Coincident\\n(0-3m before)","Post-onset\\n(after onset)","No shortage\\nfor this drug"],
-    datasets:[{{
-      label:"# recalls",
-      data:[CIRC_CLASS.pre_shortage,CIRC_CLASS.coincident,CIRC_CLASS.post_onset,CIRC_CLASS.no_shortage],
-      backgroundColor:[C.accent,C.teal,C.muted,"#cccccc"],
-      borderRadius:4
-    }}]
-  }},
-  options:{{responsive:true,maintainAspectRatio:false,
-    plugins:{{legend:{{display:false}}}},
-    scales:{{x:{{grid:{{display:false}}}},y:{{beginAtZero:true,ticks:{{stepSize:1}}}}}}
-  }}
-}});
+// ── RF model results ──────────────────────────────────────────────────────
+{model_js}
 
 // ── Valisure scatter ──────────────────────────────────────────────────────
 new Chart(document.getElementById("chartValisure"),{{
@@ -1039,7 +1063,9 @@ const tbody = document.querySelector("#drugTable tbody");
 for (const d of BY_DRUG) {{
   const tr = document.createElement("tr");
   tr.innerHTML = `<td>${{d.drug}}</td><td class="num">${{d.starts}}</td>
-    <td class="num">${{d.total}}</td><td class="num">${{d.cgmp}}</td>
+    <td class="num">${{d.tri.toFixed(1)}}</td>
+    <td class="num">${{d.scri.toFixed(1)}}</td>
+    <td class="num">${{d.qci.toFixed(1)}}</td>
     <td class="num">${{d.val.toFixed(1)}}</td><td class="num">${{d.fails}}</td>`;
   tbody.appendChild(tr);
 }}

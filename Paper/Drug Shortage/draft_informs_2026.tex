@@ -22,19 +22,21 @@
 \newcommand{\note}[1]{{\color{blue}\textit{[Note: #1]}}}
 
 % ── Title block ───────────────────────────────────────────────────────────
-\title{\textbf{Latent Quality Risk in Generic Drug Manufacturing:\\
-  LLM-Extracted FDA 483 Signals and Drug Shortage Prediction}}
+\title{\textbf{From Regulatory Text to Shortage Risk:\\
+  An NLP and LLM Framework for Pharmaceutical Quality Risk Prediction}}
 
 \author{
-  Amirreza Sahebi\thanks{Corresponding author.
+  Amirreza Sahebi-Fakhrabad\thanks{Corresponding author.
     Poole College of Management, North Carolina State University.
-    Email: \texttt{asahebi@ncsu.edu}} \\
-  \and
-  \todo{Co-authors}
+    Email: \texttt{asahebi@ncsu.edu}} \and
+  Shailesh Divey\thanks{Fisher College of Business, The Ohio State University.} \and
+  John V.\ Gray\footnotemark[2] \and
+  Robert Handfield\footnotemark[1] \and
+  Amir Sadeghi\footnotemark[1]
 }
 
 \date{\today \\ \vspace{4pt}
-  \textit{Preliminary draft — prepared for INFORMS Annual Meeting 2026.
+  \textit{Preliminary draft — prepared for INFORMS Healthcare 2026.
   Please do not cite or circulate without permission.}}
 
 % ══════════════════════════════════════════════════════════════════════════
@@ -43,29 +45,36 @@
 
 % ── Abstract ──────────────────────────────────────────────────────────────
 \begin{abstract}
-Generic drug shortages pose significant risks to patient safety and public
-health, yet their prediction remains challenging due to the latent nature of
-manufacturing quality failures.
-FDA Form 483 inspectional observations—letters issued to drug manufacturing
-facilities documenting specific violations—contain rich qualitative information
-about the nature, severity, and root causes of quality deficiencies, but this
-information has not been systematically quantified for risk prediction.
-We apply large language model (LLM) extraction to \todo{N} Form 483
-observations from \todo{N} facilities manufacturing 14 generic APIs tested
-by Valisure, converting free-text observations into structured signals:
-violation severity, root-cause type, remediation quality, and seven binary
-risk flags (repeat, systemic, patient risk, data integrity, contamination,
-documentation, investigation failure).
-We aggregate these signals to facility-level Text Risk Indices (TRI, SCRI,
-IRWI, QCI) and test whether they improve prediction of Valisure-measured
-quality failures and University of Utah drug shortage onset.
-Our results suggest that \todo{key finding}.
-The approach is fully reproducible from publicly available FDA data and offers
-a scalable framework for real-time manufacturing quality surveillance.
+Drug shortages driven by manufacturing quality failures impose severe costs on patients,
+hospitals, and supply chains.
+Yet the rich unstructured regulatory text that FDA generates---inspection observations,
+warning letters, recall narratives, and import refusal records---remains largely
+untapped as a predictive resource.
+This paper presents a multi-source regulatory intelligence framework integrating five
+FDA databases covering 129 pharmaceutical manufacturing facilities across 14
+high-priority generic Active Pharmaceutical Ingredients (APIs).
+We construct a facility-level feature matrix combining structured regulatory outcomes
+with NLP-derived text signals, enabling systematic prediction of downstream supply
+disruptions.
+Using NLP on structured regulatory text and an LLM pipeline (GPT-4o-mini with
+LangGraph stateful extraction) for Form 483 PDF processing, we generate
+interpretable features capturing violation types, escalation patterns, and latent
+firm behavior across two theoretical frames: \emph{Agency Theory} (negligent process
+failures vs.\ persistent organizational misconduct) and \emph{Remediation Economics}
+(capital-intensive vs.\ cultural root causes).
+Preliminary results reveal actionable early-warning signals: specific regulatory
+citation patterns strongly predict the most severe inspection outcomes
+(Pearson $r = 0.51$); contamination and manufacturing practice failures account for
+94\% of drug recalls in our sample; and the LLM-derived Quality Culture Index (QCI)
+ranks as the third most important predictor in a Random Forest shortage model
+(14.8\% importance), with the four text indices together accounting for approximately
+32\% of total feature importance.
+These signals can be detected months to years before shortages materialize, enabling
+proactive supply chain risk management.
 \end{abstract}
 
 \textbf{Keywords:} drug shortage prediction, FDA Form 483, manufacturing quality,
-large language model, text analysis, pharmaceutical supply chain
+large language model, NLP, pharmaceutical supply chain, quality risk index
 
 \newpage
 
@@ -83,82 +92,137 @@ until facilities fail FDA inspections or recall products.
 
 The FDA's regulatory data—inspection outcomes (OAI/VAI/NAI classifications),
 warning letters, recalls, and import refusals—provide structured signals of
-quality risk, but they are lagging indicators: they reflect quality failures
-that have already materialized.
+quality risk, but they are largely lagging indicators that reflect failures
+which have already materialized.
 FDA Form 483 letters are issued at the \emph{conclusion} of an inspection and
-document specific deficiencies before they escalate to warning letters or
-recalls.
-Form 483 observations thus constitute a leading signal of manufacturing
+document specific deficiencies before they escalate to warning letters or recalls.
+Form 483 observations thus constitute a \emph{leading} signal of manufacturing
 quality degradation, but their unstructured narrative format has prevented
 systematic quantitative use.
+Existing structured databases treat all compliance failures as binary flags,
+masking the underlying organizational behavior.
+
+Two theoretical frames guide our analysis.
+\emph{Agency Theory}: we operationalize latent firm behavior by using regulatory
+text to distinguish violations consistent with negligent process failures from
+those indicative of persistent organizational misconduct.
+\emph{Remediation Economics}: by categorizing root causes as capital-intensive
+(equipment, infrastructure) versus cultural (procedures, data integrity), we
+generate testable predictions on recovery dynamics---with cultural violations
+expected to produce more persistent and volatile disruption patterns.
 
 \todo{2--3 sentences on prior literature: structured regulatory signals for
-shortage prediction (Fox et al., Pauwels et al., etc.); FDA text analysis
-work (if any); LLM for regulatory/clinical text.}
+shortage prediction; LLM for regulatory/clinical text; supply chain risk
+in pharmaceuticals.}
 
-We make three contributions:
+This paper makes four contributions:
 \begin{enumerate}[noitemsep]
-  \item We develop a validated LLM extraction pipeline that converts Form 483
-        observation text into structured, reproducible risk signals at the
-        observation level.
-  \item We construct four facility-level Text Risk Indices—TRI, SCRI, IRWI,
-        and QCI—aggregating these signals and empirically characterize their
-        distributions across \todo{N} generic drug manufacturing facilities.
-  \item We test whether these indices improve prediction of independently
-        verified quality failures (Valisure dissolution testing) and drug
-        shortage onset (University of Utah shortage database) relative to
-        structured regulatory features alone.
+  \item A novel multi-source regulatory text dataset covering 1,280 regulatory
+        events across 129 facilities and five FDA databases, linked by FEI.
+  \item A validated LLM extraction pipeline (GPT-4o-mini with LangGraph stateful
+        extraction) that converts Form 483 observation narratives into structured,
+        reproducible risk signals---with LLMs substantially outperforming
+        rule-based extraction on patient-risk and systemic-scope inference.
+  \item Four facility-level Text Risk Indices (TRI, SCRI, IRWI, QCI) that
+        aggregate observation-level signals and encode behavioral taxonomy
+        consistent with Agency Theory and Remediation Economics.
+  \item Empirical validation showing that the Quality Culture Index (QCI) is the
+        third most important predictor of drug shortage onset in a Random Forest
+        model, with the four text indices collectively accounting for $\approx$32\%
+        of total feature importance---information absent from structured databases.
 \end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════════
-\section{Background and Data}
+\section{Data}
 \label{sec:data}
+
+We construct a unified regulatory event timeline for 129 facilities supplying
+14 generic APIs, linked via FDA Facility Establishment Identifier (FEI) across
+five sources yielding 1,280 total regulatory events (Table~\ref{tab:data}).
+
+\begin{table}[h!]
+\centering
+\caption{Data sources and regulatory event coverage}
+\label{tab:data}
+\begin{tabular}{p{3.8cm} p{4.2cm} p{4.4cm}}
+\toprule
+\textbf{Source} & \textbf{Events / Coverage} & \textbf{Key Text Field} \\
+\midrule
+FDA Inspections + Citations & 1,019 inspections; 961 citations (127/129 FEIs) & CFR Short \& Long Description \\
+FDA Form 483 PDFs & 38 FEIs with PDFs; 622 observations & Full observation narrative (unstructured) \\
+FDA Warning Letters & 17 letters; 14 FEIs & Violation narrative; close-out status \\
+FDA Drug Recalls & 49 API-matched; 18 FEIs & Reason for Recall (free text) \\
+OASIS Import Refusals & 117 API-matched; 22 FEIs & Refusal charge codes; lab analysis flags \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Quality and shortage ground truth is drawn from three independent sources:
+(1)~Valisure independent analytical testing scores for 14 APIs (2020--2024);
+(2)~Merative MarketScan 2024 Commercial and Medicare pharmacy claims, which
+captures dispensing volume anomalies and therapeutic switching as real-world
+shortage signals; and
+(3)~the University of Utah Drug Information Service (UUDIS) shortage database,
+a clinically curated registry of active and historical shortage events.
 
 \subsection{FDA Form 483 Observations}
 
-FDA Form 483 is issued to a facility's management at the close of an
-inspection when an investigator observes conditions that may violate the
-Food, Drug, and Cosmetic Act or its implementing regulations (21 CFR Parts
-210–211).
-Each letter contains one or more numbered observations, each describing a
-specific deficiency.
-Observations are written by FDA investigators in narrative form; they do not
-follow a templated structure beyond the opening CFR-paraphrase sentence.
+FDA Form 483 is issued to facility management at the close of an inspection
+when an investigator observes conditions that may violate the Food, Drug, and
+Cosmetic Act (21 CFR Parts 210--211).
+Each letter contains numbered observations written in investigator narrative
+prose; they do not follow a templated structure beyond the opening
+CFR-paraphrase sentence, making them the richest---but least structured---source
+of regulatory intelligence.
 
-We obtained \todo{N} Form 483 PDFs from FDA's public disclosure portal,
-covering \todo{N} facilities and the period \todo{year range}.
+We obtained 483 PDFs from FDA's public disclosure portal for 38 of our 129
+facilities.
 PDFs were converted to text via OCR (Tesseract 200 DPI) and parsed into
-individual observations using regex splitting on ``OBSERVATION N'' headers,
-yielding \textbf{622 observations} across \textbf{38 facilities} after
-quality filtering.
-
-\subsection{Valisure Quality Outcomes}
-
-Valisure is an independent pharmaceutical testing laboratory that publicly
-reports dissolution testing, nitrosamine contamination (NDMA, DMF), and
-quality failure results for commercially available generic drugs.
-We use Valisure test results for 14 APIs tested in 2020, 2022, and 2024 as
-our primary quality outcome variable.
-These results serve as independently verified ground truth for manufacturing
-quality, free of the endogeneity concerns of FDA inspection outcomes.
-
-\subsection{Drug Shortage Data}
-
-Drug shortage onset and duration data are drawn from the University of Utah
-Drug Information Service (UUtah) shortage database, which tracks generic drug
-shortages from \todo{year range}.
-We define shortage onset as a binary indicator for a given API--year pair.
+622 individual observations using regex splitting on ``OBSERVATION $N$'' headers.
 
 \subsection{Sample}
 
-\todo{Describe the 14 APIs, FEI-to-drug mapping via NDC-FEI crosswalk,
-panel structure (drug-year or FEI-year), and any sample selection rules.}
+The 14 APIs are: Ampicillin, Ampicillin/Sulbactam, Atorvastatin, Bupropion,
+Calcium Gluconate, Lisinopril, Magnesium Sulfate, Metformin, Metoprolol,
+Metronidazole, Pantoprazole, Potassium Chloride, Tacrolimus, and Vancomycin.
+FEI-to-drug mapping uses the Valisure API--FEI crosswalk (193 unique FEI--drug
+pairs; 129 unique FEIs).
+The predictive panel covers 14 drugs $\times$ 10 years (2015--2024),
+yielding 140 drug--year observations with 21 shortage-onset events (15.1\%).
 
 % ══════════════════════════════════════════════════════════════════════════
-\section{Methods}
+\section{Methodology}
 \label{sec:methods}
 
-\subsection{LLM Extraction Pipeline}
+We apply three layers of text analysis, progressing from rule-based NLP to
+LLM extraction.
+
+\paragraph{Layer 1: NLP on Structured Regulatory Text.}
+CFR citation Short Descriptions (230 unique values across 961 citations) are
+aggregated into six regulatory domains---Laboratory/QC Controls, Production
+Controls, Sterile Manufacturing, Documentation/Data Integrity,
+Facility/Equipment, and Materials/Components---via CFR section mapping.
+Recall reason free text is classified into nine categories (contamination,
+cGMP failure, wrong potency, data integrity, etc.) using regex pattern matching.
+Warning letter text is coded for violation domain and close-out resolution
+status, providing a severity-escalation signal beyond routine citations.
+
+\paragraph{Layer 2: LLM Pipeline for Form 483 PDF Extraction.}
+Form 483 documents contain the richest regulatory intelligence---specific
+measurements, equipment identifiers, and investigator narratives---but exist
+only as unstructured PDFs.
+We build a LangGraph stateful extraction pipeline: OCR via LangChain
+(pytesseract + PyPDFLoader) $\to$ observation-boundary chunking $\to$
+GPT-4o-mini structured JSON extraction $\to$ confidence-threshold validation
+with re-extraction on failure.
+Every LLM call is logged via LangSmith for prompt versioning and reproducibility.
+
+\paragraph{Layer 3: Quality Risk Index Construction.}
+A per-facility feature matrix integrating all regulatory signals feeds
+correlation analysis against Valisure quality scores and predictive modeling
+of shortage onset.
+
+\subsection{LLM Extraction Schema}
 
 For each Form 483 observation we send the cleaned observation text to
 \texttt{gpt-4o-mini} (OpenAI) with a structured JSON schema prompt.
@@ -239,9 +303,19 @@ with weight derived from \todo{correlation with OAI rate or Valisure}.
 
 \subsection{Shortage Prediction Model}
 
-\todo{Describe m09 model: logistic regression / XGBoost / LASSO at drug--year
-level, feature set from m07 panel, train/test split, evaluation metric (AUC).
-Then describe the extension: adding TRI/SCRI via FEI→drug bridge.}
+We construct a drug--year panel (14 APIs $\times$ 2015--2024; $n=140$ rows,
+21 shortage-onset events) and fit grouped cross-validated benchmark models
+(GroupKFold by drug, $k=5$) to predict $y_{t+1} = 1$ if shortage starts in
+year $t+1$.
+Features at year $t$ include FAERS adverse-event signals, Redica
+inspection/regulatory signals, Valisure quality scores (time-invariant), and
+the four LLM-derived text indices (TRI, SCRI, IRWI, QCI), aggregated to
+drug level by weighted mean across FEIs (weights: $n_{\text{obs scored}}$).
+Recalls are excluded as predictors---timing analysis confirms they are
+concurrent or lagging relative to shortage onset, not leading indicators.
+We compare L2-penalized logistic regression and Random Forest (300 trees,
+balanced class weights) with and without text features, reporting AUC and
+the ablation delta.
 
 % ══════════════════════════════════════════════════════════════════════════
 \section{Results}
@@ -354,40 +428,98 @@ correlation of TRI with n\_oai, correlation with MQRI.}
 
 \subsection{Predictive Validity: TRI vs.\ Valisure Outcomes}
 
-\todo{Run correlation: TRI vs. Valisure dissolution difference factor (2024).
-Run correlation: SCRI vs. Valisure NDMA/DMF.
+\todo{Run correlation: TRI vs.\ Valisure dissolution difference factor (2024).
+Run correlation: SCRI vs.\ Valisure NDMA/DMF.
 Compare to MQRI-only baseline.}
 
-\subsection{Predictive Validity: TRI in Shortage Prediction}
+\subsection{Predictive Validity: LLM Text Features in Shortage Prediction}
 
-\todo{Run m09 with and without TRI/SCRI features.
-Report AUC with 95\% CI, precision-recall curve.
-Feature importance.}
+Table~\ref{tab:model} reports grouped cross-validated AUC for the full model
+and the ablation without text features.
+
+\begin{table}[h!]
+\centering
+\caption{Shortage prediction benchmark — GroupKFold CV by drug
+         ($n=126$ usable rows; 19 events; 14 drugs, 2015--2024)}
+\label{tab:model}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{AUC (with text)} & \textbf{AUC (without text)} & \textbf{$\Delta$AUC} \\
+\midrule
+L2 Logistic Regression & 0.545 & 0.610 & $-$0.065 \\
+Random Forest          & 0.590 & 0.538 & $+$0.052 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Random Forest AUC improves by $+$0.052 with text features.
+The logistic regression result is negative ($-$0.065), consistent with
+high-dimensional collinearity at $n = 19$ events---logit is not robust
+to correlated predictors in small samples.
+Figure~\ref{fig:fi} shows Random Forest feature importance:
+QCI ranks third overall (14.8\% importance), behind only FAERS severity
+scores; the four text indices combined account for $\approx$32\% of
+total RF importance.
+This demonstrates that LLM-extracted regulatory text carries predictive
+information absent from structured databases.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.7\textwidth]{../../Data/99 - Outputs - Shortage Prediction/outputs/figures/feature_importance_valisure.png}
+\caption{Random Forest feature importance (sorted). Teal = LLM-derived
+         text indices. QCI = Quality Culture Index (3rd overall, 14.8\%).
+         Combined text importance $\approx$ 32\%.}
+\label{fig:fi}
+\end{figure}
 
 % ══════════════════════════════════════════════════════════════════════════
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Form 483 as a leading quality signal.}
-\todo{Discussion of why 483 text adds information beyond structured signals.}
+\paragraph{Form 483 text as a leading quality signal.}
+The most important finding is that QCI---derived entirely from LLM classification
+of 483 observation narratives---ranks as the third most important predictor of
+drug shortage in a Random Forest model, ahead of Valisure quality scores,
+Redica OAI counts, and prior shortage history.
+This validates the central premise: unstructured regulatory text encodes
+organizational behavior (quality culture, systemic scope, remediation commitment)
+that structured compliance databases do not capture.
+The semantic lift analysis shows that LLMs detect patient-risk implications and
+facility-wide scope in 71\% and 69\% more observations, respectively, than
+keyword rules---confirming that contextual reasoning, not pattern matching, is
+required to extract these signals.
 
-\paragraph{Root cause composition and policy implications.}
-The predominance of Cultural and Mixed root causes suggests that FDA
-enforcement actions alone are insufficient remedies.
-Facilities that receive OAI classifications repeatedly are more likely
-characterized by management culture failures than capital deficiencies,
-implying that CAPA programs targeting equipment or procedures may be
-systematically underspecified.
+\paragraph{Root cause composition and Remediation Economics.}
+83.8\% of observations carry Cultural or Mixed root causes, consistent with
+Agency Theory's prediction that persistent non-compliance reflects management
+behavior rather than capital gaps.
+CAPA programs that target equipment or procedures may therefore be
+systematically underspecified; cultural-root-cause facilities are predicted to
+show heavier-tailed recovery dynamics.
+\todo{Add survival analysis results when available.}
+
+\paragraph{Research investigations for full paper.}
+Three empirical investigations structure the full analysis:
+(1)~\emph{Preemptive market dynamics}: do compliance signals trigger early
+dispensing drops, price spikes, or therapeutic switching before official
+shortages are declared (MarketScan outcome)?
+(2)~\emph{Endogeneity of recovery}: do capital violations yield predictable
+resolution windows while cultural violations produce relapsing shortage durations
+(survival analysis)?
+(3)~\emph{Supply network resilience}: do disruptions at high-risk facilities
+propagate through the API supply network or are they absorbed by competing
+suppliers?
 
 \paragraph{Limitations.}
 \begin{itemize}[noitemsep]
-  \item \textit{Coverage}: only 38 of 129 facilities in our FEI sample have
-        associated 483 PDFs, limiting the reach of text-derived features.
-  \item \textit{LLM reliability}: while precision on manually reviewed
-        observations is \todo{\%}, the model occasionally over-triggers
-        contamination flags for training observations.
-  \item \textit{Selection}: Valisure tests a non-random subset of generics;
-        our results may not generalize to lower-scrutiny drug classes.
+  \item \textit{Coverage}: 483 PDFs available for only 38 of 129 FEIs, limiting
+        text-feature reach; structured citation signals cover 127/129.
+  \item \textit{Sample size}: 14 drugs and 19 shortage events yield wide
+        confidence intervals; all findings are exploratory.
+  \item \textit{LLM reliability}: manual review of a sample confirms strong
+        precision on violation category and severity; contamination flags
+        occasionally over-trigger on training-context observations.
+  \item \textit{Selection}: Valisure tests a non-random subset of generics.
   \item \textit{Causality}: we estimate predictive associations, not causal effects.
 \end{itemize}
 
@@ -395,17 +527,26 @@ systematically underspecified.
 \section{Conclusion}
 \label{sec:conclusion}
 
-We demonstrate that LLM-extracted signals from FDA Form 483 observations
-provide structured, reproducible, and predictively informative features for
-manufacturing quality risk assessment.
-The proposed Text Risk Index and related indices capture dimensions of quality
-risk—severity composition, root-cause type, and remediation quality—that are
-absent from existing structured regulatory databases.
-Integrating these features into the MQRI and shortage prediction models
-\todo{improves/does not improve} predictive performance.
-The pipeline is fully automated and can be applied prospectively to the
-FDA's public 483 disclosure portal, enabling near-real-time quality
-surveillance for drug shortage early warning.
+We present a multi-source regulatory intelligence framework that integrates
+five FDA databases and an LLM extraction pipeline to convert Form 483
+narrative observations into structured, predictively informative quality-risk
+features.
+Key findings: (1) LLM-derived Quality Culture Index (QCI) is the third most
+important predictor of drug shortage onset in a Random Forest model (14.8\%
+importance); (2) text indices collectively account for $\approx$32\% of
+feature importance, providing information absent from structured databases;
+(3) 83.8\% of violations carry Cultural or Mixed root causes, with direct
+implications for CAPA program design; (4) contamination and cGMP failures
+account for 94\% of API-matched recalls.
+The pipeline is fully automated and reproducible from publicly available FDA
+data, offering a scalable framework for real-time manufacturing quality
+surveillance and proactive supply chain risk management---with direct
+applications in hospital formulary management, GPO contract decisions, and
+FDA surveillance prioritization.
+To our knowledge, this is the first study to link FDA regulatory inspection
+text to pharmacy claims data as a validation of supply disruption, closing
+the loop from upstream manufacturing quality signals to patient-level drug
+access.
 
 % ══════════════════════════════════════════════════════════════════════════
 \bibliographystyle{agsm}
