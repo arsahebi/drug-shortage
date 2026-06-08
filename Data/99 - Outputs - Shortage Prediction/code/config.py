@@ -37,6 +37,10 @@ REDICA_CSV   = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.c
 REDICA_AGG   = DATA / "07 - Redica" / "processed" / "SITE_RED_FLAG_AGG_SCORE.xlsx"
 REDICA_EVENTS = DATA / "07 - Redica" / "processed" / "SITE_RED_FLAG_EVENTS.xlsx"
 
+# 483 Text Analysis outputs (LLM-extracted FEI-level signals)
+TEXT_FEATURES_CSV = DATA / "99 - Outputs - Text Analysis" / "483_fei_context_features.csv"
+# FEI→drug_norm bridge: sheet "API Only_FEI Mapping" in VALISURE_FEI (defined above)
+
 # Output paths
 OUT_ROOT  = DATA / "99 - Outputs - Shortage Prediction"
 OUT_DATA  = OUT_ROOT / "data"

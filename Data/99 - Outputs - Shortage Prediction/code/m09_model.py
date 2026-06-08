@@ -64,7 +64,16 @@ FEATURES = [
     "parenteral_ever",
     "prior_shortage_t",
     "prior_shortage_w3",
+    # 483 text features (drug-level simple mean of composite indices across FEIs)
+    "tri_mean",
+    "scri_mean",
+    "irwi_mean",
+    "qci_mean",
 ]
+
+TEXT_FEATURE_COLS = ["tri_mean", "scri_mean", "irwi_mean", "qci_mean"]
+# Ablation baseline: same feature set minus the 483 text indices
+FEATURES_NO_TEXT = [f for f in FEATURES if f not in TEXT_FEATURE_COLS]
 
 
 def _prep(panel: pd.DataFrame, features: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
@@ -117,7 +126,7 @@ def run_valisure(panel: pd.DataFrame):
     log.info("Modeling rows=%d | events=%d | drugs=%d | features=%d",
              len(X), int(y.sum()), groups.nunique(), X.shape[1])
 
-    # CV: L2 logit
+    # CV: L2 logit (full features)
     Xz = pd.DataFrame(StandardScaler().fit_transform(X), columns=X.columns)
     preds_l2, met_l2 = cv_metrics(Xz, y, groups,
         lambda: LogisticRegression(penalty="l2", C=1.0, max_iter=500, class_weight="balanced", random_state=SEED))
@@ -132,11 +141,34 @@ def run_valisure(panel: pd.DataFrame):
     }).sort_values("coef_standardized", key=lambda s: s.abs(), ascending=False)
     coefs.to_csv(OUT_MODELS / "coefs_l2_valisure.csv", index=False)
 
-    # CV: RandomForest
+    # CV: RandomForest (full features)
     preds_rf, met_rf = cv_metrics(X, y, groups,
         lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=5,
                                        class_weight="balanced", random_state=SEED, n_jobs=-1))
     log.info("RandomForest CV: AUC=%.3f AP=%.3f Brier=%.3f", met_rf["auc"], met_rf["average_precision"], met_rf["brier"])
+
+    # ---- Ablation: without 483 text indices (TRI / SCRI / IRWI / QCI) ----
+    text_feats_present = [f for f in TEXT_FEATURE_COLS if f in X.columns]
+    if text_feats_present:
+        X_no, y_no, grp_no = _prep(panel, FEATURES_NO_TEXT)
+        Xz_no = pd.DataFrame(StandardScaler().fit_transform(X_no), columns=X_no.columns)
+        _, met_l2_no = cv_metrics(Xz_no, y_no, grp_no,
+            lambda: LogisticRegression(penalty="l2", C=1.0, max_iter=500, class_weight="balanced", random_state=SEED))
+        _, met_rf_no = cv_metrics(X_no, y_no, grp_no,
+            lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=5,
+                                           class_weight="balanced", random_state=SEED, n_jobs=-1))
+        delta_l2 = met_l2["auc"] - met_l2_no["auc"]
+        delta_rf = met_rf["auc"] - met_rf_no["auc"]
+        log.info("AUC delta (with vs without 483 text indices) — L2 Logit: %+.3f  RF: %+.3f",
+                 delta_l2, delta_rf)
+        ablation = pd.DataFrame([
+            {"model": "L2_logit",
+             "auc_with_text": met_l2["auc"], "auc_without_text": met_l2_no["auc"], "auc_delta": delta_l2},
+            {"model": "RandomForest",
+             "auc_with_text": met_rf["auc"], "auc_without_text": met_rf_no["auc"], "auc_delta": delta_rf},
+        ])
+        ablation.to_csv(OUT_MODELS / "text_features_ablation.csv", index=False)
+        log.info("Ablation saved to text_features_ablation.csv")
 
     pd.DataFrame([
         {"scope":scope, "model":"L2_logit",     **met_l2},
