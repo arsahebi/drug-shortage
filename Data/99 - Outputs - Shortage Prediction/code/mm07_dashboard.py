@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS
+from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS, TEXT_FEATURES_CSV, VALISURE_FEI
 from utils import get_logger
 
 log = get_logger("mm07_dashboard", OUT_LOGS / "mm07_dashboard.log")
@@ -184,14 +184,33 @@ def compute_data() -> dict:
     else:
         d["annual_lead"] = {"rel": [], "recall_total": [], "recall_cgmp": [], "faers_sev": [], "faers_serious": []}
 
-    # ── Monthly panel stats ────────────────────────────────────────────────────
+    # ── Monthly panel stats + shortage duration per drug ──────────────────────
     mp = _read("master_panel_monthly.csv")
     if mp is not None:
-        d["monthly_rows"]       = len(mp)
+        d["monthly_rows"]         = len(mp)
         d["monthly_onset_months"] = int(mp["shortage_start"].sum())
         d["monthly_ongoing_months"] = int(mp["shortage_ongoing"].sum())
+        dur = mp.groupby("drug_norm")["shortage_ongoing"].sum().reset_index()
+        dur.columns = ["drug_norm", "duration_months"]
+        dur_map = dur.set_index("drug_norm")["duration_months"].to_dict()
+        for entry in d.get("by_drug", []):
+            entry["duration"] = int(dur_map.get(entry["drug"], 0))
     else:
         d["monthly_rows"] = 1680; d["monthly_onset_months"] = "?"; d["monthly_ongoing_months"] = "?"
+        for entry in d.get("by_drug", []):
+            entry["duration"] = 0
+
+    # ── Severity-high share from 483 text features (criticality signal) ───────
+    sev_map: dict = {}
+    if TEXT_FEATURES_CSV.exists() and VALISURE_FEI.exists():
+        tf_raw  = pd.read_csv(TEXT_FEATURES_CSV)
+        bridge  = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
+        bridge  = (bridge[["API", "FEI_NUMBER"]].dropna()
+                   .rename(columns={"FEI_NUMBER": "fei", "API": "drug_norm"}))
+        merged  = tf_raw[["fei", "severity_high_share"]].merge(bridge, on="fei", how="inner")
+        sev_map = merged.groupby("drug_norm")["severity_high_share"].mean().round(3).to_dict()
+    for entry in d.get("by_drug", []):
+        entry["sev_high"] = round(float(sev_map.get(entry["drug"], 0)), 3)
 
     # ── Monthly lead-lag ───────────────────────────────────────────────────────
     ll = _read("lead_lag_monthly.csv", OUT_TABS)
@@ -400,47 +419,33 @@ new Chart(document.getElementById({_j(canvas_id)}), {{
                        "28, 114, 147", "203, 75, 75")
     )
 
-    # ── Text analysis: TRI/SCRI/QCI per drug ──────────────────────────────────
+    # ── Text analysis: TRI/SCRI/QCI/IRWI/SevHigh per drug ────────────────────
     tf = d.get("by_drug", [])
-    tf_sorted  = sorted(tf, key=lambda x: x["starts"], reverse=True)
-    tf_drugs   = [r["drug"]   for r in tf_sorted]
-    tf_tri     = [r["tri"]    for r in tf_sorted]
-    tf_scri    = [r["scri"]   for r in tf_sorted]
-    tf_qci     = [r["qci"]    for r in tf_sorted]
-    tf_scatter = [{"x": r["tri"], "y": r["starts"], "name": r["drug"]} for r in tf_sorted]
+    tf_sorted  = sorted(tf, key=lambda x: x.get("duration", 0), reverse=True)
+    tf_drugs   = [r["drug"]          for r in tf_sorted]
+    tf_tri     = [r["tri"]           for r in tf_sorted]
+    tf_scri    = [r["scri"]          for r in tf_sorted]
+    tf_irwi    = [r["irwi"]          for r in tf_sorted]
+    tf_qci     = [r["qci"]           for r in tf_sorted]
+    tf_sev_high = [round(r.get("sev_high", 0) * 100, 1) for r in tf_sorted]
     text_js = f"""
 new Chart(document.getElementById('triChart'),{{
   type:'bar',
   data:{{
     labels:{_j(tf_drugs)},
     datasets:[
-      {{label:'TRI — Text Risk Index',data:{_j(tf_tri)},backgroundColor:'rgba(2,99,176,0.75)',borderRadius:3,yAxisID:'y'}},
-      {{label:'SCRI — Sterility/Contamination Risk',data:{_j(tf_scri)},backgroundColor:'rgba(224,122,95,0.75)',borderRadius:3,yAxisID:'y'}},
-      {{label:'QCI — Quality Culture',data:{_j(tf_qci)},backgroundColor:'rgba(28,114,147,0.65)',borderRadius:3,yAxisID:'y'}}
+      {{label:'TRI — Text Risk Index',data:{_j(tf_tri)},backgroundColor:'rgba(2,99,176,0.75)',borderRadius:3}},
+      {{label:'SCRI — Sterility/Contamination Risk',data:{_j(tf_scri)},backgroundColor:'rgba(224,122,95,0.75)',borderRadius:3}},
+      {{label:'IRWI — Investigation/Remediation Weakness',data:{_j(tf_irwi)},backgroundColor:'rgba(28,114,147,0.70)',borderRadius:3}},
+      {{label:'QCI — Quality Culture (lower = worse)',data:{_j(tf_qci)},backgroundColor:'rgba(80,140,60,0.70)',borderRadius:3}},
+      {{label:'High-Severity Obs. % (×100)',data:{_j(tf_sev_high)},backgroundColor:'rgba(180,80,180,0.65)',borderRadius:3}}
     ]
   }},
   options:{{maintainAspectRatio:false,
-    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10}}}}}}}},
     scales:{{
       x:{{grid:{{display:false}},ticks:{{maxRotation:40,font:{{size:9}}}}}},
-      y:{{beginAtZero:true,max:100,title:{{display:true,text:'Index score (0–100)'}}}}
-    }}
-  }}
-}});
-new Chart(document.getElementById('triScatterChart'),{{
-  type:'scatter',
-  data:{{datasets:[{{
-    label:'Drug',
-    data:{_j(tf_scatter)},
-    backgroundColor:'rgba(2,99,176,0.75)',
-    pointRadius:7,pointHoverRadius:9
-  }}]}},
-  options:{{maintainAspectRatio:false,
-    plugins:{{legend:{{display:false}},
-      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: TRI=${{ctx.raw.x}}, ${{ctx.raw.y}} shortage starts`}}}}}},
-    scales:{{
-      x:{{title:{{display:true,text:'Text Risk Index (TRI)'}},min:50,max:70}},
-      y:{{title:{{display:true,text:'# shortage starts 2015–2024'}},beginAtZero:true,ticks:{{stepSize:1}}}}
+      y:{{beginAtZero:true,max:100,title:{{display:true,text:'Score / percentage (0–100)'}}}}
     }}
   }}
 }});"""
@@ -852,16 +857,17 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
       <div class="chart-host"><canvas id="chartYear"></canvas></div>
     </div>
     <div class="card">
-      <h3>Total shortage starts by drug</h3>
-      <div class="csub">Sorted by # starts · red = ≥3 starts</div>
+      <h3>Total months in shortage per drug (2015–2024)</h3>
+      <div class="csub">Sorted by shortage duration · red ≥ 60 months · teal = no shortage · tooltip shows # onset events</div>
       <div class="chart-host tall"><canvas id="chartDrug"></canvas></div>
     </div>
   </div>
   <div class="note">
-    <strong>Pattern:</strong> 21 shortage-start years across 14 drugs (some drugs had shortages
-    in multiple years, yielding {d["monthly_onset_months"]} monthly onset months at monthly resolution).
-    Metronidazole, Potassium chloride, and Ampicillin had the most starts.
-    Three drugs (Vancomycin, Bupropion, Ampicillin; Sulbactam) had zero starts.
+    <strong>Pattern:</strong> 21 shortage-start events across 14 drugs ({d["monthly_onset_months"]} monthly onset months).
+    Metoprolol and Vancomycin were in shortage for the entire 10-year window (120 months), though
+    Vancomycin had zero onset events — it entered shortage before 2015 and never resolved.
+    Metronidazole and Potassium chloride had the most separate onset episodes.
+    Three drugs had zero total months in shortage (Bupropion, Atorvastatin, Tacrolimus — short episodes only).
   </div>
 </section>
 
@@ -869,29 +875,39 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <section>
   <div class="section-head"><span class="step-num">4</span><h2>FDA 483 Text Signals — LLM-extracted indices by drug</h2></div>
   <div class="sub">
-    38 of 129 facilities (those with 483 PDFs) scored via GPT-4o-mini extraction of 622 observations.
+    38 of 129 facilities (those with 483 PDFs on file) scored via GPT-4o-mini extraction of 622 observations.
     Indices aggregated to drug level (mean across all FEIs manufacturing that API).
-    <strong>All indices 0–100; higher = higher risk signal.</strong>
-    TRI = Text Risk Index · SCRI = Sterility/Contamination Risk · QCI = Quality Culture Index.
+    Sorted by <strong>total months in shortage</strong> (highest burden on left).
+    <br><br>
+    <strong>Index definitions (all 0–100; higher = higher risk, except QCI where lower = worse):</strong>
+    <ul style="margin:4px 0 0 16px;font-size:12px;line-height:1.7;">
+      <li><strong>TRI (Text Risk Index)</strong> — overall manufacturing risk signal derived from the full
+          observation narrative. Combines violation category, severity, and root cause language.</li>
+      <li><strong>SCRI (Sterility/Contamination Risk Index)</strong> — specifically captures sterility failures,
+          contamination events, and aseptic-technique violations in the observation text.</li>
+      <li><strong>IRWI (Investigation/Remediation Weakness Index)</strong> — detects language indicating
+          incomplete root-cause investigations, vague corrective actions, or repeat failure patterns.</li>
+      <li><strong>QCI (Quality Culture Index)</strong> — measures quality-culture strength (SOPs followed,
+          Quality Unit active, proactive monitoring). <em>Lower QCI = weaker quality culture = higher risk.</em></li>
+      <li><strong>High-Severity Obs. %</strong> — share of observations that the LLM classified as
+          "high severity" (direct patient-risk or systemic quality failure). Converted to 0–100 scale.</li>
+    </ul>
   </div>
-  <div class="chart-row">
-    <div class="card">
-      <h3>TRI / SCRI / QCI by drug</h3>
-      <div class="csub">Sorted by shortage starts. Indices reflect cumulative 483 history across all FEIs.</div>
-      <div class="chart-host tall"><canvas id="triChart"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Text Risk Index vs shortage starts</h3>
-      <div class="csub">Each point = one drug. TRI on x-axis; shortage starts on y-axis.</div>
-      <div class="chart-host tall"><canvas id="triScatterChart"></canvas></div>
-    </div>
+  <div class="card">
+    <h3>TRI / SCRI / IRWI / QCI / High-Severity % by drug</h3>
+    <div class="csub">Sorted by total shortage duration (longest on left). Indices reflect cumulative 483 history across all FEIs for that drug.</div>
+    <div class="chart-host tall"><canvas id="triChart"></canvas></div>
   </div>
-  <div class="note">
-    <strong>Key finding:</strong> QCI (Quality Culture Index) is the <strong>3rd most important RF predictor</strong>
-    of drug shortage (14.8% importance), behind only FAERS severity signals.
-    The 4 LLM-derived text indices combined account for ~32% of total RF feature importance.
-    SCRI is highest for Ampicillin (75.6) — reflecting sterility manufacturing risks for injectables.
-    TRI range is narrow (57–65) across drugs; within-drug variation across FEIs is the actionable signal.
+  <div class="note dark">
+    <strong>Key insights:</strong>
+    QCI (Quality Culture Index) is the <strong>3rd most important RF predictor</strong> of drug shortage
+    (14.8% importance) — lower QCI for long-shortage drugs confirms that chronic compliance culture
+    weakness is a leading signal.
+    SCRI is highest for Ampicillin (75.6) — its only scored facility (Aurobindo/Eugia) is a sterile
+    injectable manufacturer with documented contamination events in both 2019 and 2024.
+    IRWI is elevated for high-burden drugs, reflecting systematic investigation failures.
+    <em>Note: indices are time-invariant — they reflect the full 483 history, not a single year.
+    Drugs with no 483 PDFs on file show zero for all indices.</em>
   </div>
 </section>
 
@@ -899,67 +915,42 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <section>
   <div class="section-head">
     <span class="step-num">5</span>
-    <h2>EDA — Regulatory signals, FAERS, and shortage risk</h2>
+    <h2>EDA — Regulatory signals before shortage onset</h2>
   </div>
   <div class="sub">
-    Drug-level and monthly-resolution exploratory analysis.
-    <strong>Color in scatter plots:</strong>
-    <span style="color:rgba(203,75,75,1);">■</span> ≥3 shortage starts &nbsp;
-    <span style="color:rgba(2,99,176,1);">■</span> 1–2 shortage starts &nbsp;
-    <span style="color:rgba(28,114,147,1);">■</span> 0 shortage starts.
-    N = {d["monthly_onset_months"]} onset months — interpret monthly charts as exploratory only.
+    Monthly event study: mean signal value at each offset month relative to shortage onset (month 0).
+    Control baseline = drug-months with no shortage onset within ±12 months.
+    Shaded band = ±1 SE. <strong>N = {d["monthly_onset_months"]} onset months across 14 drugs — interpret as exploratory only.</strong>
   </div>
 
   <hr class="divider"/>
-  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:0 0 6px 0;font-size:16px;">
-    5A · Drug-level: Redica regulatory burden vs FAERS adverse events</h3>
-  <div class="sub" style="margin-left:0;">
-    Annual averages per drug (2015–2024). Do drugs with higher regulatory burden also generate more adverse event reports?
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:4px;">
-    <div class="card">
-      <h3>OAI inspections vs FAERS serious reports</h3>
-      <div class="csub">Mean OAI outcomes/yr vs mean serious FAERS reports/yr per drug.</div>
-      <div class="chart-host"><canvas id="scOaiFaers"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>483 critical obs vs FAERS total reports</h3>
-      <div class="csub">Mean critical 483 observations/yr vs mean total FAERS reports/yr per drug.</div>
-      <div class="chart-host"><canvas id="sc483Faers"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>VAI inspections vs FAERS serious reports</h3>
-      <div class="csub">Mean VAI outcomes/yr vs mean serious FAERS reports/yr per drug.</div>
-      <div class="chart-host"><canvas id="scVaiFaers"></canvas></div>
-    </div>
-  </div>
-  <div class="note">
-    Regulatory burden (OAI, 483 critical) and FAERS serious reports are largely <em>uncorrelated</em>
-    at the drug level — high-volume drugs (Atorvastatin, Metformin) dominate FAERS counts regardless
-    of inspection outcome. This supports treating regulatory signals and FAERS as independent
-    information sources in the predictive model.
-  </div>
-
-  <hr class="divider"/>
-  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
-    5B · Drug-level: 483 text indices by shortage group</h3>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:0 0 4px 0;font-size:16px;">
+    5A · Text indices by shortage group</h3>
   <div class="sub" style="margin-left:0;">
     Mean TRI / SCRI / IRWI / QCI for drugs with ≥1 shortage start vs drugs with zero starts (2015–2024).
-    Indices are facility-level aggregates (time-invariant per drug).
+    <br><strong>Shortage drugs (≥1 start):</strong> Ampicillin, Ampicillin+Sulbactam*, Atorvastatin, Calcium Gluconate,
+    Lisinopril, Magnesium Sulfate, Metformin, Metoprolol, Metronidazole, Pantoprazole, Potassium Chloride, Tacrolimus.
+    <br><strong>No shortage (0 starts):</strong> Bupropion, Vancomycin. (* Amp+Sulbactam has starts=0 but ongoing months due to pre-2015 shortage)
   </div>
   <div class="card">
     <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
   </div>
   <div class="note dark">
-    IRWI (Investigation/Remediation Weakness) and SCRI (Sterility/Contamination Risk) are notably
-    higher for shortage drugs. QCI (Quality Culture Index) is <em>lower</em> for shortage drugs —
-    consistent with weaker compliance culture predicting supply disruption.
+    IRWI (Investigation/Remediation Weakness) and SCRI (Sterility/Contamination Risk) are elevated
+    for shortage drugs. QCI (Quality Culture Index) is <em>lower</em> for shortage drugs —
+    consistent with weaker compliance culture as a leading risk signal. Text indices are
+    time-invariant (facility historical aggregate), so this comparison is cross-sectional, not temporal.
   </div>
 
   <hr class="divider"/>
-  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
-    5C · Monthly lead-lag — Redica regulatory signals</h3>
-  <div class="sub" style="margin-left:0;">Event study relative to shortage onset month. Shaded = ±1 SE. Control = drug-months outside ±12-month onset window.</div>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
+    5B · Monthly lead-lag — Redica regulatory signals</h3>
+  <div class="sub" style="margin-left:0;">
+    <strong>483 critical observations</strong> = observations in the inspection record that Redica
+    classifies as critical (direct patient-safety risk or systemic GMP failure).
+    OAI = Official Action Indicated (most serious inspection outcome; triggers mandatory remediation).
+    Warning letters and total inspection counts provide additional regulatory burden context.
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
     <div class="card"><h3>483 Critical Obs.</h3><div class="chart-host"><canvas id="llR1"></canvas></div></div>
     <div class="card"><h3>OAI Inspections</h3><div class="chart-host"><canvas id="llR2"></canvas></div></div>
@@ -968,122 +959,68 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   </div>
   <div class="note">
     483 critical observations show a noisy upward drift in the 4–6 months before onset.
-    OAI and warning letters are sparse with no consistent pre-shortage trend.
-    Total inspections are also flat — shortage onset is not preceded by a surge in inspection activity.
-  </div>
-
-  <hr class="divider"/>
-  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
-    5D · Monthly lead-lag — FAERS adverse events
-    <span style="font-size:12px;font-weight:400;color:var(--muted);">(3-month rolling; quarterly precision)</span>
-  </h3>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:4px;">
-    <div class="card"><h3>Severity Score (w3m)</h3><div class="chart-host"><canvas id="llF1"></canvas></div></div>
-    <div class="card"><h3>Serious Reports (w3m)</h3><div class="chart-host"><canvas id="llF2"></canvas></div></div>
-    <div class="card"><h3>All Reports (w3m)</h3><div class="chart-host"><canvas id="llF3"></canvas></div></div>
-  </div>
-  <div class="note">
-    FAERS counts trend <em>below</em> the control baseline before shortage onset — consistent with
-    reduced prescribing/reporting for drugs that are becoming harder to obtain. Do not interpret
-    as a protective signal; likely a reporting-suppression artifact.
-  </div>
-
-  <hr class="divider"/>
-  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
-    5E · Cross-signal overlay — Regulatory vs FAERS (normalized to baseline)</h3>
-  <div class="sub" style="margin-left:0;">
-    Both signals rescaled to % deviation from their own control baseline on the same axis.
-    Allows direct comparison of temporal patterns before shortage onset.
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
-    <div class="card">
-      <h3>483 Critical Obs. vs FAERS Severity</h3>
-      <div class="csub">Do regulatory violations and adverse-event severity co-move before onset?</div>
-      <div class="chart-host"><canvas id="llX1"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>OAI Inspections vs FAERS Serious Reports</h3>
-      <div class="csub">OAI outcomes and serious adverse events — diverging or converging pre-onset?</div>
-      <div class="chart-host"><canvas id="llX2"></canvas></div>
-    </div>
-  </div>
-  <div class="note dark">
-    <strong>Key cross-signal finding:</strong> Regulatory (Redica) signals and FAERS adverse-event
-    signals move in <em>opposite directions</em> before shortage onset — regulatory observations
-    drift upward while FAERS reports drift downward. This divergence supports treating them as
-    complementary rather than redundant information sources, and is consistent with the
-    reporting-suppression hypothesis for FAERS pre-shortage.
+    OAI outcomes and warning letters are sparse with no consistent pre-shortage trend.
+    Total inspections are flat — shortage onset is not preceded by a surge in inspection activity.
+    Wide SE bands reflect the small event count; all patterns are exploratory.
   </div>
 </section>
 
 <!-- ═══ SECTION 6: PREDICTIVE MODEL RESULTS ═══ -->
 <section>
-  <div class="section-head"><span class="step-num">6</span><h2>Predictive Model — LLM text features in shortage prediction</h2></div>
+  <div class="section-head"><span class="step-num">6</span><h2>Predictive Model — Does 483 text improve shortage prediction?</h2></div>
   <div class="sub">
-    Drug × year panel (14 APIs, 2015–2024, n=126 rows, 19 shortage events).
-    GroupKFold CV by drug. Recalls excluded. Teal bars = LLM-derived text indices.
+    <strong>Setup:</strong> Drug × year panel (14 APIs, 2015–2024, n=126 drug-years, 19 shortage-onset events).
+    Outcome = <em>y_next_year_shortage</em>: does this drug start a shortage in the following year?
+    Recall features excluded (they co-occur with or lag shortage onset, so they'd be data leakage for prediction).
+    <br><br>
+    <strong>Cross-validation:</strong> GroupKFold by drug — each fold holds out all years for a different subset
+    of drugs, so the model is tested on drugs it has never seen. This is the correct CV for drug-level panel data
+    because observations from the same drug across years are highly correlated.
+    <br><br>
+    <strong>Metric:</strong> AUC (area under the ROC curve). AUC = 0.5 means no better than random;
+    AUC = 1.0 means perfect. With only 19 events, confidence intervals are wide — these results are exploratory.
+    RandomForest is preferred over logistic regression here because it handles the correlated, mixed-scale
+    features better at small sample size. The logistic regression result (shown in small text) is lower,
+    likely due to collinearity among the text indices at n=19 events.
   </div>
   <div class="chart-row">
     <div class="card">
       <h3>RandomForest feature importance</h3>
-      <div class="csub">Teal = LLM-extracted text indices. Combined text importance ≈ 32%.</div>
+      <div class="csub">Teal bars = LLM-extracted 483 text indices. Navy = structured data features. Sorted by importance.</div>
       <div class="chart-host tall"><canvas id="fiChart"></canvas></div>
     </div>
     <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:24px;">
       <h3 style="margin-bottom:12px;">Model results</h3>
       <div id="modelKeyNums" style="font-size:13px;line-height:2;color:var(--ink);"></div>
+      <div style="margin-top:16px;font-size:12px;color:var(--muted);line-height:1.6;">
+        <strong>How to read this:</strong><br>
+        Feature importance = fraction of times a feature was used to split the data in RF trees,
+        weighted by how much that split reduced impurity. Higher = more useful for prediction.<br><br>
+        The +ΔAUC tells us how much predictive value the LLM text features add on top of structured
+        data alone. A positive Δ means text features carry information that structured databases do not.
+      </div>
     </div>
   </div>
   <div class="note dark">
-    <strong>Key finding:</strong> QCI (Quality Culture Index), an LLM-extracted signal measuring
-    systemic/repeat violation culture from 483 narratives, is the <strong>3rd most important predictor</strong>
-    of future drug shortage — ranking above Valisure quality scores and Redica OAI counts.
-    This validates the paper's central claim: regulatory text carries predictive information
-    that structured databases miss.
+    <strong>Key finding:</strong> QCI (Quality Culture Index), derived by the LLM from 483 narrative text,
+    is the <strong>3rd most important predictor</strong> of next-year drug shortage — ranking above
+    Valisure quality scores and Redica OAI counts.
+    The 4 LLM-derived text indices together account for ~32% of total RF importance, adding
+    +0.052 AUC over structured features alone. This validates the paper's central claim: inspection
+    narrative text carries predictive signal that structured databases (CFR codes, inspection outcomes)
+    do not fully capture. See Section 7 for causal context from Wang et al. (2025).
   </div>
 </section>
 
-<!-- ═══ SECTION 7: VALISURE ═══ -->
-<section>
-  <div class="section-head"><span class="step-num">7</span><h2>Valisure quality score vs shortage frequency</h2></div>
-  <div class="sub">Static 2024 snapshot — NOT used in lead-lag analysis. Shown here for cross-sectional comparison only.</div>
-  <div class="card">
-    <div class="chart-host tall"><canvas id="chartValisure"></canvas></div>
-  </div>
-  <div class="note">
-    No clean monotonic relationship across the 14-drug sample.
-    Atorvastatin (low mean score) and Vancomycin (high mean score) both had 0–1 shortage starts.
-    Valisure score alone is not a clear predictor at this sample size.
-  </div>
-</section>
-
-<!-- ═══ SECTION 8: PER-DRUG TABLE ═══ -->
-<section>
-  <div class="section-head"><span class="step-num">8</span><h2>Per-drug signal summary</h2></div>
-  <div class="sub">Sorted by # shortage starts (2015–2024).</div>
-  <div class="card">
-    <table class="signals" id="drugTable">
-      <thead>
-        <tr>
-          <th>Drug (Valisure API)</th>
-          <th class="num"># Shortage starts</th>
-          <th class="num">TRI</th>
-          <th class="num">SCRI</th>
-          <th class="num">QCI</th>
-          <th class="num">Mean Valisure score</th>
-          <th class="num"># Failing Valisure tests</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</section>
-
-<!-- ═══ SECTION 10: WANG ET AL. 2025 CONTEXT ═══ -->
+<!-- ═══ SECTION 7: WANG ET AL. 2025 CONTEXT ═══ -->
 <section>
   <div class="section-head">
-    <span class="step-num">10</span>
-    <h2>FDA inspection outcomes &amp; shortage risk — Wang et al. (MSOM 2025) context <span class="badge new">new</span></h2>
+    <span class="step-num">7</span>
+    <h2>FDA inspection outcomes &amp; shortage risk — Wang et al. (MSOM 2025) context</h2>
+  </div>
+  <div class="sub">Connects to Section 6: the predictive model finds OAI inspections have modest importance.
+    Wang et al. (2025) provide causal context for why — OAI outcomes may actually <em>reduce</em> future
+    shortage risk by forcing mandatory quality remediation. We test their directional prediction in our panel.
   </div>
   <div class="sub">
     Wang et al. (2025) find that OAI inspection outcomes <em>reduce</em> future shortage risk by ~96% after IV adjustment
@@ -1159,9 +1096,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   </div>
 </section>
 
-<!-- ═══ SECTION 9: LIMITATIONS & NEXT STEPS ═══ -->
+<!-- ═══ SECTION 8: LIMITATIONS & NEXT STEPS ═══ -->
 <section>
-  <div class="section-head"><span class="step-num">9</span><h2>Limitations &amp; next steps</h2></div>
+  <div class="section-head"><span class="step-num">8</span><h2>Limitations &amp; next steps</h2></div>
   <div class="two-col">
     <div class="col-card">
       <div class="col-head l">Limitations</div>
@@ -1218,29 +1155,24 @@ new Chart(document.getElementById("chartYear"),{{
             scales:{{x:{{grid:{{display:false}}}},y:{{beginAtZero:true,ticks:{{stepSize:1}}}}}}}}
 }});
 
-// ── Annual: shortage starts by drug ──────────────────────────────────────
-const sorted = [...BY_DRUG].sort((a,b)=>a.starts-b.starts);
+// ── Annual: shortage duration by drug (total months in shortage 2015–2024) ─
+const sorted = [...BY_DRUG].sort((a,b)=>a.duration-b.duration);
 new Chart(document.getElementById("chartDrug"),{{
   type:"bar",
   data:{{labels:sorted.map(d=>d.drug),
-         datasets:[{{label:"Shortage starts",
-                    data:sorted.map(d=>d.starts),
-                    backgroundColor:sorted.map(d=>d.starts>=3?C.accent:(d.starts===0?C.teal:C.deep)),
+         datasets:[{{label:"Months in shortage",
+                    data:sorted.map(d=>d.duration),
+                    backgroundColor:sorted.map(d=>d.duration>=60?C.accent:(d.duration===0?C.teal:C.deep)),
                     borderRadius:3}}]}},
   options:{{indexAxis:"y",responsive:true,maintainAspectRatio:false,
-            plugins:{{legend:{{display:false}}}},
-            scales:{{x:{{beginAtZero:true,ticks:{{stepSize:1}}}},y:{{grid:{{display:false}}}}}}}}
+            plugins:{{legend:{{display:false}},
+              tooltip:{{callbacks:{{label:ctx=>`${{sorted[ctx.dataIndex].drug}}: ${{ctx.raw}} months (${{sorted[ctx.dataIndex].starts}} shortage starts)`}}}}}},
+            scales:{{x:{{beginAtZero:true,title:{{display:true,text:"Months in shortage (2015–2024)"}}}},
+                     y:{{grid:{{display:false}}}}}}}}
 }});
 
 // ── Monthly lead-lag charts ────────────────────────────────────────────────
 {redica_js}
-{faers_js}
-
-// ── Cross-signal overlays (Redica vs FAERS normalized to baseline) ─────────
-{cross_signal_js}
-
-// ── Drug-level Redica vs FAERS scatter charts ─────────────────────────────
-{drug_scatter_js}
 
 // ── 483 text analysis charts ──────────────────────────────────────────────
 {text_js}
@@ -1251,34 +1183,6 @@ new Chart(document.getElementById("chartDrug"),{{
 // ── RF model results ──────────────────────────────────────────────────────
 {model_js}
 
-// ── Valisure scatter ──────────────────────────────────────────────────────
-new Chart(document.getElementById("chartValisure"),{{
-  type:"scatter",
-  data:{{datasets:[{{
-    label:"Pilot drug",
-    data:BY_DRUG.map(d=>({{x:d.val,y:d.starts,name:d.drug}})),
-    backgroundColor:BY_DRUG.map(d=>d.starts===0?C.teal:(d.starts>=3?C.accent:C.deep)),
-    pointRadius:7,pointHoverRadius:9
-  }}]}},
-  options:{{responsive:true,maintainAspectRatio:false,
-    plugins:{{legend:{{display:false}},
-              tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: score ${{ctx.raw.x}}, ${{ctx.raw.y}} shortage-start years`}}}}}},
-    scales:{{x:{{title:{{display:true,text:"Valisure mean DoD score (higher = better quality)"}}}},
-             y:{{title:{{display:true,text:"# shortage-start years 2015–2024"}},beginAtZero:true,ticks:{{stepSize:1}}}}}}
-  }}
-}});
-
-// ── Per-drug table ────────────────────────────────────────────────────────
-const tbody = document.querySelector("#drugTable tbody");
-for (const d of BY_DRUG) {{
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${{d.drug}}</td><td class="num">${{d.starts}}</td>
-    <td class="num">${{d.tri.toFixed(1)}}</td>
-    <td class="num">${{d.scri.toFixed(1)}}</td>
-    <td class="num">${{d.qci.toFixed(1)}}</td>
-    <td class="num">${{d.val.toFixed(1)}}</td><td class="num">${{d.fails}}</td>`;
-  tbody.appendChild(tr);
-}}
 
 // ── OAI forward study charts ──────────────────────────────────────────────
 {oai_fwd_js}
