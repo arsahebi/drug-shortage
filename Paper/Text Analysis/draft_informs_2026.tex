@@ -512,6 +512,20 @@ suppliers?
 \begin{itemize}[noitemsep]
   \item \textit{Coverage}: 483 PDFs available for only 38 of 129 FEIs, limiting
         text-feature reach; structured citation signals cover 127/129.
+        Drug-level text indices therefore reflect only the subset of FEIs with
+        publicly available inspection documents — for example, three of four
+        Ampicillin-manufacturing FEIs have no 483 PDFs on file, so the
+        drug-level average is derived from a single facility.
+  \item \textit{Cross-inspection repeat detection}: the current extraction
+        pipeline identifies repeated observations within a single 483 document
+        (intra-inspection repeats) but does not cross-reference violations
+        across multiple inspections of the same facility over time.
+        Manual review of FEI 3011905047 (sterile injectable manufacturer)
+        revealed identical sterility and aseptic-technique violations in both
+        a 2019 and a 2024 FDA inspection, yet the pipeline scores
+        \texttt{repeat\_llm\_share = 0}. Cross-inspection repeat detection
+        — which would substantially raise the risk signal for chronic violators
+        — is planned as a next-generation enhancement.
   \item \textit{Sample size}: 14 drugs and 19 shortage events yield wide
         confidence intervals; all findings are exploratory.
   \item \textit{LLM reliability}: manual review of a sample confirms strong

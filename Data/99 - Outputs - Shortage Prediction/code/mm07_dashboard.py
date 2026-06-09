@@ -74,6 +74,13 @@ def compute_data() -> dict:
         by_drug_raw = (pilot.groupby("drug_norm").agg(
             starts=("shortage_started", "sum"),
             faers_sev=("faers_severity_score", "mean"),
+            faers_serious=("faers_n_serious", "mean"),
+            faers_reports=("faers_n_reports", "mean"),
+            redica_oai=("redica_n_oai", "mean"),
+            redica_483=("redica_n_483_critical", "mean"),
+            redica_vai=("redica_n_vai", "mean"),
+            redica_wl=("redica_n_warning_letters", "mean"),
+            redica_insp=("redica_n_inspections", "mean"),
             tri_mean=("tri_mean", "first"),
             scri_mean=("scri_mean", "first"),
             irwi_mean=("irwi_mean", "first"),
@@ -93,15 +100,22 @@ def compute_data() -> dict:
         for _, r in by_drug_raw.sort_values("starts", ascending=False).iterrows():
             vm = vs_map.get(r.drug_norm, {})
             d["by_drug"].append({
-                "drug":   r.drug_norm,
-                "starts": int(r.starts),
-                "faers":  round(float(r.faers_sev), 1),
-                "val":    round(float(vm.get("valisure_mean_score", 0) or 0), 1),
-                "fails":  int(vm.get("valisure_n_failing", 0) or 0),
-                "tri":    round(float(r.tri_mean or 0), 1),
-                "scri":   round(float(r.scri_mean or 0), 1),
-                "irwi":   round(float(r.irwi_mean or 0), 1),
-                "qci":    round(float(r.qci_mean or 0), 1),
+                "drug":          r.drug_norm,
+                "starts":        int(r.starts),
+                "faers":         round(float(r.faers_sev), 1),
+                "faers_serious": round(float(r.faers_serious or 0), 1),
+                "faers_reports": round(float(r.faers_reports or 0), 1),
+                "val":           round(float(vm.get("valisure_mean_score", 0) or 0), 1),
+                "fails":         int(vm.get("valisure_n_failing", 0) or 0),
+                "tri":           round(float(r.tri_mean or 0), 1),
+                "scri":          round(float(r.scri_mean or 0), 1),
+                "irwi":          round(float(r.irwi_mean or 0), 1),
+                "qci":           round(float(r.qci_mean or 0), 1),
+                "redica_oai":    round(float(r.redica_oai or 0), 2),
+                "redica_483":    round(float(r.redica_483 or 0), 2),
+                "redica_vai":    round(float(r.redica_vai or 0), 2),
+                "redica_wl":     round(float(r.redica_wl or 0), 2),
+                "redica_insp":   round(float(r.redica_insp or 0), 2),
             })
 
         d["annual_rows"]    = int((ap["has_valisure"] == 1).sum())
@@ -303,6 +317,43 @@ def generate_html(d: dict) -> str:
         "faers_severity_score_w3m": "FAERS Severity Score (3m rolling)",
     }
 
+    def _ll_overlay_js(canvas_id: str, sig1: str, sig2: str, col1: str, col2: str) -> str:
+        """Overlay two lead-lag signals normalized to baseline (% deviation) on same axis."""
+        if sig1 not in ml or sig2 not in ml:
+            return f'/* overlay {sig1}/{sig2} not in data */'
+        i1, i2 = ml[sig1], ml[sig2]
+        offsets = i1["offsets"]
+        bl1 = i1["baseline"] or 1e-6
+        bl2 = i2["baseline"] or 1e-6
+        norm1 = [round((m - bl1) / bl1 * 100, 2) for m in i1["means"]]
+        norm2 = [round((m - bl2) / bl2 * 100, 2) for m in i2["means"]]
+        lbl1 = SIGNAL_LABELS.get(sig1, sig1)
+        lbl2 = SIGNAL_LABELS.get(sig2, sig2)
+        return f"""
+new Chart(document.getElementById({_j(canvas_id)}), {{
+  type:'line',
+  data:{{
+    labels:{_j(offsets)},
+    datasets:[
+      {{label:{_j(lbl1 + " (% vs baseline)")},data:{_j(norm1)},
+        borderColor:'rgb({col1})',backgroundColor:'transparent',
+        tension:0.2,pointRadius:3,borderWidth:2,fill:false}},
+      {{label:{_j(lbl2 + " (% vs baseline)")},data:{_j(norm2)},
+        borderColor:'rgb({col2})',backgroundColor:'transparent',
+        tension:0.2,pointRadius:3,borderWidth:2,borderDash:[5,4],fill:false}}
+    ]
+  }},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10}}}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Months to shortage onset (0 = onset month)'}},grid:{{display:false}}}},
+      y:{{title:{{display:true,text:'% deviation from control baseline'}},
+          grid:{{color:'#EEEEEE'}},
+          ticks:{{callback:v=>v+'%'}}}}
+    }}
+  }}
+}});"""
+
     def _ll_chart_js(canvas_id: str, sig: str, color: str) -> str:
         if sig not in ml:
             return f'/* {sig} not in data */'
@@ -334,12 +385,19 @@ new Chart(document.getElementById({_j(canvas_id)}), {{
     redica_js = (
         _ll_chart_js("llR1", "redica_n_483_critical",    "2, 99, 176") +
         _ll_chart_js("llR2", "redica_n_oai",              "224, 122, 95") +
-        _ll_chart_js("llR3", "redica_n_warning_letters",  "28, 114, 147")
+        _ll_chart_js("llR3", "redica_n_warning_letters",  "28, 114, 147") +
+        _ll_chart_js("llR4", "redica_n_inspections",      "80, 140, 60")
     )
     faers_js = (
         _ll_chart_js("llF1", "faers_severity_score_w3m", "2, 99, 176") +
         _ll_chart_js("llF2", "faers_n_serious_w3m",       "28, 114, 147") +
         _ll_chart_js("llF3", "faers_n_reports_w3m",       "224, 122, 95")
+    )
+    cross_signal_js = (
+        _ll_overlay_js("llX1", "redica_n_483_critical", "faers_severity_score_w3m",
+                       "2, 99, 176", "224, 122, 95") +
+        _ll_overlay_js("llX2", "redica_n_oai", "faers_n_serious_w3m",
+                       "28, 114, 147", "203, 75, 75")
     )
 
     # ── Text analysis: TRI/SCRI/QCI per drug ──────────────────────────────────
@@ -413,6 +471,59 @@ new Chart(document.getElementById('textGroupChart'),{{
            title:{{display:true,text:'Mean index score (0–100)'}}}}
     }}
   }}
+}});"""
+
+    # ── Drug-level cross-signal scatter: Redica vs FAERS ─────────────────────
+    tf2 = d.get("by_drug", [])
+    def _scatter_color(starts):
+        if starts == 0:  return "rgba(28,114,147,0.80)"
+        if starts >= 3:  return "rgba(203,75,75,0.85)"
+        return "rgba(2,99,176,0.80)"
+
+    sc_oai_faers = [{"x": r["redica_oai"], "y": r["faers_serious"],
+                     "name": r["drug"], "starts": r["starts"]} for r in tf2]
+    sc_483_faers = [{"x": r["redica_483"], "y": r["faers_reports"],
+                     "name": r["drug"], "starts": r["starts"]} for r in tf2]
+    sc_vai_faers = [{"x": r["redica_vai"], "y": r["faers_serious"],
+                     "name": r["drug"], "starts": r["starts"]} for r in tf2]
+    scatter_colors = [_scatter_color(r["starts"]) for r in tf2]
+
+    drug_scatter_js = f"""
+new Chart(document.getElementById('scOaiFaers'),{{
+  type:'scatter',
+  data:{{datasets:[{{label:'Drug',data:{_j(sc_oai_faers)},
+    backgroundColor:{_j(scatter_colors)},pointRadius:7,pointHoverRadius:9}}]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: OAI=${{ctx.raw.x}}, FAERS serious=${{ctx.raw.y}}`}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Mean OAI inspections/yr (Redica)'}},beginAtZero:true}},
+      y:{{title:{{display:true,text:'Mean serious FAERS reports/yr'}},beginAtZero:true}}
+    }}}}
+}});
+new Chart(document.getElementById('sc483Faers'),{{
+  type:'scatter',
+  data:{{datasets:[{{label:'Drug',data:{_j(sc_483_faers)},
+    backgroundColor:{_j(scatter_colors)},pointRadius:7,pointHoverRadius:9}}]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: 483-crit=${{ctx.raw.x}}, FAERS=${{ctx.raw.y}}`}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Mean 483 critical obs/yr (Redica)'}},beginAtZero:true}},
+      y:{{title:{{display:true,text:'Mean total FAERS reports/yr'}},beginAtZero:true}}
+    }}}}
+}});
+new Chart(document.getElementById('scVaiFaers'),{{
+  type:'scatter',
+  data:{{datasets:[{{label:'Drug',data:{_j(sc_vai_faers)},
+    backgroundColor:{_j(scatter_colors)},pointRadius:7,pointHoverRadius:9}}]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: VAI=${{ctx.raw.x}}, FAERS serious=${{ctx.raw.y}}`}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Mean VAI inspections/yr (Redica)'}},beginAtZero:true}},
+      y:{{title:{{display:true,text:'Mean serious FAERS reports/yr'}},beginAtZero:true}}
+    }}}}
 }});"""
 
     # ── RF feature importance + ablation ──────────────────────────────────────
@@ -784,90 +895,125 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   </div>
 </section>
 
-<!-- ═══ SECTION 5: ANNUAL LIFT TABLE ═══ -->
-<section>
-  <div class="section-head"><span class="step-num">5</span><h2>Annual signals: lift in the year before shortage</h2></div>
-  <div class="sub">
-    For each feature, mean value in drug-years where shortage started next year vs years with no upcoming shortage.
-    Recalls excluded (concurrent/lagging). FAERS flat pre-onset and shown for reference only.
-  </div>
-  <div class="card">
-    <table class="signals">
-      <thead>
-        <tr>
-          <th>Quality signal</th>
-          <th class="num">Mean — no shortage next year</th>
-          <th class="num">Mean — shortage next year</th>
-          <th class="num">Lift</th>
-          <th>Reads as</th>
-        </tr>
-      </thead>
-      <tbody>{_lift_rows(d.get("lift", []))}</tbody>
-    </table>
-  </div>
-  <div class="card" style="margin-top:14px;">
-    <h3>483 Text Indices: shortage vs no-shortage drugs (drug-level comparison)</h3>
-    <div class="csub">
-      Mean TRI / SCRI / IRWI / QCI for drugs with ≥1 shortage start vs drugs with zero starts (2015–2024).
-      Indices are facility-level aggregates — higher = higher risk signal.
-      IRWI and SCRI show the largest separation.
-    </div>
-    <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
-  </div>
-  <div class="note dark">
-    <strong>Key lift pattern:</strong>
-    IRWI (Investigation/Remediation Weakness) and SCRI (Sterility/Contamination Risk) are notably
-    higher for shortage drugs, reflecting chronic process failures and injection/sterility risks.
-    QCI (Quality Culture Index) is <em>lower</em> for shortage drugs — consistent with weaker
-    compliance culture predicting supply disruption.
-    Redica OAI shows modest lift (~1.4×). FAERS adverse-event signals are flat before onset
-    (possible reporting suppression pre-shortage) and are excluded from these charts.
-  </div>
-</section>
-
-<!-- ═══ SECTION 5: MONTHLY LEAD-LAG ═══ -->
+<!-- ═══ SECTION 5: EDA — REGULATORY & FAERS RELATIONSHIPS ═══ -->
 <section>
   <div class="section-head">
     <span class="step-num">5</span>
-    <h2>Monthly lead-lag analysis <span class="badge new">new</span></h2>
+    <h2>EDA — Regulatory signals, FAERS, and shortage risk</h2>
   </div>
   <div class="sub">
-    Event study at monthly resolution, offsets −12 to 0 months relative to each shortage onset month.
-    Control baseline = drug-months with no shortage onset within ±12 months.
-    Shaded band = ±1 SE. <strong>N = {d["monthly_onset_months"]} onset months, 14 drugs — interpret as exploratory only.</strong>
+    Drug-level and monthly-resolution exploratory analysis.
+    <strong>Color in scatter plots:</strong>
+    <span style="color:rgba(203,75,75,1);">■</span> ≥3 shortage starts &nbsp;
+    <span style="color:rgba(2,99,176,1);">■</span> 1–2 shortage starts &nbsp;
+    <span style="color:rgba(28,114,147,1);">■</span> 0 shortage starts.
+    N = {d["monthly_onset_months"]} onset months — interpret monthly charts as exploratory only.
   </div>
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:0 0 6px 0;font-size:16px;">
-    5A · Redica regulatory signals</h3>
-  <div class="sub" style="margin-left:0;">483 critical observations, OAI inspection outcomes, warning letters.</div>
-  <div class="chart-row.three" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-    <div class="card"><h3>483 Critical Obs.</h3><div class="chart-host"><canvas id="llR1"></canvas></div></div>
-    <div class="card"><h3>OAI Inspections</h3><div class="chart-host"><canvas id="llR2"></canvas></div></div>
-    <div class="card"><h3>Warning Letters</h3><div class="chart-host"><canvas id="llR3"></canvas></div></div>
+    5A · Drug-level: Redica regulatory burden vs FAERS adverse events</h3>
+  <div class="sub" style="margin-left:0;">
+    Annual averages per drug (2015–2024). Do drugs with higher regulatory burden also generate more adverse event reports?
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:4px;">
+    <div class="card">
+      <h3>OAI inspections vs FAERS serious reports</h3>
+      <div class="csub">Mean OAI outcomes/yr vs mean serious FAERS reports/yr per drug.</div>
+      <div class="chart-host"><canvas id="scOaiFaers"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>483 critical obs vs FAERS total reports</h3>
+      <div class="csub">Mean critical 483 observations/yr vs mean total FAERS reports/yr per drug.</div>
+      <div class="chart-host"><canvas id="sc483Faers"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>VAI inspections vs FAERS serious reports</h3>
+      <div class="csub">Mean VAI outcomes/yr vs mean serious FAERS reports/yr per drug.</div>
+      <div class="chart-host"><canvas id="scVaiFaers"></canvas></div>
+    </div>
   </div>
   <div class="note">
-    <strong>Redica signals:</strong> 483 critical observations show a noisy but upward drift in the
-    4–6 months before onset; OAI and warning letter counts are very sparse and show no consistent
-    pre-shortage pattern. Wide error bars reflect the small event count.
+    Regulatory burden (OAI, 483 critical) and FAERS serious reports are largely <em>uncorrelated</em>
+    at the drug level — high-volume drugs (Atorvastatin, Metformin) dominate FAERS counts regardless
+    of inspection outcome. This supports treating regulatory signals and FAERS as independent
+    information sources in the predictive model.
   </div>
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
-    5B · FAERS adverse events <span style="font-size:12px;font-weight:400;color:var(--muted);">(3-month rolling sums; quarterly precision)</span></h3>
-  <div class="chart-row.three" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+    5B · Drug-level: 483 text indices by shortage group</h3>
+  <div class="sub" style="margin-left:0;">
+    Mean TRI / SCRI / IRWI / QCI for drugs with ≥1 shortage start vs drugs with zero starts (2015–2024).
+    Indices are facility-level aggregates (time-invariant per drug).
+  </div>
+  <div class="card">
+    <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
+  </div>
+  <div class="note dark">
+    IRWI (Investigation/Remediation Weakness) and SCRI (Sterility/Contamination Risk) are notably
+    higher for shortage drugs. QCI (Quality Culture Index) is <em>lower</em> for shortage drugs —
+    consistent with weaker compliance culture predicting supply disruption.
+  </div>
+
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
+    5C · Monthly lead-lag — Redica regulatory signals</h3>
+  <div class="sub" style="margin-left:0;">Event study relative to shortage onset month. Shaded = ±1 SE. Control = drug-months outside ±12-month onset window.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
+    <div class="card"><h3>483 Critical Obs.</h3><div class="chart-host"><canvas id="llR1"></canvas></div></div>
+    <div class="card"><h3>OAI Inspections</h3><div class="chart-host"><canvas id="llR2"></canvas></div></div>
+    <div class="card"><h3>Warning Letters</h3><div class="chart-host"><canvas id="llR3"></canvas></div></div>
+    <div class="card"><h3>Total Inspections</h3><div class="chart-host"><canvas id="llR4"></canvas></div></div>
+  </div>
+  <div class="note">
+    483 critical observations show a noisy upward drift in the 4–6 months before onset.
+    OAI and warning letters are sparse with no consistent pre-shortage trend.
+    Total inspections are also flat — shortage onset is not preceded by a surge in inspection activity.
+  </div>
+
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
+    5D · Monthly lead-lag — FAERS adverse events
+    <span style="font-size:12px;font-weight:400;color:var(--muted);">(3-month rolling; quarterly precision)</span>
+  </h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:4px;">
     <div class="card"><h3>Severity Score (w3m)</h3><div class="chart-host"><canvas id="llF1"></canvas></div></div>
     <div class="card"><h3>Serious Reports (w3m)</h3><div class="chart-host"><canvas id="llF2"></canvas></div></div>
     <div class="card"><h3>All Reports (w3m)</h3><div class="chart-host"><canvas id="llF3"></canvas></div></div>
   </div>
   <div class="note">
-    <strong>FAERS signals:</strong> Adverse-event counts trend <em>below</em> the control baseline
-    in the 12 months before shortage onset — the opposite of the expected direction. This may reflect
-    reduced prescribing/reporting for drugs that are already harder to obtain, or a small-sample
-    artifact. Do not interpret as a protective signal.
+    FAERS counts trend <em>below</em> the control baseline before shortage onset — consistent with
+    reduced prescribing/reporting for drugs that are becoming harder to obtain. Do not interpret
+    as a protective signal; likely a reporting-suppression artifact.
   </div>
 
-<!-- (Section 5C recalls removed — concurrent/lagging signals) -->
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 6px;font-size:16px;">
+    5E · Cross-signal overlay — Regulatory vs FAERS (normalized to baseline)</h3>
+  <div class="sub" style="margin-left:0;">
+    Both signals rescaled to % deviation from their own control baseline on the same axis.
+    Allows direct comparison of temporal patterns before shortage onset.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
+    <div class="card">
+      <h3>483 Critical Obs. vs FAERS Severity</h3>
+      <div class="csub">Do regulatory violations and adverse-event severity co-move before onset?</div>
+      <div class="chart-host"><canvas id="llX1"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>OAI Inspections vs FAERS Serious Reports</h3>
+      <div class="csub">OAI outcomes and serious adverse events — diverging or converging pre-onset?</div>
+      <div class="chart-host"><canvas id="llX2"></canvas></div>
+    </div>
+  </div>
+  <div class="note dark">
+    <strong>Key cross-signal finding:</strong> Regulatory (Redica) signals and FAERS adverse-event
+    signals move in <em>opposite directions</em> before shortage onset — regulatory observations
+    drift upward while FAERS reports drift downward. This divergence supports treating them as
+    complementary rather than redundant information sources, and is consistent with the
+    reporting-suppression hypothesis for FAERS pre-shortage.
+  </div>
 </section>
 
 <!-- ═══ SECTION 6: PREDICTIVE MODEL RESULTS ═══ -->
@@ -1089,6 +1235,12 @@ new Chart(document.getElementById("chartDrug"),{{
 // ── Monthly lead-lag charts ────────────────────────────────────────────────
 {redica_js}
 {faers_js}
+
+// ── Cross-signal overlays (Redica vs FAERS normalized to baseline) ─────────
+{cross_signal_js}
+
+// ── Drug-level Redica vs FAERS scatter charts ─────────────────────────────
+{drug_scatter_js}
 
 // ── 483 text analysis charts ──────────────────────────────────────────────
 {text_js}
