@@ -200,17 +200,59 @@ def compute_data() -> dict:
         for entry in d.get("by_drug", []):
             entry["duration"] = 0
 
-    # ── Severity-high share from 483 text features (criticality signal) ───────
-    sev_map: dict = {}
+    # ── Text features from 483 CSV: severity_high, violation categories, remediation
+    _TEXT_DETAIL_COLS = [
+        "severity_high_share", "contamination_llm_share", "systemic_llm_share",
+        "patient_risk_llm_share", "remediation_none_share", "remediation_weak_share",
+    ]
+    drug_text_detail: dict = {}
     if TEXT_FEATURES_CSV.exists() and VALISURE_FEI.exists():
         tf_raw  = pd.read_csv(TEXT_FEATURES_CSV)
         bridge  = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
         bridge  = (bridge[["API", "FEI_NUMBER"]].dropna()
                    .rename(columns={"FEI_NUMBER": "fei", "API": "drug_norm"}))
-        merged  = tf_raw[["fei", "severity_high_share"]].merge(bridge, on="fei", how="inner")
-        sev_map = merged.groupby("drug_norm")["severity_high_share"].mean().round(3).to_dict()
+        _avail  = [c for c in _TEXT_DETAIL_COLS if c in tf_raw.columns]
+        merged  = tf_raw[["fei"] + _avail].merge(bridge, on="fei", how="inner")
+        drug_text_detail = merged.groupby("drug_norm")[_avail].mean().round(3).to_dict(orient="index")
     for entry in d.get("by_drug", []):
-        entry["sev_high"] = round(float(sev_map.get(entry["drug"], 0)), 3)
+        detail = drug_text_detail.get(entry["drug"], {})
+        entry["sev_high"]        = round(float(detail.get("severity_high_share", 0)), 3)
+        entry["contam_share"]    = round(float(detail.get("contamination_llm_share", 0)), 3)
+        entry["systemic_share"]  = round(float(detail.get("systemic_llm_share", 0)), 3)
+        entry["patient_share"]   = round(float(detail.get("patient_risk_llm_share", 0)), 3)
+        entry["remed_none"]      = round(float(detail.get("remediation_none_share", 0)), 3)
+        entry["remed_weak"]      = round(float(detail.get("remediation_weak_share", 0)), 3)
+
+    # ── Text detail group comparison (violation categories + remediation) ──────
+    if ap is not None:
+        dm2 = ap.groupby("drug_norm")["shortage_started"].sum().reset_index()
+        dm2.columns = ["drug_norm", "starts"]
+        detail_cols_map = {
+            "sev_high":      "High-severity obs %",
+            "contam_share":  "Contamination %",
+            "systemic_share":"Systemic violation %",
+            "patient_share": "Patient risk %",
+            "remed_none":    "No remediation %",
+            "remed_weak":    "Weak remediation %",
+        }
+        # Build drug-level detail from by_drug entries
+        by_drug_dict = {e["drug"]: e for e in d.get("by_drug", [])}
+        has_s = [e for e in d.get("by_drug", []) if e["starts"] > 0]
+        no_s  = [e for e in d.get("by_drug", []) if e["starts"] == 0]
+        if has_s and no_s:
+            labels_detail = list(detail_cols_map.values())
+            keys = list(detail_cols_map.keys())
+            d["text_detail_group"] = {
+                "labels":      labels_detail,
+                "shortage":    [round(float(pd.Series([e[k] for e in has_s]).mean()) * 100, 1) for k in keys],
+                "no_shortage": [round(float(pd.Series([e[k] for e in no_s]).mean()) * 100, 1) for k in keys],
+                "n_shortage":    len(has_s),
+                "n_no_shortage": len(no_s),
+            }
+        else:
+            d["text_detail_group"] = {}
+    else:
+        d["text_detail_group"] = {}
 
     # ── Monthly lead-lag ───────────────────────────────────────────────────────
     ll = _read("lead_lag_monthly.csv", OUT_TABS)
@@ -229,6 +271,58 @@ def compute_data() -> dict:
         d["monthly_lead"] = groups
     else:
         d["monthly_lead"] = {}
+
+    # ── VAI lead-lag (not in lead_lag_monthly.csv — compute from monthly panel) ─
+    if mp is not None and "redica_n_vai" in mp.columns:
+        mp2 = mp.copy()
+        mp2["midx"] = mp2["year"] * 12 + mp2["month"]
+        onsets = mp2[mp2["shortage_start"] == 1][["drug_norm", "midx"]].values.tolist()
+        _ll_offsets = list(range(-12, 1))
+        if onsets:
+            records_vai = []
+            for drug, omidx in onsets:
+                drug_idx = mp2[mp2["drug_norm"] == drug].set_index("midx")["redica_n_vai"]
+                for off in _ll_offsets:
+                    tmidx = omidx + off
+                    if tmidx in drug_idx.index and pd.notna(drug_idx[tmidx]):
+                        records_vai.append({"offset": off, "val": float(drug_idx[tmidx])})
+            tagged = {(drug, omidx + k) for drug, omidx in onsets for k in range(-12, 13)}
+            bl_rows = mp2[~mp2.apply(lambda r: (r["drug_norm"], r["midx"]) in tagged, axis=1)]
+            bl_vai  = float(bl_rows["redica_n_vai"].dropna().mean()) if len(bl_rows) else 0.0
+            if records_vai:
+                df_vai = pd.DataFrame(records_vai)
+                grp_vai = df_vai.groupby("offset")["val"]
+                d["monthly_lead"]["redica_n_vai"] = {
+                    "offsets":  _ll_offsets,
+                    "means":    [round(float(grp_vai.mean().get(o, 0)), 4) for o in _ll_offsets],
+                    "ses":      [round(float(grp_vai.sem().get(o, 0)), 4) for o in _ll_offsets],
+                    "baseline": round(bl_vai, 4),
+                    "group":    "redica",
+                }
+
+    # ── Text index lead-lag (time-invariant → flat lines; gap = persistent risk) ─
+    if ap is not None:
+        _ll_offsets = list(range(-12, 1))
+        pilot2 = ap[ap["has_valisure"] == 1]
+        dm_text = pilot2.groupby("drug_norm").agg(
+            starts=("shortage_started", "sum"),
+            tri=("tri_mean", "first"), scri=("scri_mean", "first"),
+            irwi=("irwi_mean", "first"), qci=("qci_mean", "first"),
+        ).reset_index()
+        has_text = dm_text[dm_text["starts"] > 0]
+        no_text  = dm_text[dm_text["starts"] == 0]
+        for col, label_key in [("tri","tri_mean"),("scri","scri_mean"),
+                                ("irwi","irwi_mean"),("qci","qci_mean")]:
+            mv  = float(has_text[col].dropna().mean()) if len(has_text) else 0.0
+            bl  = float(no_text[col].dropna().mean())  if len(no_text)  else 0.0
+            se  = float(has_text[col].dropna().std() / max(len(has_text)**0.5, 1))
+            d["monthly_lead"][label_key] = {
+                "offsets":  _ll_offsets,
+                "means":    [round(mv, 3)] * len(_ll_offsets),
+                "ses":      [round(se, 3)] * len(_ll_offsets),
+                "baseline": round(bl, 3),
+                "group":    "text",
+            }
 
     # ── RF model results: feature importance + ablation ───────────────────────
     fi_raw = _read("rf_importance_valisure.csv", OUT_MODELS)
@@ -329,11 +423,16 @@ def generate_html(d: dict) -> str:
     SIGNAL_LABELS = {
         "redica_n_483_critical": "483 Critical Observations",
         "redica_n_oai": "OAI Inspections",
+        "redica_n_vai": "VAI Inspections",
         "redica_n_warning_letters": "Warning Letters",
         "redica_n_inspections": "Total Inspections",
         "faers_n_reports_w3m": "FAERS Reports (3m rolling)",
         "faers_n_serious_w3m": "FAERS Serious (3m rolling)",
         "faers_severity_score_w3m": "FAERS Severity Score (3m rolling)",
+        "tri_mean": "Text Risk Index (TRI)",
+        "scri_mean": "Sterility/Contamination Risk (SCRI)",
+        "irwi_mean": "Investigation/Remediation Weakness (IRWI)",
+        "qci_mean": "Quality Culture Index (QCI)",
     }
 
     def _ll_overlay_js(canvas_id: str, sig1: str, sig2: str, col1: str, col2: str) -> str:
@@ -402,21 +501,21 @@ new Chart(document.getElementById({_j(canvas_id)}), {{
 }});"""
 
     redica_js = (
-        _ll_chart_js("llR1", "redica_n_483_critical",    "2, 99, 176") +
-        _ll_chart_js("llR2", "redica_n_oai",              "224, 122, 95") +
-        _ll_chart_js("llR3", "redica_n_warning_letters",  "28, 114, 147") +
-        _ll_chart_js("llR4", "redica_n_inspections",      "80, 140, 60")
+        _ll_chart_js("llR1", "redica_n_oai",          "224, 122, 95") +
+        _ll_chart_js("llR2", "redica_n_vai",           "28, 114, 147") +
+        _ll_chart_js("llR3", "redica_n_inspections",   "80, 140, 60")
     )
     faers_js = (
         _ll_chart_js("llF1", "faers_severity_score_w3m", "2, 99, 176") +
         _ll_chart_js("llF2", "faers_n_serious_w3m",       "28, 114, 147") +
         _ll_chart_js("llF3", "faers_n_reports_w3m",       "224, 122, 95")
     )
-    cross_signal_js = (
-        _ll_overlay_js("llX1", "redica_n_483_critical", "faers_severity_score_w3m",
-                       "2, 99, 176", "224, 122, 95") +
-        _ll_overlay_js("llX2", "redica_n_oai", "faers_n_serious_w3m",
-                       "28, 114, 147", "203, 75, 75")
+    cross_signal_js = ""
+    text_ll_js = (
+        _ll_chart_js("llT1", "tri_mean",  "2, 99, 176") +
+        _ll_chart_js("llT2", "scri_mean", "224, 122, 95") +
+        _ll_chart_js("llT3", "irwi_mean", "28, 114, 147") +
+        _ll_chart_js("llT4", "qci_mean",  "80, 140, 60")
     )
 
     # ── Text analysis: TRI/SCRI/QCI/IRWI/SevHigh per drug ────────────────────
@@ -529,6 +628,34 @@ new Chart(document.getElementById('scVaiFaers'),{{
       x:{{title:{{display:true,text:'Mean VAI inspections/yr (Redica)'}},beginAtZero:true}},
       y:{{title:{{display:true,text:'Mean serious FAERS reports/yr'}},beginAtZero:true}}
     }}}}
+}});"""
+
+    # ── Text detail group comparison: violation categories + remediation ─────
+    tdg = d.get("text_detail_group", {})
+    text_detail_group_js = ""
+    if tdg:
+        n_s2  = tdg.get("n_shortage", "?")
+        n_ns2 = tdg.get("n_no_shortage", "?")
+        text_detail_group_js = f"""
+new Chart(document.getElementById('textDetailChart'),{{
+  type:'bar',
+  data:{{
+    labels:{_j(tdg["labels"])},
+    datasets:[
+      {{label:'≥1 shortage (n={n_s2} drugs)',data:{_j(tdg["shortage"])},
+        backgroundColor:'rgba(224,122,95,0.8)',borderRadius:3}},
+      {{label:'No shortage (n={n_ns2} drugs)',data:{_j(tdg["no_shortage"])},
+        backgroundColor:'rgba(28,114,147,0.7)',borderRadius:3}}
+    ]
+  }},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
+    scales:{{
+      x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
+      y:{{beginAtZero:true,max:100,
+           title:{{display:true,text:'Mean % of observations (0–100)'}}}}
+    }}
+  }}
 }});"""
 
     # ── RF feature importance + ablation ──────────────────────────────────────
@@ -925,43 +1052,75 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:0 0 4px 0;font-size:16px;">
-    5A · Text indices by shortage group</h3>
+    5A · LLM-extracted text indices — shortage vs no-shortage drugs</h3>
   <div class="sub" style="margin-left:0;">
-    Mean TRI / SCRI / IRWI / QCI for drugs with ≥1 shortage start vs drugs with zero starts (2015–2024).
-    <br><strong>Shortage drugs (≥1 start):</strong> Ampicillin, Ampicillin+Sulbactam*, Atorvastatin, Calcium Gluconate,
+    Composite text indices (TRI/SCRI/IRWI/QCI) and raw feature proportions, averaged across all
+    facility 483s for each drug. Two groups: drugs with ≥1 shortage onset vs drugs with zero onsets (2015–2024).
+    <br><strong>≥1 shortage onset:</strong> Ampicillin, Atorvastatin, Calcium Gluconate,
     Lisinopril, Magnesium Sulfate, Metformin, Metoprolol, Metronidazole, Pantoprazole, Potassium Chloride, Tacrolimus.
-    <br><strong>No shortage (0 starts):</strong> Bupropion, Vancomycin. (* Amp+Sulbactam has starts=0 but ongoing months due to pre-2015 shortage)
+    <br><strong>0 shortage onsets:</strong> Ampicillin+Sulbactam, Bupropion, Vancomycin.
   </div>
-  <div class="card">
-    <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
+    <div class="card">
+      <h3>Composite indices (TRI / SCRI / IRWI / QCI)</h3>
+      <div class="csub">All indices 0–100. QCI: lower = weaker quality culture = higher risk.</div>
+      <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Violation categories &amp; remediation quality</h3>
+      <div class="csub">% of observations flagged for each category. High-severity, contamination, systemic, patient risk, no/weak remediation.</div>
+      <div class="chart-host"><canvas id="textDetailChart"></canvas></div>
+    </div>
   </div>
   <div class="note dark">
-    IRWI (Investigation/Remediation Weakness) and SCRI (Sterility/Contamination Risk) are elevated
-    for shortage drugs. QCI (Quality Culture Index) is <em>lower</em> for shortage drugs —
-    consistent with weaker compliance culture as a leading risk signal. Text indices are
-    time-invariant (facility historical aggregate), so this comparison is cross-sectional, not temporal.
+    Shortage drugs show higher SCRI (sterility/contamination risk), higher IRWI (weak investigations),
+    lower QCI (weaker quality culture), more contamination-flagged observations, and higher rates
+    of no/weak remediation. These are the risk fingerprint of facilities prone to supply disruption.
+    Text indices are time-invariant — this is a cross-sectional comparison, not temporal.
   </div>
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
-    5B · Monthly lead-lag — Redica regulatory signals</h3>
+    5B · Monthly lead-lag — Regulatory signals (OAI, VAI, Total Inspections)</h3>
   <div class="sub" style="margin-left:0;">
-    <strong>483 critical observations</strong> = observations in the inspection record that Redica
-    classifies as critical (direct patient-safety risk or systemic GMP failure).
-    OAI = Official Action Indicated (most serious inspection outcome; triggers mandatory remediation).
-    Warning letters and total inspection counts provide additional regulatory burden context.
+    OAI = Official Action Indicated (most severe; triggers mandatory remediation).
+    VAI = Voluntary Action Indicated (violations noted, manufacturer commits to fix voluntarily).
+    Total inspections shows inspection frequency context.
+    X-axis = months to shortage onset (0 = onset month). Shaded = ±1 SE.
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
-    <div class="card"><h3>483 Critical Obs.</h3><div class="chart-host"><canvas id="llR1"></canvas></div></div>
-    <div class="card"><h3>OAI Inspections</h3><div class="chart-host"><canvas id="llR2"></canvas></div></div>
-    <div class="card"><h3>Warning Letters</h3><div class="chart-host"><canvas id="llR3"></canvas></div></div>
-    <div class="card"><h3>Total Inspections</h3><div class="chart-host"><canvas id="llR4"></canvas></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:4px;">
+    <div class="card"><h3>OAI Inspections</h3><div class="chart-host"><canvas id="llR1"></canvas></div></div>
+    <div class="card"><h3>VAI Inspections</h3><div class="chart-host"><canvas id="llR2"></canvas></div></div>
+    <div class="card"><h3>Total Inspections</h3><div class="chart-host"><canvas id="llR3"></canvas></div></div>
   </div>
   <div class="note">
-    483 critical observations show a noisy upward drift in the 4–6 months before onset.
-    OAI outcomes and warning letters are sparse with no consistent pre-shortage trend.
+    OAI events are sparse; no consistent ramp-up before onset is visible at this sample size.
+    VAI inspections provide a broader signal of manufacturing concerns being addressed voluntarily.
     Total inspections are flat — shortage onset is not preceded by a surge in inspection activity.
-    Wide SE bands reflect the small event count; all patterns are exploratory.
+  </div>
+
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
+    5C · Monthly lead-lag — LLM-extracted text indices</h3>
+  <div class="sub" style="margin-left:0;">
+    Text indices are time-invariant (one value per drug, based on cumulative 483 history).
+    The lead-lag chart shows a <strong>flat line</strong> — the persistent mean for shortage-starting
+    drugs (solid) vs the control baseline (dashed). The gap is the key signal: shortage drugs
+    have chronically elevated TRI/SCRI/IRWI and lower QCI throughout the entire window,
+    not just immediately before onset.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
+    <div class="card"><h3>TRI — Text Risk Index</h3><div class="chart-host"><canvas id="llT1"></canvas></div></div>
+    <div class="card"><h3>SCRI — Sterility/Contamination Risk</h3><div class="chart-host"><canvas id="llT2"></canvas></div></div>
+    <div class="card"><h3>IRWI — Investigation/Remediation Weakness</h3><div class="chart-host"><canvas id="llT3"></canvas></div></div>
+    <div class="card"><h3>QCI — Quality Culture (lower = worse)</h3><div class="chart-host"><canvas id="llT4"></canvas></div></div>
+  </div>
+  <div class="note dark">
+    Unlike Redica regulatory signals (which fluctuate month to month), LLM text indices represent
+    a <strong>structural risk fingerprint</strong> of each facility derived from its full inspection
+    history. The persistent gap between shortage and no-shortage drug baselines supports using text
+    indices as long-horizon risk signals — identifying facilities with chronic quality culture
+    deficiencies before any acute regulatory action occurs.
   </div>
 </section>
 
@@ -1174,11 +1333,17 @@ new Chart(document.getElementById("chartDrug"),{{
 // ── Monthly lead-lag charts ────────────────────────────────────────────────
 {redica_js}
 
+// ── Text index monthly lead-lag (flat = persistent risk gap) ─────────────
+{text_ll_js}
+
 // ── 483 text analysis charts ──────────────────────────────────────────────
 {text_js}
 
 // ── 483 text group comparison (shortage vs no-shortage drugs) ─────────────
 {text_group_js}
+
+// ── Text detail group (violation categories + remediation) ────────────────
+{text_detail_group_js}
 
 // ── RF model results ──────────────────────────────────────────────────────
 {model_js}
