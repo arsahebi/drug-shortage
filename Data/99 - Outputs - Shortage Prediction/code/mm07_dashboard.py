@@ -13,12 +13,13 @@ Run from the code/ directory:
 """
 
 from __future__ import annotations
+import base64
 import json
 from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS, TEXT_FEATURES_CSV, VALISURE_FEI
+from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS, OUT_FIGS, TEXT_FEATURES_CSV, VALISURE_FEI
 from utils import get_logger
 
 log = get_logger("mm07_dashboard", OUT_LOGS / "mm07_dashboard.log")
@@ -81,10 +82,6 @@ def compute_data() -> dict:
             redica_vai=("redica_n_vai", "mean"),
             redica_wl=("redica_n_warning_letters", "mean"),
             redica_insp=("redica_n_inspections", "mean"),
-            tri_mean=("tri_mean", "first"),
-            scri_mean=("scri_mean", "first"),
-            irwi_mean=("irwi_mean", "first"),
-            qci_mean=("qci_mean", "first"),
         ).reset_index())
 
         # Valisure scores from valisure_drug summary
@@ -107,10 +104,6 @@ def compute_data() -> dict:
                 "faers_reports": round(float(r.faers_reports or 0), 1),
                 "val":           round(float(vm.get("valisure_mean_score", 0) or 0), 1),
                 "fails":         int(vm.get("valisure_n_failing", 0) or 0),
-                "tri":           round(float(r.tri_mean or 0), 1),
-                "scri":          round(float(r.scri_mean or 0), 1),
-                "irwi":          round(float(r.irwi_mean or 0), 1),
-                "qci":           round(float(r.qci_mean or 0), 1),
                 "redica_oai":    round(float(r.redica_oai or 0), 2),
                 "redica_483":    round(float(r.redica_483 or 0), 2),
                 "redica_vai":    round(float(r.redica_vai or 0), 2),
@@ -142,34 +135,17 @@ def compute_data() -> dict:
     else:
         d["lift"] = []
 
-    # ── 483 text feature lift + drug-group comparison ─────────────────────────
-    _TEXT_LIFT_COLS = ["tri_mean", "scri_mean", "irwi_mean", "qci_mean"]
+    # ── 483 raw text feature lift (annual, drug-year level) ───────────────────
+    _TEXT_LIFT_COLS = ["repeat_llm_only_share", "contamination_llm_only_share",
+                       "oos_oot_regex_share", "severity_high_share", "remediation_none_share"]
     if ap is not None:
         q = ap.dropna(subset=["y_next_year_shortage"])
         for c in [c for c in _TEXT_LIFT_COLS if c in q.columns]:
             grp = q.groupby("y_next_year_shortage")[c].mean()
             m0  = float(grp.get(0, 0))
             m1  = float(grp.get(1, 0))
-            d["lift"].append({"signal": c, "mean0": round(m0, 2), "mean1": round(m1, 2),
+            d["lift"].append({"signal": c, "mean0": round(m0, 3), "mean1": round(m1, 3),
                                "lift": round(m1 / m0, 3) if m0 > 0 else 1.0})
-        dm = ap.groupby("drug_norm").agg(
-            starts=("shortage_started", "sum"),
-            tri=("tri_mean", "first"), scri=("scri_mean", "first"),
-            irwi=("irwi_mean", "first"), qci=("qci_mean", "first"),
-        ).reset_index()
-        g_has = dm[dm["starts"] > 0][["tri","scri","irwi","qci"]].mean().round(2)
-        g_no  = dm[dm["starts"] == 0][["tri","scri","irwi","qci"]].mean().round(2)
-        d["text_group"] = {
-            "labels":      ["TRI", "SCRI", "IRWI", "QCI"],
-            "shortage":    [float(g_has.get("tri",0)), float(g_has.get("scri",0)),
-                            float(g_has.get("irwi",0)), float(g_has.get("qci",0))],
-            "no_shortage": [float(g_no.get("tri",0)),  float(g_no.get("scri",0)),
-                            float(g_no.get("irwi",0)),  float(g_no.get("qci",0))],
-            "n_shortage":    int((dm["starts"] > 0).sum()),
-            "n_no_shortage": int((dm["starts"] == 0).sum()),
-        }
-    else:
-        d["text_group"] = {}
 
     # ── Annual event study (lead_time_valisure.csv) ────────────────────────────
     ls = _read("lead_time_valisure.csv", OUT_TABS)
@@ -200,10 +176,10 @@ def compute_data() -> dict:
         for entry in d.get("by_drug", []):
             entry["duration"] = 0
 
-    # ── Text features from 483 CSV: severity_high, violation categories, remediation
+    # ── Text features from 483 CSV: the m12-validated raw shares ──────────────
     _TEXT_DETAIL_COLS = [
-        "severity_high_share", "contamination_llm_share", "systemic_llm_share",
-        "patient_risk_llm_share", "remediation_none_share", "remediation_weak_share",
+        "severity_high_share", "contamination_llm_only_share", "repeat_llm_only_share",
+        "oos_oot_regex_share", "remediation_none_share", "remediation_weak_share",
     ]
     drug_text_detail: dict = {}
     if TEXT_FEATURES_CSV.exists() and VALISURE_FEI.exists():
@@ -216,22 +192,22 @@ def compute_data() -> dict:
         drug_text_detail = merged.groupby("drug_norm")[_avail].mean().round(3).to_dict(orient="index")
     for entry in d.get("by_drug", []):
         detail = drug_text_detail.get(entry["drug"], {})
-        entry["sev_high"]        = round(float(detail.get("severity_high_share", 0)), 3)
-        entry["contam_share"]    = round(float(detail.get("contamination_llm_share", 0)), 3)
-        entry["systemic_share"]  = round(float(detail.get("systemic_llm_share", 0)), 3)
-        entry["patient_share"]   = round(float(detail.get("patient_risk_llm_share", 0)), 3)
-        entry["remed_none"]      = round(float(detail.get("remediation_none_share", 0)), 3)
-        entry["remed_weak"]      = round(float(detail.get("remediation_weak_share", 0)), 3)
+        entry["sev_high"]     = round(float(detail.get("severity_high_share", 0)), 3)
+        entry["contam_share"] = round(float(detail.get("contamination_llm_only_share", 0)), 3)
+        entry["repeat_share"] = round(float(detail.get("repeat_llm_only_share", 0)), 3)
+        entry["oos_share"]    = round(float(detail.get("oos_oot_regex_share", 0)), 3)
+        entry["remed_none"]   = round(float(detail.get("remediation_none_share", 0)), 3)
+        entry["remed_weak"]   = round(float(detail.get("remediation_weak_share", 0)), 3)
 
     # ── Text detail group comparison (violation categories + remediation) ──────
     if ap is not None:
         dm2 = ap.groupby("drug_norm")["shortage_started"].sum().reset_index()
         dm2.columns = ["drug_norm", "starts"]
         detail_cols_map = {
-            "sev_high":      "High-severity obs %",
+            "repeat_share":  "Repeat violations %",
             "contam_share":  "Contamination %",
-            "systemic_share":"Systemic violation %",
-            "patient_share": "Patient risk %",
+            "oos_share":     "OOS/OOT references %",
+            "sev_high":      "High-severity obs %",
             "remed_none":    "No remediation %",
             "remed_weak":    "Weak remediation %",
         }
@@ -300,29 +276,95 @@ def compute_data() -> dict:
                     "group":    "redica",
                 }
 
-    # ── Text index lead-lag (time-invariant → flat lines; gap = persistent risk) ─
-    if ap is not None:
-        _ll_offsets = list(range(-12, 1))
-        pilot2 = ap[ap["has_valisure"] == 1]
-        dm_text = pilot2.groupby("drug_norm").agg(
-            starts=("shortage_started", "sum"),
-            tri=("tri_mean", "first"), scri=("scri_mean", "first"),
-            irwi=("irwi_mean", "first"), qci=("qci_mean", "first"),
-        ).reset_index()
-        has_text = dm_text[dm_text["starts"] > 0]
-        no_text  = dm_text[dm_text["starts"] == 0]
-        for col, label_key in [("tri","tri_mean"),("scri","scri_mean"),
-                                ("irwi","irwi_mean"),("qci","qci_mean")]:
-            mv  = float(has_text[col].dropna().mean()) if len(has_text) else 0.0
-            bl  = float(no_text[col].dropna().mean())  if len(no_text)  else 0.0
-            se  = float(has_text[col].dropna().std() / max(len(has_text)**0.5, 1))
-            d["monthly_lead"][label_key] = {
-                "offsets":  _ll_offsets,
-                "means":    [round(mv, 3)] * len(_ll_offsets),
-                "ses":      [round(se, 3)] * len(_ll_offsets),
-                "baseline": round(bl, 3),
+    # ── m11: time-varying repeat-violation 483 count — monthly lead-lag ───────
+    hr = _read("text_highrisk_483_monthly.csv")
+    if hr is not None and mp is not None and "n_repeat_483_last_24mo" in hr.columns:
+        mp3 = mp.merge(hr, on=["drug_norm", "year", "month"], how="left")
+        mp3["n_repeat_483_last_24mo"] = mp3["n_repeat_483_last_24mo"].fillna(0)
+        mp3["midx"] = mp3["year"] * 12 + mp3["month"]
+        onsets = mp3[mp3["shortage_start"] == 1][["drug_norm", "midx"]].values.tolist()
+        _off = list(range(-12, 1))
+        recs = []
+        for drug, om in onsets:
+            di = mp3[mp3["drug_norm"] == drug].set_index("midx")["n_repeat_483_last_24mo"]
+            for off in _off:
+                t = om + off
+                if t in di.index and pd.notna(di[t]):
+                    recs.append({"offset": off, "val": float(di[t])})
+        tagged = {(dr, om + k) for dr, om in onsets for k in range(-12, 13)}
+        bl_rows = mp3[~mp3.apply(lambda r: (r["drug_norm"], r["midx"]) in tagged, axis=1)]
+        bl = float(bl_rows["n_repeat_483_last_24mo"].mean()) if len(bl_rows) else 0.0
+        if recs:
+            dfh = pd.DataFrame(recs)
+            g = dfh.groupby("offset")["val"]
+            d["monthly_lead"]["n_repeat_483_last_24mo"] = {
+                "offsets":  _off,
+                "means":    [round(float(g.mean().get(o, 0)), 4) for o in _off],
+                "ses":      [round(float(g.sem().get(o, 0)), 4) for o in _off],
+                "baseline": round(bl, 4),
                 "group":    "text",
             }
+
+    # ── m12: text-signal validation grid (curated cells) ──────────────────────
+    # Curated from outputs/tables/text_signal_grid.csv (41 features × 5 outcomes
+    # × 3 horizons). Selection rule: consistent direction across horizons,
+    # n_hi >= 10, and a coherent mechanism. recall@12m excluded (only 2 events).
+    _ESC_FEATS = [
+        ("repeat_llm_only_share",        "Repeat violations (LLM)"),
+        ("contamination_llm_only_share", "Contamination (LLM)"),
+        ("oos_oot_regex_share",          "OOS/OOT references"),
+        ("severity_high_share",          "High-severity obs. (LLM)"),
+        ("n_obs_total",                  "Number of observations"),
+    ]
+    _REC_FEATS = [
+        ("vc_buildingsequipment_share",  "Buildings/equipment violations"),
+        ("repeat_llm_only_share",        "Repeat violations (LLM)"),
+        ("oos_oot_regex_share",          "OOS/OOT references"),
+        ("capital_root_cause_share",     "Capital root cause (LLM)"),
+    ]
+    grid = _read("text_signal_grid.csv", OUT_TABS)
+    d["grid_esc"], d["grid_rec"], d["grid_extra"] = [], [], {}
+    if grid is not None:
+        def _cells(feats, outcome):
+            out = []
+            for feat, label in feats:
+                row = grid[(grid["feature"] == feat) & (grid["outcome"] == outcome)]
+                if len(row):
+                    r = row.iloc[0]
+                    out.append({"label": label,
+                                "hi": round(float(r["hi_rate"]) * 100, 1),
+                                "lo": round(float(r["lo_rate"]) * 100, 1),
+                                "lift": float(r["lift"]),
+                                "n_hi": int(r["n_hi"]), "n_lo": int(r["n_lo"])})
+            return out
+        d["grid_esc"] = _cells(_ESC_FEATS, "esc_24")
+        d["grid_rec"] = _cells(_REC_FEATS, "rec_24")
+
+        def _cell1(feat, outcome, col="effect"):
+            row = grid[(grid["feature"] == feat) & (grid["outcome"] == outcome)]
+            return float(row.iloc[0][col]) if len(row) else None
+        d["grid_extra"] = {
+            "sev_esc12_lift":   _cell1("severity_high_share", "esc_12", "lift"),
+            "remed_none_shdur": _cell1("remediation_none_share", "sh_dur_36"),
+            "invest_shdelta":   _cell1("investigation_llm_share", "sh_dur_delta_12"),
+            "esc24_base": round(float(
+                (grid[grid["outcome"] == "esc_24"].iloc[0]["hi_rate"] * grid[grid["outcome"] == "esc_24"].iloc[0]["n_hi"]
+                 + grid[grid["outcome"] == "esc_24"].iloc[0]["lo_rate"] * grid[grid["outcome"] == "esc_24"].iloc[0]["n_lo"])
+                / (grid[grid["outcome"] == "esc_24"].iloc[0]["n_hi"] + grid[grid["outcome"] == "esc_24"].iloc[0]["n_lo"])) * 100, 1),
+            "rec24_base": round(float(
+                (grid[grid["outcome"] == "rec_24"].iloc[0]["hi_rate"] * grid[grid["outcome"] == "rec_24"].iloc[0]["n_hi"]
+                 + grid[grid["outcome"] == "rec_24"].iloc[0]["lo_rate"] * grid[grid["outcome"] == "rec_24"].iloc[0]["n_lo"])
+                / (grid[grid["outcome"] == "rec_24"].iloc[0]["n_hi"] + grid[grid["outcome"] == "rec_24"].iloc[0]["n_lo"])) * 100, 1),
+            "n_snapshots": int(grid.iloc[0]["n_hi"] + grid.iloc[0]["n_lo"]),
+        }
+
+    # ── m11: FEI drill-down summary ────────────────────────────────────────────
+    fs = _read("fei_timeline_summary.csv", OUT_FIGS / "timelines")
+    if fs is not None:
+        fs["firm_name"] = fs["firm_name"].fillna("")
+        d["fei_summary"] = fs.replace({np.nan: None}).to_dict(orient="records")
+    else:
+        d["fei_summary"] = []
 
     # ── RF model results: feature importance + ablation ───────────────────────
     fi_raw = _read("rf_importance_valisure.csv", OUT_MODELS)
@@ -397,10 +439,11 @@ def _lift_rows(lift: list[dict]) -> str:
         "faers_severity_score": "FAERS — severity score",
         "faers_n_serious": "FAERS — serious reports",
         "faers_n_reports": "FAERS — all reports",
-        "tri_mean": "483 Text — Text Risk Index (TRI)",
-        "scri_mean": "483 Text — Sterility/Contamination Risk (SCRI)",
-        "irwi_mean": "483 Text — Investigation/Remediation Weakness (IRWI)",
-        "qci_mean": "483 Text — Quality Culture Index (QCI)",
+        "repeat_llm_only_share": "483 Text — Repeat violations share",
+        "contamination_llm_only_share": "483 Text — Contamination share",
+        "oos_oot_regex_share": "483 Text — OOS/OOT references share",
+        "severity_high_share": "483 Text — High-severity obs. share",
+        "remediation_none_share": "483 Text — No-remediation share",
     }
     cls_map = lambda x: "high" if x >= 5 else ("mid" if x >= 1.5 else "low")
     rows = ""
@@ -429,10 +472,7 @@ def generate_html(d: dict) -> str:
         "faers_n_reports_w3m": "FAERS Reports (3m rolling)",
         "faers_n_serious_w3m": "FAERS Serious (3m rolling)",
         "faers_severity_score_w3m": "FAERS Severity Score (3m rolling)",
-        "tri_mean": "Text Risk Index (TRI)",
-        "scri_mean": "Sterility/Contamination Risk (SCRI)",
-        "irwi_mean": "Investigation/Remediation Weakness (IRWI)",
-        "qci_mean": "Quality Culture Index (QCI)",
+        "n_repeat_483_last_24mo": "483s with repeat violations, trailing 24m",
     }
 
     def _ll_overlay_js(canvas_id: str, sig1: str, sig2: str, col1: str, col2: str) -> str:
@@ -511,71 +551,106 @@ new Chart(document.getElementById({_j(canvas_id)}), {{
         _ll_chart_js("llF3", "faers_n_reports_w3m",       "224, 122, 95")
     )
     cross_signal_js = ""
-    text_ll_js = (
-        _ll_chart_js("llT1", "tri_mean",  "2, 99, 176") +
-        _ll_chart_js("llT2", "scri_mean", "224, 122, 95") +
-        _ll_chart_js("llT3", "irwi_mean", "28, 114, 147") +
-        _ll_chart_js("llT4", "qci_mean",  "80, 140, 60")
+    text_ll_js = _ll_chart_js("llT5", "n_repeat_483_last_24mo", "180, 80, 180")
+
+    # (composite-index charts removed — indices dropped from the analysis)
+    text_js = ""
+    text_group_js = ""
+
+    # ── m12: forward-validation charts (escalation + recalls) ─────────────────
+    gx = d.get("grid_extra", {})
+    fwd_n = int(gx.get("n_snapshots") or 0)
+    esc_base = gx.get("esc24_base", 0)
+    rec_base = gx.get("rec24_base", 0)
+
+    def _split_chart_js(canvas_id: str, cells: list[dict], x_title: str) -> str:
+        if not cells:
+            return f'/* {canvas_id}: no grid data */'
+        labels = [c["label"] for c in cells]
+        hi = [c["hi"] for c in cells]
+        lo = [c["lo"] for c in cells]
+        lifts = [c["lift"] for c in cells]
+        return f"""
+(function(){{
+const LIFTS = {_j(lifts)};
+new Chart(document.getElementById({_j(canvas_id)}),{{
+  type:'bar',
+  data:{{
+    labels:{_j(labels)},
+    datasets:[
+      {{label:'Above median',data:{_j(hi)},backgroundColor:'rgba(224,122,95,0.85)',borderRadius:3}},
+      {{label:'At/below median',data:{_j(lo)},backgroundColor:'rgba(28,114,147,0.75)',borderRadius:3}}
+    ]
+  }},
+  options:{{maintainAspectRatio:false,indexAxis:'y',
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}},
+      tooltip:{{callbacks:{{afterBody:items=>'Lift: '+LIFTS[items[0].dataIndex]+'x'}}}}}},
+    scales:{{
+      x:{{beginAtZero:true,title:{{display:true,text:{_j(x_title)}}},ticks:{{callback:v=>v+'%'}}}},
+      y:{{grid:{{display:false}},ticks:{{font:{{size:10.5}}}}}}
+    }}
+  }}
+}});
+}})();"""
+
+    fwd_js = (
+        _split_chart_js("escChart", d.get("grid_esc", []),
+                        "% followed by OAI or Warning Letter within 24 months") +
+        _split_chart_js("recChart", d.get("grid_rec", []),
+                        "% followed by a drug recall at the facility within 24 months")
     )
 
-    # ── Text analysis: TRI/SCRI/QCI/IRWI/SevHigh per drug ────────────────────
-    tf = d.get("by_drug", [])
-    tf_sorted  = sorted(tf, key=lambda x: x.get("duration", 0), reverse=True)
-    tf_drugs   = [r["drug"]          for r in tf_sorted]
-    tf_tri     = [r["tri"]           for r in tf_sorted]
-    tf_scri    = [r["scri"]          for r in tf_sorted]
-    tf_irwi    = [r["irwi"]          for r in tf_sorted]
-    tf_qci     = [r["qci"]           for r in tf_sorted]
-    tf_sev_high = [round(r.get("sev_high", 0) * 100, 1) for r in tf_sorted]
-    text_js = f"""
-new Chart(document.getElementById('triChart'),{{
-  type:'bar',
-  data:{{
-    labels:{_j(tf_drugs)},
-    datasets:[
-      {{label:'TRI — Text Risk Index',data:{_j(tf_tri)},backgroundColor:'rgba(2,99,176,0.75)',borderRadius:3}},
-      {{label:'SCRI — Sterility/Contamination Risk',data:{_j(tf_scri)},backgroundColor:'rgba(224,122,95,0.75)',borderRadius:3}},
-      {{label:'IRWI — Investigation/Remediation Weakness',data:{_j(tf_irwi)},backgroundColor:'rgba(28,114,147,0.70)',borderRadius:3}},
-      {{label:'QCI — Quality Culture (lower = worse)',data:{_j(tf_qci)},backgroundColor:'rgba(80,140,60,0.70)',borderRadius:3}},
-      {{label:'High-Severity Obs. % (×100)',data:{_j(tf_sev_high)},backgroundColor:'rgba(180,80,180,0.65)',borderRadius:3}}
-    ]
-  }},
-  options:{{maintainAspectRatio:false,
-    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10}}}}}}}},
-    scales:{{
-      x:{{grid:{{display:false}},ticks:{{maxRotation:40,font:{{size:9}}}}}},
-      y:{{beginAtZero:true,max:100,title:{{display:true,text:'Score / percentage (0–100)'}}}}
-    }}
-  }}
-}});"""
+    # dynamic narrative bullets for 6A
+    def _fmt_cell(cells, label):
+        for c in cells:
+            if c["label"] == label:
+                return f"{c['hi']}% vs {c['lo']}% ({c['lift']}×)"
+        return "—"
+    esc_repeat = _fmt_cell(d.get("grid_esc", []), "Repeat violations (LLM)")
+    esc_contam = _fmt_cell(d.get("grid_esc", []), "Contamination (LLM)")
+    rec_bldg   = _fmt_cell(d.get("grid_rec", []), "Buildings/equipment violations")
+    sev12_lift = gx.get("sev_esc12_lift")
+    sev12_txt  = f"{sev12_lift}×" if sev12_lift else "—"
+    remed_rho  = gx.get("remed_none_shdur")
+    remed_txt  = f"ρ = +{remed_rho}" if remed_rho else "—"
+    invest_rho = gx.get("invest_shdelta")
+    invest_txt = f"ρ = +{invest_rho}" if invest_rho else "—"
 
-    # ── 483 text group comparison: shortage vs no-shortage drugs ─────────────
-    tg = d.get("text_group", {})
-    text_group_js = ""
-    if tg:
-        n_s  = tg.get("n_shortage", "?")
-        n_ns = tg.get("n_no_shortage", "?")
-        text_group_js = f"""
-new Chart(document.getElementById('textGroupChart'),{{
-  type:'bar',
-  data:{{
-    labels:{_j(tg["labels"])},
-    datasets:[
-      {{label:'≥1 shortage (n={n_s} drugs)',data:{_j(tg["shortage"])},
-        backgroundColor:'rgba(224,122,95,0.8)',borderRadius:3}},
-      {{label:'No shortage (n={n_ns} drugs)',data:{_j(tg["no_shortage"])},
-        backgroundColor:'rgba(28,114,147,0.7)',borderRadius:3}}
-    ]
-  }},
-  options:{{maintainAspectRatio:false,
-    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
-    scales:{{
-      x:{{grid:{{display:false}}}},
-      y:{{beginAtZero:false,min:40,max:70,
-           title:{{display:true,text:'Mean index score (0–100)'}}}}
-    }}
-  }}
-}});"""
+    # ── m11: FEI drill-down table (text-covered facilities) ───────────────────
+    fei_sum = d.get("fei_summary", [])
+    cov = [r for r in fei_sum if (r.get("n_483_snapshots") or 0) > 0]
+    cov.sort(key=lambda r: ((r.get("n_high_risk_483_snapshots") or 0),
+                            (r.get("n_oai_inspections") or 0)), reverse=True)
+    n_total_feis = len(fei_sum)
+    n_cov_feis = len(cov)
+    fei_rows = []
+    for r in cov:
+        flags = []
+        if r.get("any_recall_within_24mo"):
+            flags.append("recall ≤24m")
+        if r.get("any_shortage_within_24mo"):
+            flags.append("shortage ≤24m")
+        hr_n = r.get("n_high_risk_483_snapshots") or 0
+        hr_style = ' style="color:#C0392B;font-weight:700;"' if hr_n > 0 else ""
+        fei_rows.append(
+            f"<tr><td>{r['fei']}</td><td>{r.get('firm_name','')}</td>"
+            f"<td>{r.get('apis_made','')}</td>"
+            f"<td class='num'>{r.get('n_483_snapshots',0)}</td>"
+            f"<td class='num'{hr_style}>{hr_n}</td>"
+            f"<td class='num'>{r.get('n_oai_inspections',0)}</td>"
+            f"<td class='num'>{r.get('n_vai_inspections',0)}</td>"
+            f"<td class='num'>{r.get('n_drug_recalls',0)}</td>"
+            f"<td class='num'>{r.get('n_class_I_recalls',0)}</td>"
+            f"<td>{', '.join(flags) or '—'}</td></tr>")
+    fei_table_rows = "\n".join(fei_rows)
+
+    # ── m11: case-study timeline images (base64-embedded) ─────────────────────
+    def _img64(path: Path) -> str:
+        if path.exists():
+            return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+        return ""
+    cs_sun = _img64(OUT_FIGS / "timelines" / "fei_3002809586_timeline.png")
+    cs_hospira = _img64(OUT_FIGS / "timelines" / "fei_1021343_timeline.png")
 
     # ── Drug-level cross-signal scatter: Redica vs FAERS ─────────────────────
     tf2 = d.get("by_drug", [])
@@ -665,8 +740,10 @@ new Chart(document.getElementById('textDetailChart'),{{
     if fi_data:
         fi_sorted = sorted(fi_data, key=lambda x: x["imp"])
         fi_labels = [r["feature"] for r in fi_sorted]
+        _TEXT_FEATS = ("repeat_llm_only_share", "contamination_llm_only_share",
+                       "oos_oot_regex_share", "severity_high_share", "remediation_none_share")
         fi_colors = [
-            "rgba(28,114,147,0.85)" if r["feature"] in ("tri_mean","scri_mean","irwi_mean","qci_mean")
+            "rgba(28,114,147,0.85)" if r["feature"] in _TEXT_FEATS
             else "rgba(2,99,176,0.65)" for r in fi_sorted
         ]
         fi_vals = [r["imp"] for r in fi_sorted]
@@ -703,14 +780,16 @@ new Chart(document.getElementById('fiChart'),{{
     AUC with text features: <strong>{auc_with}</strong> &nbsp;|&nbsp; without: <strong>{auc_no}</strong>
     &nbsp;→ <strong style="color:var(--accent);">Δ = {delta_rf:+.3f}</strong><br>
     <br>
-    <strong>Top LLM-derived predictor:</strong> Quality Culture Index (QCI) — 3rd overall, 14.8% importance<br>
-    Text indices combined: ~32% of total RF importance<br>
+    <strong>Honest read:</strong> at drug-year level (n=126 rows, 19 events), the raw 483 text
+    features do <em>not</em> improve prediction. The validated text signal is at the
+    <strong>facility level</strong> (Section 5) — aggregating to drug-year across many facilities
+    dilutes it.<br>
     <br>
     <span style="color:var(--muted);font-size:11px;">
       Logit AUC with text: {round(float(abl_l2.get("auc_with_text",0)),3)} &nbsp;|&nbsp;
-      without: {round(float(abl_l2.get("auc_without_text",0)),3)}
-      (logit: text features reduce AUC at n=19 events — high-dim collinearity with small sample).<br>
-      Recalls excluded from features — concurrent/lagging w.r.t. shortage onset, not leading indicators.
+      without: {round(float(abl_l2.get("auc_without_text",0)),3)}.
+      Recalls excluded from features — concurrent/lagging w.r.t. shortage onset, not leading indicators.<br>
+      Next step: a facility-level model using the dated 483 snapshots directly.
     </span>
   `;
 }})();"""
@@ -772,66 +851,9 @@ new Chart(document.getElementById('oaiFwdChart'),{{
            ticks:{{callback:function(v){{return (v*100).toFixed(0)+'%';}}}}}}
     }}
   }}
-}});
-
-new Chart(document.getElementById('oaiFwdBar'),{{
-  type:'bar',
-  data:{{
-    labels:['Already in shortage\\nat OAI (n={n_already})','NOT in shortage\\nat OAI (n={n_fresh})'],
-    datasets:[
-      {{label:'No shortage in next 12m',
-        data:[{n_already_no},{n_fresh_no}],backgroundColor:'rgba(28,114,147,0.75)',borderRadius:3}},
-      {{label:'\\u22651 shortage month in next 12m',
-        data:[{n_already_fwd},{n_fresh_fwd}],backgroundColor:'rgba(224,122,95,0.85)',borderRadius:3}}
-    ]
-  }},
-  options:{{maintainAspectRatio:false,
-    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
-    scales:{{
-      x:{{grid:{{display:false}},stacked:true}},
-      y:{{beginAtZero:true,stacked:true,ticks:{{stepSize:1}},
-           title:{{display:true,text:'# OAI events'}}}}
-    }}
-  }}
 }});"""
 
-    # ── Quality split JS ──────────────────────────────────────────────────────
-    qs_data = d.get("quality_split", [])
-    qs_js = ""
-    if qs_data:
-        qs_drugs  = [r["drug_norm"] for r in qs_data]
-        qs_scores = [round(float(r.get("valisure_score") or 0), 1) for r in qs_data]
-        qs_starts = [int(r.get("shortage_starts") or 0) for r in qs_data]
-        qs_tier   = [r.get("quality_tier", "low_quality") for r in qs_data]
-        qs_colors = [
-            "rgba(28,114,147,0.8)" if t == "high_quality" else "rgba(224,122,95,0.85)"
-            for t in qs_tier
-        ]
-        qs_js = f"""
-new Chart(document.getElementById('qualSplitChart'),{{
-  type:'bar',
-  data:{{
-    labels:{_j(qs_drugs)},
-    datasets:[
-      {{label:'Shortage starts',data:{_j(qs_starts)},backgroundColor:{_j(qs_colors)},
-        borderRadius:3,yAxisID:'y'}},
-      {{label:'Valisure mean score',data:{_j(qs_scores)},
-        backgroundColor:'rgba(33,41,92,0.15)',borderColor:'rgba(33,41,92,0.6)',
-        borderWidth:1.5,borderRadius:2,yAxisID:'y2',type:'line',
-        tension:0.2,pointRadius:4}}
-    ]
-  }},
-  options:{{maintainAspectRatio:false,
-    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}}}}}}}},
-    scales:{{
-      x:{{grid:{{display:false}},ticks:{{maxRotation:40,font:{{size:9}}}}}},
-      y:{{beginAtZero:true,title:{{display:true,text:'Shortage starts'}},
-           ticks:{{stepSize:1}}}},
-      y2:{{position:'right',title:{{display:true,text:'Valisure mean score'}},
-            grid:{{display:false}}}}
-    }}
-  }}
-}});"""
+    qs_js = ""  # quality-split chart removed with the condensed Wang section
 
     # (Recall circularity analysis removed — recalls excluded from predictive features
     #  as they are concurrent/lagging w.r.t. shortage onset, not leading indicators.)
@@ -926,11 +948,26 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <header class="hero">
   <div class="eyebrow">Research Dashboard · June 2026 · NLP &amp; LLM Framework</div>
   <h1>From Regulatory Text to Shortage Risk</h1>
-  <p>NLP &amp; LLM Framework for Pharmaceutical Quality Risk Prediction ·
-     14 generic APIs · 129 manufacturing facilities · 2015–2024 ·
-     FDA 483 text extraction → facility-level risk indices → shortage prediction.
-     Recalls excluded from predictive features (concurrent/lagging with onset).</p>
+  <p>14 generic APIs · 129 manufacturing facilities · 2015–2024 ·
+     LLM extraction of FDA Form 483 narrative text → validated facility-level risk signals.</p>
 </header>
+
+<!-- ═══ KEY FINDINGS ═══ -->
+<section>
+  <div class="note dark" style="margin-top:0;font-size:13.5px;line-height:1.8;">
+    <strong>Three findings to take away:</strong><br>
+    <strong>1.</strong> When FDA issues a 483, <em>what the text says</em> predicts what happens next:
+    facilities whose 483s show <strong>repeat violations, contamination, or OOS/OOT findings</strong> are
+    2–7× more likely to face an OAI or Warning Letter — and buildings/equipment findings precede
+    recalls — within 24 months (Section 5).<br>
+    <strong>2.</strong> 483s with <strong>no remediation response</strong> in the text are followed by more
+    months of drug shortage over the next 3 years (ρ = +0.33) — text quality of the response matters,
+    not just the violation (Section 5).<br>
+    <strong>3.</strong> These signals live at the <strong>facility level</strong>. Aggregated to drug-year
+    (n=19 shortage events), they do not yet improve a prediction model (Section 6) — the next step is
+    facility-level modeling, not more aggregation.
+  </div>
+</section>
 
 <!-- ═══ SECTION 1: PANEL SNAPSHOT ═══ -->
 <section>
@@ -998,51 +1035,12 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   </div>
 </section>
 
-<!-- ═══ SECTION 4: 483 TEXT ANALYSIS SIGNALS ═══ -->
-<section>
-  <div class="section-head"><span class="step-num">4</span><h2>FDA 483 Text Signals — LLM-extracted indices by drug</h2></div>
-  <div class="sub">
-    38 of 129 facilities (those with 483 PDFs on file) scored via GPT-4o-mini extraction of 622 observations.
-    Indices aggregated to drug level (mean across all FEIs manufacturing that API).
-    Sorted by <strong>total months in shortage</strong> (highest burden on left).
-    <br><br>
-    <strong>Index definitions (all 0–100; higher = higher risk, except QCI where lower = worse):</strong>
-    <ul style="margin:4px 0 0 16px;font-size:12px;line-height:1.7;">
-      <li><strong>TRI (Text Risk Index)</strong> — overall manufacturing risk signal derived from the full
-          observation narrative. Combines violation category, severity, and root cause language.</li>
-      <li><strong>SCRI (Sterility/Contamination Risk Index)</strong> — specifically captures sterility failures,
-          contamination events, and aseptic-technique violations in the observation text.</li>
-      <li><strong>IRWI (Investigation/Remediation Weakness Index)</strong> — detects language indicating
-          incomplete root-cause investigations, vague corrective actions, or repeat failure patterns.</li>
-      <li><strong>QCI (Quality Culture Index)</strong> — measures quality-culture strength (SOPs followed,
-          Quality Unit active, proactive monitoring). <em>Lower QCI = weaker quality culture = higher risk.</em></li>
-      <li><strong>High-Severity Obs. %</strong> — share of observations that the LLM classified as
-          "high severity" (direct patient-risk or systemic quality failure). Converted to 0–100 scale.</li>
-    </ul>
-  </div>
-  <div class="card">
-    <h3>TRI / SCRI / IRWI / QCI / High-Severity % by drug</h3>
-    <div class="csub">Sorted by total shortage duration (longest on left). Indices reflect cumulative 483 history across all FEIs for that drug.</div>
-    <div class="chart-host tall"><canvas id="triChart"></canvas></div>
-  </div>
-  <div class="note dark">
-    <strong>Key insights:</strong>
-    QCI (Quality Culture Index) is the <strong>3rd most important RF predictor</strong> of drug shortage
-    (14.8% importance) — lower QCI for long-shortage drugs confirms that chronic compliance culture
-    weakness is a leading signal.
-    SCRI is highest for Ampicillin (75.6) — its only scored facility (Aurobindo/Eugia) is a sterile
-    injectable manufacturer with documented contamination events in both 2019 and 2024.
-    IRWI is elevated for high-burden drugs, reflecting systematic investigation failures.
-    <em>Note: indices are time-invariant — they reflect the full 483 history, not a single year.
-    Drugs with no 483 PDFs on file show zero for all indices.</em>
-  </div>
-</section>
 
 <!-- ═══ SECTION 5: EDA — REGULATORY & FAERS RELATIONSHIPS ═══ -->
 <section>
   <div class="section-head">
-    <span class="step-num">5</span>
-    <h2>EDA — Regulatory signals before shortage onset</h2>
+    <span class="step-num">4</span>
+    <h2>EDA — Signals before shortage onset</h2>
   </div>
   <div class="sub">
     Monthly event study: mean signal value at each offset month relative to shortage onset (month 0).
@@ -1052,36 +1050,28 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:0 0 4px 0;font-size:16px;">
-    5A · LLM-extracted text indices — shortage vs no-shortage drugs</h3>
+    4A · 483 text features — shortage vs no-shortage drugs</h3>
   <div class="sub" style="margin-left:0;">
-    Composite text indices (TRI/SCRI/IRWI/QCI) and raw feature proportions, averaged across all
-    facility 483s for each drug. Two groups: drugs with ≥1 shortage onset vs drugs with zero onsets (2015–2024).
+    Raw LLM/regex-extracted feature shares, averaged across all facility 483s for each drug.
+    Two groups: drugs with ≥1 shortage onset vs drugs with zero onsets (2015–2024).
     <br><strong>≥1 shortage onset:</strong> Ampicillin, Atorvastatin, Calcium Gluconate,
     Lisinopril, Magnesium Sulfate, Metformin, Metoprolol, Metronidazole, Pantoprazole, Potassium Chloride, Tacrolimus.
     <br><strong>0 shortage onsets:</strong> Ampicillin+Sulbactam, Bupropion, Vancomycin.
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
-    <div class="card">
-      <h3>Composite indices (TRI / SCRI / IRWI / QCI)</h3>
-      <div class="csub">All indices 0–100. QCI: lower = weaker quality culture = higher risk.</div>
-      <div class="chart-host"><canvas id="textGroupChart"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Violation categories &amp; remediation quality</h3>
-      <div class="csub">% of observations flagged for each category. High-severity, contamination, systemic, patient risk, no/weak remediation.</div>
-      <div class="chart-host"><canvas id="textDetailChart"></canvas></div>
-    </div>
+  <div class="card">
+    <h3>Validated text features — % of observations, by drug group</h3>
+    <div class="csub">Repeat violations, contamination, OOS/OOT references, high-severity, no/weak remediation.</div>
+    <div class="chart-host"><canvas id="textDetailChart"></canvas></div>
   </div>
   <div class="note dark">
-    Shortage drugs show higher SCRI (sterility/contamination risk), higher IRWI (weak investigations),
-    lower QCI (weaker quality culture), more contamination-flagged observations, and higher rates
-    of no/weak remediation. These are the risk fingerprint of facilities prone to supply disruption.
-    Text indices are time-invariant — this is a cross-sectional comparison, not temporal.
+    Shortage drugs show more contamination-flagged observations and higher rates of no/weak remediation.
+    This is a cross-sectional comparison (each drug's full 483 history) — the temporal evidence is in
+    Sections 4C and 5.
   </div>
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
-    5B · Monthly lead-lag — Regulatory signals (OAI, VAI, Total Inspections)</h3>
+    4B · Monthly lead-lag — Regulatory signals (OAI, VAI, Total Inspections)</h3>
   <div class="sub" style="margin-left:0;">
     OAI = Official Action Indicated (most severe; triggers mandatory remediation).
     VAI = Voluntary Action Indicated (violations noted, manufacturer commits to fix voluntarily).
@@ -1101,157 +1091,184 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
-    5C · Monthly lead-lag — LLM-extracted text indices</h3>
-  <div class="sub" style="margin-left:0;">
-    Text indices are time-invariant (one value per drug, based on cumulative 483 history).
-    The lead-lag chart shows a <strong>flat line</strong> — the persistent mean for shortage-starting
-    drugs (solid) vs the control baseline (dashed). The gap is the key signal: shortage drugs
-    have chronically elevated TRI/SCRI/IRWI and lower QCI throughout the entire window,
-    not just immediately before onset.
-  </div>
+    4C · Monthly lead-lag — the time-varying text signal</h3>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
-    <div class="card"><h3>TRI — Text Risk Index</h3><div class="chart-host"><canvas id="llT1"></canvas></div></div>
-    <div class="card"><h3>SCRI — Sterility/Contamination Risk</h3><div class="chart-host"><canvas id="llT2"></canvas></div></div>
-    <div class="card"><h3>IRWI — Investigation/Remediation Weakness</h3><div class="chart-host"><canvas id="llT3"></canvas></div></div>
-    <div class="card"><h3>QCI — Quality Culture (lower = worse)</h3><div class="chart-host"><canvas id="llT4"></canvas></div></div>
+    <div class="card">
+      <h3>483s with repeat violations at the drug's facilities, trailing 24 months</h3>
+      <div class="csub">For each drug-month: how many 483 documents issued in the preceding 24 months
+        (across all the drug's facilities) contained at least one repeat-violation finding.</div>
+      <div class="chart-host"><canvas id="llT5"></canvas></div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:24px;">
+      <h3 style="margin-bottom:12px;">How to read this</h3>
+      <div style="font-size:12.5px;line-height:1.7;color:var(--ink);">
+        <strong>Repeat violations</strong> — the FDA investigator explicitly noting the same problem
+        was cited before — is the single most consistent text signal in our validation (Section 5):
+        2–4× higher rates of subsequent OAI/Warning-Letter escalation and recalls.
+        <br><br>
+        This chart asks whether it also moves <strong>before drug shortages</strong>:
+        solid line = mean count in the 12 months leading to a shortage onset;
+        dashed line = baseline in calm periods. A solid line above the dashed baseline means
+        drugs entering shortage carried more recent repeat-violation 483s than usual.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SECTION 5: FACILITY-LEVEL TEXT SIGNAL VALIDATION ═══ -->
+<section>
+  <div class="section-head"><span class="step-num">5</span><h2>Facility-level validation — is the 483 text a real signal?</h2></div>
+  <div class="sub">
+    <strong>Scope: the text-covered subset.</strong> Of the 129 FEIs manufacturing the 14 Valisure APIs,
+    <strong>{n_cov_feis} have publicly available 483 PDFs</strong> ({fwd_n} dated snapshots scored by the LLM).
+    Everything in this section uses only that subset; all other sections use all 129 FEIs.
+    The question here: given that FDA issued a 483, does the <em>narrative content</em> of that document
+    predict what happens to the facility next — beyond the mere fact that a 483 exists?
+  </div>
+  <div class="note" style="margin:0 0 14px;">
+    <strong>Two definitions used throughout this section:</strong><br>
+    <strong>Snapshot</strong> = one FDA Form 483 document for one inspection of one facility,
+    dated by the inspection end date. The LLM scores every observation in the document; the snapshot
+    carries the shares (e.g., "40% of observations flagged contamination").<br>
+    <strong>Red flag</strong> (red markers in the timelines below) = a snapshot meeting <strong>≥2 of 4
+    validated risk markers</strong>: any repeat-violation finding; contamination share above the sample
+    median (25%); OOS/OOT-reference share above median (17%); high-severity share above median (67%).
+    These four markers are exactly the features validated in 5A — the flag is shorthand, not a new index.
+  </div>
+
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:0 0 4px 0;font-size:16px;">
+    5A · Forward validation — what the 483 text predicts, by outcome</h3>
+  <div class="sub" style="margin-left:0;">
+    Each of the {fwd_n} snapshots is split at the median of each text feature; bars compare outcome
+    rates for the two halves. Every facility here received a 483 — the document's <em>existence</em>
+    is held constant, so any difference comes from <strong>what the text says</strong>.
+    Base rates: escalation {esc_base}%, recall {rec_base}%. Features shown are those with consistent
+    direction across 12/24/36-month horizons (full grid: <code>outputs/tables/text_signal_grid.csv</code>).
+  </div>
+  <div class="chart-row">
+    <div class="card">
+      <h3>Regulatory escalation — OAI or Warning Letter within 24m</h3>
+      <div class="csub">Orange = above feature median; teal = at/below. Hover for lift.</div>
+      <div class="chart-host tall"><canvas id="escChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Drug recall at the facility within 24m</h3>
+      <div class="csub">Same median split. Recall@12m excluded (only 2 events).</div>
+      <div class="chart-host tall"><canvas id="recChart"></canvas></div>
+    </div>
   </div>
   <div class="note dark">
-    Unlike Redica regulatory signals (which fluctuate month to month), LLM text indices represent
-    a <strong>structural risk fingerprint</strong> of each facility derived from its full inspection
-    history. The persistent gap between shortage and no-shortage drug baselines supports using text
-    indices as long-horizon risk signals — identifying facilities with chronic quality culture
-    deficiencies before any acute regulatory action occurs.
+    <strong>Different text features predict different failures.</strong>
+    <em>Repeat violations</em> ({esc_repeat} escalation) and <em>contamination</em> ({esc_contam})
+    predict FDA escalation; <em>buildings/equipment violations</em> ({rec_bldg}) and capital
+    root causes predict recalls — physical-asset problems produce defective product.
+    <em>High-severity text</em> works best at the short 12-month horizon ({sev12_txt} escalation lift):
+    FDA acts fast on severe findings.
+    And for <strong>shortage burden</strong>: 483s with <em>no remediation response</em> are followed by
+    more months of shortage over 3 years ({remed_txt}), and <em>failed investigations</em> by a worsening
+    shortage trajectory vs the prior year ({invest_txt}).
+    n = {fwd_n} snapshots across {n_cov_feis} FEIs — exploratory, suggestive rather than definitive.
   </div>
+
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
+    5B · Case studies — the timeline of one facility</h3>
+  <div class="sub" style="margin-left:0;">
+    <strong>How to read a timeline (4 lanes, top to bottom):</strong>
+    <strong>483 snapshots</strong> — circles; red = red-flagged (definition above), blue = not flagged;
+    circle size = number of observations; the number below = high-severity share.
+    <strong>Inspections</strong> — triangles colored by outcome (red = OAI, orange = VAI, green = NAI).
+    <strong>Recalls</strong> — diamonds (dark red = Class I, orange = Class II).
+    <strong>Shortages</strong> — gray bars spanning the shortage period for drugs this facility makes.
+    Each red flag also draws a dashed red line + 24-month shaded window — events inside that window
+    are "predicted" by the flag.
+  </div>
+  <div class="card" style="margin-bottom:14px;">
+    <h3>Sun Pharmaceutical Industries (Halol, India) — FEI 3002809586</h3>
+    <div class="csub">Red-flagged 483s accompany the escalation VAI (2018) → OAI (2019) → OAI (2022) →
+      OAI (2025), with API-linked shortage inside the 24-month flag windows.</div>
+    <img src="{cs_sun}" style="width:100%;border:1px solid var(--rule);border-radius:6px;" alt="Sun Halol timeline"/>
+  </div>
+  <div class="card" style="margin-bottom:4px;">
+    <h3>Hospira (Rocky Mount, NC) — FEI 1021343</h3>
+    <div class="csub">Red-flagged 483s in 2011–2013, followed by recalls and multiple API-linked
+      shortages (Lisinopril, Pantoprazole, Magnesium sulfate).</div>
+    <img src="{cs_hospira}" style="width:100%;border:1px solid var(--rule);border-radius:6px;" alt="Hospira timeline"/>
+  </div>
+  <div class="note">
+    Caution: temporal co-occurrence only. A facility may make many drugs and a shortage may have
+    multiple causes unrelated to this facility — these timelines illustrate the mechanism, they do not
+    establish attribution.
+  </div>
+
+  <hr class="divider"/>
+  <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
+    5C · Facility drill-down — all {n_cov_feis} text-covered FEIs</h3>
+  <div class="sub" style="margin-left:0;">
+    Sorted by red-flagged snapshot count, then OAI inspections. Red-flag definition at the top of this
+    section. Per-FEI timeline charts for all facilities are in <code>outputs/figures/timelines/</code>.
+  </div>
+  <table class="signals">
+    <thead><tr>
+      <th>FEI</th><th>Facility</th><th>APIs</th>
+      <th>483 snapshots</th><th>Red-flagged</th><th>OAI</th><th>VAI</th>
+      <th>Recalls</th><th>Class I</th><th>Events ≤24m after red flag</th>
+    </tr></thead>
+    <tbody>
+    {fei_table_rows}
+    </tbody>
+  </table>
 </section>
 
 <!-- ═══ SECTION 6: PREDICTIVE MODEL RESULTS ═══ -->
 <section>
-  <div class="section-head"><span class="step-num">6</span><h2>Predictive Model — Does 483 text improve shortage prediction?</h2></div>
+  <div class="section-head"><span class="step-num">6</span><h2>Predictive Model — drug-year baseline (honest negative)</h2></div>
   <div class="sub">
     <strong>Setup:</strong> Drug × year panel (14 APIs, 2015–2024, n=126 drug-years, 19 shortage-onset events).
     Outcome = <em>y_next_year_shortage</em>: does this drug start a shortage in the following year?
-    Recall features excluded (they co-occur with or lag shortage onset, so they'd be data leakage for prediction).
-    <br><br>
-    <strong>Cross-validation:</strong> GroupKFold by drug — each fold holds out all years for a different subset
-    of drugs, so the model is tested on drugs it has never seen. This is the correct CV for drug-level panel data
-    because observations from the same drug across years are highly correlated.
-    <br><br>
-    <strong>Metric:</strong> AUC (area under the ROC curve). AUC = 0.5 means no better than random;
-    AUC = 1.0 means perfect. With only 19 events, confidence intervals are wide — these results are exploratory.
-    RandomForest is preferred over logistic regression here because it handles the correlated, mixed-scale
-    features better at small sample size. The logistic regression result (shown in small text) is lower,
-    likely due to collinearity among the text indices at n=19 events.
+    Cross-validation: GroupKFold by drug (model tested on drugs it has never seen).
+    Recall features excluded (concurrent/lagging with onset = leakage).
   </div>
   <div class="chart-row">
     <div class="card">
       <h3>RandomForest feature importance</h3>
-      <div class="csub">Teal bars = LLM-extracted 483 text indices. Navy = structured data features. Sorted by importance.</div>
+      <div class="csub">Teal bars = 483 text features (raw LLM/regex shares). Navy = structured data features.</div>
       <div class="chart-host tall"><canvas id="fiChart"></canvas></div>
     </div>
     <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:24px;">
       <h3 style="margin-bottom:12px;">Model results</h3>
       <div id="modelKeyNums" style="font-size:13px;line-height:2;color:var(--ink);"></div>
-      <div style="margin-top:16px;font-size:12px;color:var(--muted);line-height:1.6;">
-        <strong>How to read this:</strong><br>
-        Feature importance = fraction of times a feature was used to split the data in RF trees,
-        weighted by how much that split reduced impurity. Higher = more useful for prediction.<br><br>
-        The +ΔAUC tells us how much predictive value the LLM text features add on top of structured
-        data alone. A positive Δ means text features carry information that structured databases do not.
-      </div>
     </div>
   </div>
   <div class="note dark">
-    <strong>Key finding:</strong> QCI (Quality Culture Index), derived by the LLM from 483 narrative text,
-    is the <strong>3rd most important predictor</strong> of next-year drug shortage — ranking above
-    Valisure quality scores and Redica OAI counts.
-    The 4 LLM-derived text indices together account for ~32% of total RF importance, adding
-    +0.052 AUC over structured features alone. This validates the paper's central claim: inspection
-    narrative text carries predictive signal that structured databases (CFR codes, inspection outcomes)
-    do not fully capture. See Section 7 for causal context from Wang et al. (2025).
+    <strong>Clear message:</strong> at the drug-year level, with only 19 shortage events, the text
+    features do <em>not</em> improve prediction. This is not a failure of the text signal — Section 5
+    shows it is strong at the facility level — but of the aggregation: averaging one facility's
+    repeat-violation 483 across 34 facilities making the same drug erases it.
+    The next model iteration should predict <em>facility-level</em> outcomes (escalation, recall)
+    from dated snapshots, then roll facility risk up to drugs.
   </div>
 </section>
 
-<!-- ═══ SECTION 7: WANG ET AL. 2025 CONTEXT ═══ -->
+<!-- ═══ SECTION 7: WANG ET AL. 2025 CONTEXT (condensed) ═══ -->
 <section>
   <div class="section-head">
     <span class="step-num">7</span>
-    <h2>FDA inspection outcomes &amp; shortage risk — Wang et al. (MSOM 2025) context</h2>
-  </div>
-  <div class="sub">Connects to Section 6: the predictive model finds OAI inspections have modest importance.
-    Wang et al. (2025) provide causal context for why — OAI outcomes may actually <em>reduce</em> future
-    shortage risk by forcing mandatory quality remediation. We test their directional prediction in our panel.
+    <h2>Context — does FDA escalation cause or prevent shortages? (Wang et al., MSOM 2025)</h2>
   </div>
   <div class="sub">
-    Wang et al. (2025) find that OAI inspection outcomes <em>reduce</em> future shortage risk by ~96% after IV adjustment
-    (instruments: inspector experience &amp; Monday inspection day).  GAO (2016) found the opposite using unadjusted data.
-    The IV result implies that OAI outcomes force mandatory quality remediation that eliminates the underlying supply risk.
-    Below we test the directional prediction in our 14-drug monthly panel — observationally, without IV instruments.
+    Wang et al. (2025) find, with IV adjustment, that an OAI outcome <em>reduces</em> future shortage
+    risk by ~96% — forced remediation fixes the underlying problem (GAO 2016 found the opposite without
+    endogeneity controls). The chart tests their directional prediction in our panel: if they are right,
+    the post-OAI shortage rate (blue, months +1 to +12) should fall below the control baseline (dashed).
+    Our 14-drug panel is too sparse for causal inference — directional context only.
   </div>
-
-  <div class="note" style="margin-bottom:14px;">
-    <strong>Interpretation guide:</strong>
-    If Wang et al. are correct, the post-OAI shortage rate (blue points, months +1 to +12) should fall
-    <em>below</em> the control baseline (dashed grey).  If the GAO story dominates, it should rise above baseline.
-    Our pilot covers only 14 drugs and OAI events are sparse — treat as directional only.
-  </div>
-
-  <div class="chart-row" style="margin-bottom:16px;">
-    <div class="card">
-      <h3>Is the drug in shortage at each month around OAI?</h3>
-      <div class="csub">
-        Primary outcome: <code>shortage_ongoing</code> (is the drug currently in shortage?).
-        Red = pre-OAI context (−6 to 0); Blue = post-OAI (months +1 to +12). Shaded = ±1 SE.
-        Baseline = drug-months with no OAI within ±12m.
-      </div>
-      <div class="chart-host tall"><canvas id="oaiFwdChart"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Post-OAI shortage outcome by drug state at inspection</h3>
-      <div class="csub">
-        For each OAI event: was the drug already in shortage? Did it end up in shortage in the next 12 months?
-        Teal = stayed/went shortage-free; Orange = entered or remained in shortage.
-      </div>
-      <div class="chart-host tall"><canvas id="oaiFwdBar"></canvas></div>
-    </div>
-  </div>
-  <div class="chart-row">
-    <div class="card">
-      <h3>Valisure quality score vs shortage starts</h3>
-      <div class="csub">
-        Sorted by Valisure mean score (higher = better quality).
-        Teal = high-quality tier (≥ median score); Orange = low-quality tier.
-        Line = Valisure score (right axis).
-      </div>
-      <div class="chart-host tall"><canvas id="qualSplitChart"></canvas></div>
-    </div>
-    <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:24px;">
-      <h3 style="margin-bottom:12px;">Key numbers</h3>
-      <div id="oaiKeyNums" style="font-size:13px;line-height:2;color:var(--ink);"></div>
-    </div>
-  </div>
-
-  <div class="two-col">
-    <div class="col-card">
-      <div class="col-head l">Wang et al. 2025 — key facts</div>
-      <ul>
-        <li><strong>Source:</strong> Wang, Ball, Anand, Park — MSOM Vol. 27, No. 3, May–Jun 2025, pp. 789–807.</li>
-        <li><strong>Data:</strong> 8,028 drug-inspection observations, 3,193 drugs, 419 inspections (30 OAI), 185 plants, July 2015–Mar 2019.</li>
-        <li><strong>Finding:</strong> OAI outcome → −3.0 pp predicted shortage probability (avg marginal effect) = <strong>96.4% reduction</strong> from base rate of 3.11%.</li>
-        <li><strong>Mechanism:</strong> OAI forces mandatory comprehensive remediation; quality failures that would cause shortages must be fixed.</li>
-        <li><strong>Instruments:</strong> Inspector experience (years) and Monday inspection day — both predict OAI but are unlikely to affect shortage risk directly.</li>
-        <li><strong>GAO 2016 rebuttal:</strong> GAO found positive association but did not control for endogeneity.  OAIs appear where quality is already poor — co-symptom, not cause.</li>
-      </ul>
-    </div>
-    <div class="col-card">
-      <div class="col-head n">How our pipeline extends their analysis</div>
-      <ul>
-        <li><strong>Longer horizon:</strong> Their data ends Mar 2019; we cover 2015–2024, including five COVID-era years where supply-chain shocks may swamp regulatory effects.</li>
-        <li><strong>Quality scores:</strong> Valisure scores measure actual product quality independently of inspection outcomes — a direct proxy for the latent confounder Wang et al. instrument for.</li>
-        <li><strong>Quality-shortage relationship:</strong> The right chart above shows Valisure score vs shortage starts — if low-quality drugs also get more OAIs and more shortages, this is consistent with Wang et al.'s endogeneity story.</li>
-        <li><strong>Limitation:</strong> Our pilot covers only 14 drugs and OAI events are sparse — causal inference is not possible here.  IV instruments (inspector experience, weekday) are not available in Redica data.</li>
-        <li><strong>Next step:</strong> Obtain inspector-level data via FOIA request (same source as Wang et al.) and merge with Redica FEIs to replicate IV on the Valisure-drug subset.</li>
-      </ul>
-    </div>
+  <div class="card">
+    <h3>Is the drug in shortage in the months around an OAI inspection?</h3>
+    <div class="csub">Red = pre-OAI (−6 to 0); blue = post-OAI (+1 to +12); shaded = ±1 SE;
+      dashed = drug-months with no OAI within ±12m.</div>
+    <div class="chart-host tall"><canvas id="oaiFwdChart"></canvas></div>
   </div>
 </section>
 
@@ -1262,32 +1279,29 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
     <div class="col-card">
       <div class="col-head l">Limitations</div>
       <ul>
-        <li>Only 14 drugs and ~21 shortage onset years → very wide confidence intervals. All findings are exploratory.</li>
-        <li>Annual recall circularity: recalls and shortages can be mechanically linked. CGMP signal uses monthly timing to partially separate them, but caution is warranted.</li>
-        <li>FAERS is quarterly in this dataset — monthly resolution not available; 3-month rolling sums used as approximation.</li>
-        <li>Valisure scores are a single 2024 cross-section — not time-varying. Cannot be used in lead-lag analysis.</li>
-        <li>Redica FEI mapping covers only the 14 Valisure drugs; OAI/483 signal is sparse at monthly grain.</li>
+        <li>Only 14 drugs, 19 shortage-onset events, and 79 scored 483 snapshots → wide confidence intervals. All findings are exploratory.</li>
+        <li>Text coverage: 37 of 129 facilities have public 483 PDFs — text signals exist only for that subset.</li>
+        <li>Severity classification is currently too permissive (median snapshot: 67% "High") — recalibration of the LLM prompt is planned before the next extraction run.</li>
+        <li>FAERS is quarterly in this dataset; Valisure scores are a single 2024 cross-section — neither supports monthly lead-lag.</li>
+        <li>Shortage ↔ facility links are via API name only — a shortage may be caused by a different manufacturer of the same drug.</li>
         <li>All associations are descriptive — no causal identification.</li>
       </ul>
     </div>
     <div class="col-card">
       <div class="col-head n">Next steps</div>
       <ul>
-        <li>Obtain FAERS event-level data with exact dates to enable true monthly FAERS lead-lag.</li>
-        <li>Manually validate the CGMP recall → Metformin shortage pathway to confirm or rule out circularity.</li>
+        <li><strong>Facility-level model:</strong> predict escalation/recall from dated 483 snapshots, then roll facility risk up to drugs (the validated direction of the signal).</li>
+        <li>Recalibrate LLM severity definition (4-tier, product-impact anchored) and rerun extraction on a validation subset first.</li>
+        <li>Cross-inspection repeat detection in the aggregation step (no API cost) — repeat violations are the strongest single feature.</li>
         <li>Expand pilot universe as Valisure tests additional APIs.</li>
-        <li>Use a discrete-time hazard model or Cox regression to formalize the lead-time relationship.</li>
-        <li>Add manufacturer concentration (HHI) from NDC ↔ labeler map as a structural feature.</li>
-        <li>Bootstrap-cluster SEs at the drug level for robustness.</li>
-        <li>Obtain inspector-level FDA data via FOIA to replicate Wang et al. IV analysis on Valisure-drug subset.</li>
-        <li>Test post-COVID (2020–2024) subperiod separately — supply-chain shocks may alter OAI protective effect.</li>
+        <li>Obtain inspector-level FDA data via FOIA to replicate Wang et al.'s IV analysis on the Valisure-drug subset.</li>
       </ul>
     </div>
   </div>
 </section>
 
 <footer>
-  Drug Shortage Prediction · Annual + Monthly Pipeline · May 2026 ·
+  Drug Shortage Prediction · Annual + Monthly Pipeline · June 2026 ·
   Canonical key: <code>drug_norm</code> · 14 Valisure APIs · exploratory only
 </footer>
 </div>
@@ -1345,6 +1359,9 @@ new Chart(document.getElementById("chartDrug"),{{
 // ── Text detail group (violation categories + remediation) ────────────────
 {text_detail_group_js}
 
+// ── m11 facility-level forward validation ─────────────────────────────────
+{fwd_js}
+
 // ── RF model results ──────────────────────────────────────────────────────
 {model_js}
 
@@ -1352,30 +1369,6 @@ new Chart(document.getElementById("chartDrug"),{{
 // ── OAI forward study charts ──────────────────────────────────────────────
 {oai_fwd_js}
 
-// ── OAI key numbers panel ─────────────────────────────────────────────────
-(function(){{
-  const el = document.getElementById('oaiKeyNums');
-  if (!el) return;
-  const n  = {oai_events.get("n_total", 0)};
-  const na = {oai_events.get("n_already", 0)};
-  const nf = {oai_events.get("n_fresh", 0)};
-  const naf= {oai_events.get("n_already_fwd", 0)};
-  const nff= {oai_events.get("n_fresh_fwd", 0)};
-  const mm = {oai_events.get("mean_months_fwd", 0)};
-  const bl = {oai_fwd.get("baseline", 0):.4f};
-  el.innerHTML = `
-    <strong>${{n}}</strong> total OAI event months (14 drugs, 2015–2024)<br>
-    <strong>${{na}}</strong> OAI events where drug was <em>already in shortage</em> at inspection →
-      <strong>${{naf}}</strong> (${{na>0?(100*naf/na).toFixed(0):0}}%) had shortage in next 12m<br>
-    <strong>${{nf}}</strong> OAI events where drug was <em>NOT in shortage</em> at inspection →
-      <strong>${{nff}}</strong> (${{nf>0?(100*nff/nf).toFixed(0):0}}%) had shortage in next 12m<br>
-    Mean months in shortage over next 12m (all events): <strong>${{mm.toFixed(1)}}</strong><br>
-    Control baseline (shortage_ongoing, no OAI ±12m): <strong>${{(bl*100).toFixed(1)}}%</strong><br>
-    <span style="color:var(--muted);font-size:11px;">Observational — not causal. Wang et al. (MSOM 2025): OAI → −96% shortage risk (IV-adjusted).</span>
-  `;
-}})();
-
-// ── Valisure quality split ─────────────────────────────────────────────────
 {qs_js}
 </script>
 </body>

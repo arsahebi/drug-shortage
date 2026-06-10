@@ -67,15 +67,18 @@ FEATURES = [
     # Shortage history
     "prior_shortage_t",
     "prior_shortage_w3",
-    # 483 text features — LLM-extracted, drug-level weighted mean across FEIs
-    "tri_mean",
-    "scri_mean",
-    "irwi_mean",
-    "qci_mean",
+    # 483 text features — raw LLM/regex shares, drug-level mean across FEIs
+    # (composite indices removed; m12 grid validated these raw shares)
+    "repeat_llm_only_share",
+    "contamination_llm_only_share",
+    "oos_oot_regex_share",
+    "severity_high_share",
+    "remediation_none_share",
 ]
 
-TEXT_FEATURE_COLS = ["tri_mean", "scri_mean", "irwi_mean", "qci_mean"]
-# Ablation baseline: same feature set minus the LLM-derived text indices
+TEXT_FEATURE_COLS = ["repeat_llm_only_share", "contamination_llm_only_share",
+                     "oos_oot_regex_share", "severity_high_share", "remediation_none_share"]
+# Ablation baseline: same feature set minus the LLM-derived text features
 FEATURES_NO_TEXT = [f for f in FEATURES if f not in TEXT_FEATURE_COLS]
 
 

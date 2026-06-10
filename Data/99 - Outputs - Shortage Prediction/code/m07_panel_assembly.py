@@ -92,7 +92,9 @@ def build_panel() -> pd.DataFrame:
     panel = panel.merge(val, on="drug_norm", how="left")
     panel["has_valisure"] = panel["valisure_mean_score"].notna().astype(int)
 
-    # ---- 483 Text Features: composite indices (time-invariant per API) ----
+    # ---- 483 Text Features: raw LLM/regex shares (time-invariant per API) ----
+    # Composite indices (TRI/SCRI/IRWI/QCI) removed from the analysis — the m12
+    # validation grid showed raw shares carry the forward signal.
     # FEI→drug bridge from Valisure FEI mapping (covers all 14 APIs × 129 FEIs)
     bridge = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping",
                            usecols=["API", "FEI_NUMBER"])
@@ -101,31 +103,24 @@ def build_panel() -> pd.DataFrame:
     bridge["fei"] = bridge["fei"].astype(int)
 
     TEXT_COLS = [
-        "text_risk_index",
-        "sterility_contamination_risk_index",
-        "investigation_remediation_weakness_index",
-        "quality_culture_index",
+        "repeat_llm_only_share",
+        "contamination_llm_only_share",
+        "oos_oot_regex_share",
+        "severity_high_share",
+        "remediation_none_share",
     ]
     tri = pd.read_csv(TEXT_FEATURES_CSV, usecols=["fei"] + TEXT_COLS)
     tri["fei"] = tri["fei"].astype(int)
 
-    # Simple mean across all FEIs manufacturing the drug (indices are already 0–100)
+    # Simple mean across all FEIs manufacturing the drug
     merged = bridge.merge(tri, on="fei", how="left")
-    text_drug = (merged.groupby("drug_norm")[TEXT_COLS]
-                 .mean()
-                 .rename(columns={
-                     "text_risk_index":                       "tri_mean",
-                     "sterility_contamination_risk_index":    "scri_mean",
-                     "investigation_remediation_weakness_index": "irwi_mean",
-                     "quality_culture_index":                 "qci_mean",
-                 })
-                 .reset_index())
+    text_drug = merged.groupby("drug_norm")[TEXT_COLS].mean().reset_index()
 
-    n_covered = text_drug["tri_mean"].notna().sum()
+    n_covered = text_drug["repeat_llm_only_share"].notna().sum()
     log.info("483 text features: %d / %d drugs have coverage", n_covered, len(text_drug))
 
     panel = panel.merge(text_drug, on="drug_norm", how="left")
-    for c in ["tri_mean", "scri_mean", "irwi_mean", "qci_mean"]:
+    for c in TEXT_COLS:
         panel[c] = panel[c].fillna(0)
 
     # ---- Rolling window features ----
