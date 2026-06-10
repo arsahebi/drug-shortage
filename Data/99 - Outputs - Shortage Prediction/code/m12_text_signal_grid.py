@@ -37,16 +37,21 @@ HORIZONS = [12, 24, 36]
 
 FEATURE_GROUPS = {
     "llm_flag": [
-        "repeat_llm_share", "systemic_llm_share", "patient_risk_llm_share",
+        "repeat_llm_share", "patient_risk_llm_share",
         "data_integrity_llm_share", "contamination_llm_share",
-        "documentation_llm_share", "investigation_llm_share",
+        "investigation_llm_share",
     ],
     "llm_only": [
-        "repeat_llm_only_share", "systemic_llm_only_share", "patient_risk_llm_only_share",
+        "repeat_llm_only_share", "patient_risk_llm_only_share",
         "data_integrity_llm_only_share", "contamination_llm_only_share",
-        "documentation_llm_only_share", "investigation_llm_only_share",
+        "investigation_llm_only_share",
     ],
-    "severity": ["severity_high_share", "severity_moderate_share", "severity_low_share"],
+    "severity": ["severity_critical_share", "severity_major_share",
+                 "severity_moderate_share", "severity_minor_share",
+                 "severity_critmajor_share"],
+    "scope": ["scope_singlebatch_share", "scope_multipleproducts_share",
+              "scope_facilitywide_share", "scope_unclear_share"],
+    "cross_repeat": ["repeat_cross_insp_share"],
     "remediation": ["remediation_strong_share", "remediation_partial_share",
                     "remediation_weak_share", "remediation_none_share"],
     "root_cause": ["capital_root_cause_share", "cultural_root_cause_share",

@@ -72,12 +72,12 @@ FEATURES = [
     "repeat_llm_only_share",
     "contamination_llm_only_share",
     "oos_oot_regex_share",
-    "severity_high_share",
+    "severity_critmajor_share",
     "remediation_none_share",
 ]
 
 TEXT_FEATURE_COLS = ["repeat_llm_only_share", "contamination_llm_only_share",
-                     "oos_oot_regex_share", "severity_high_share", "remediation_none_share"]
+                     "oos_oot_regex_share", "severity_critmajor_share", "remediation_none_share"]
 # Ablation baseline: same feature set minus the LLM-derived text features
 FEATURES_NO_TEXT = [f for f in FEATURES if f not in TEXT_FEATURE_COLS]
 

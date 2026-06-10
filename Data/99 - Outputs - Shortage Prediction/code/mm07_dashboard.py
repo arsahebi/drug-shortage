@@ -137,7 +137,7 @@ def compute_data() -> dict:
 
     # ── 483 raw text feature lift (annual, drug-year level) ───────────────────
     _TEXT_LIFT_COLS = ["repeat_llm_only_share", "contamination_llm_only_share",
-                       "oos_oot_regex_share", "severity_high_share", "remediation_none_share"]
+                       "oos_oot_regex_share", "severity_critmajor_share", "remediation_none_share"]
     if ap is not None:
         q = ap.dropna(subset=["y_next_year_shortage"])
         for c in [c for c in _TEXT_LIFT_COLS if c in q.columns]:
@@ -178,7 +178,7 @@ def compute_data() -> dict:
 
     # ── Text features from 483 CSV: the m12-validated raw shares ──────────────
     _TEXT_DETAIL_COLS = [
-        "severity_high_share", "contamination_llm_only_share", "repeat_llm_only_share",
+        "severity_critmajor_share", "contamination_llm_only_share", "repeat_llm_only_share",
         "oos_oot_regex_share", "remediation_none_share", "remediation_weak_share",
     ]
     drug_text_detail: dict = {}
@@ -192,7 +192,7 @@ def compute_data() -> dict:
         drug_text_detail = merged.groupby("drug_norm")[_avail].mean().round(3).to_dict(orient="index")
     for entry in d.get("by_drug", []):
         detail = drug_text_detail.get(entry["drug"], {})
-        entry["sev_high"]     = round(float(detail.get("severity_high_share", 0)), 3)
+        entry["sev_high"]     = round(float(detail.get("severity_critmajor_share", 0)), 3)
         entry["contam_share"] = round(float(detail.get("contamination_llm_only_share", 0)), 3)
         entry["repeat_share"] = round(float(detail.get("repeat_llm_only_share", 0)), 3)
         entry["oos_share"]    = round(float(detail.get("oos_oot_regex_share", 0)), 3)
@@ -207,7 +207,7 @@ def compute_data() -> dict:
             "repeat_share":  "Repeat violations %",
             "contam_share":  "Contamination %",
             "oos_share":     "OOS/OOT references %",
-            "sev_high":      "High-severity obs %",
+            "sev_high":      "Critical+Major obs %",
             "remed_none":    "No remediation %",
             "remed_weak":    "Weak remediation %",
         }
@@ -313,7 +313,7 @@ def compute_data() -> dict:
         ("repeat_llm_only_share",        "Repeat violations (LLM)"),
         ("contamination_llm_only_share", "Contamination (LLM)"),
         ("oos_oot_regex_share",          "OOS/OOT references"),
-        ("severity_high_share",          "High-severity obs. (LLM)"),
+        ("severity_critmajor_share",          "Critical+Major obs. (LLM)"),
         ("n_obs_total",                  "Number of observations"),
     ]
     _REC_FEATS = [
@@ -344,7 +344,7 @@ def compute_data() -> dict:
             row = grid[(grid["feature"] == feat) & (grid["outcome"] == outcome)]
             return float(row.iloc[0][col]) if len(row) else None
         d["grid_extra"] = {
-            "sev_esc12_lift":   _cell1("severity_high_share", "esc_12", "lift"),
+            "sev_esc12_lift":   _cell1("severity_critmajor_share", "esc_12", "lift"),
             "remed_none_shdur": _cell1("remediation_none_share", "sh_dur_36"),
             "invest_shdelta":   _cell1("investigation_llm_share", "sh_dur_delta_12"),
             "esc24_base": round(float(
@@ -442,7 +442,7 @@ def _lift_rows(lift: list[dict]) -> str:
         "repeat_llm_only_share": "483 Text — Repeat violations share",
         "contamination_llm_only_share": "483 Text — Contamination share",
         "oos_oot_regex_share": "483 Text — OOS/OOT references share",
-        "severity_high_share": "483 Text — High-severity obs. share",
+        "severity_critmajor_share": "483 Text — Critical+Major obs. share",
         "remediation_none_share": "483 Text — No-remediation share",
     }
     cls_map = lambda x: "high" if x >= 5 else ("mid" if x >= 1.5 else "low")
@@ -741,7 +741,7 @@ new Chart(document.getElementById('textDetailChart'),{{
         fi_sorted = sorted(fi_data, key=lambda x: x["imp"])
         fi_labels = [r["feature"] for r in fi_sorted]
         _TEXT_FEATS = ("repeat_llm_only_share", "contamination_llm_only_share",
-                       "oos_oot_regex_share", "severity_high_share", "remediation_none_share")
+                       "oos_oot_regex_share", "severity_critmajor_share", "remediation_none_share")
         fi_colors = [
             "rgba(28,114,147,0.85)" if r["feature"] in _TEXT_FEATS
             else "rgba(2,99,176,0.65)" for r in fi_sorted
@@ -1163,7 +1163,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
     <em>Repeat violations</em> ({esc_repeat} escalation) and <em>contamination</em> ({esc_contam})
     predict FDA escalation; <em>buildings/equipment violations</em> ({rec_bldg}) and capital
     root causes predict recalls — physical-asset problems produce defective product.
-    <em>High-severity text</em> works best at the short 12-month horizon ({sev12_txt} escalation lift):
+    <em>Critical+Major severity text</em> works best at the short 12-month horizon ({sev12_txt} escalation lift):
     FDA acts fast on severe findings.
     And for <strong>shortage burden</strong>: 483s with <em>no remediation response</em> are followed by
     more months of shortage over 3 years ({remed_txt}), and <em>failed investigations</em> by a worsening

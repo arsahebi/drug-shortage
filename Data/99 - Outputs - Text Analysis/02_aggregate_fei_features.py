@@ -31,11 +31,19 @@ OUTPUT SCHEMA
   year_month      : YYYY-MM (for joining against monthly shortage panels)
   n_obs_*         : cumulative observation counts up to snapshot_date
   *_regex_share   : cumulative regex flag rates (all rows, regardless of LLM)
-  severity_*      : cumulative LLM severity distribution (scored rows only)
+  severity_*      : cumulative LLM 4-tier severity distribution (Critical/Major/
+                    Moderate/Minor; scored rows only)
+  scope_*         : cumulative LLM scope distribution (SingleBatch/
+                    MultipleProducts/FacilityWide/Unclear)
   *_root_cause_*  : cumulative root cause distribution
   remediation_*   : cumulative remediation signal distribution
   *_llm_share     : cumulative LLM binary flag rates (scored rows only)
   *_llm_only_share: share of obs where LLM flagged but regex did not (semantic lift)
+  repeat_cross_insp_* : repeat detection ACROSS inspections of the same FEI:
+                    the standardized citation sentence (text before
+                    "Specifically,") matches an earlier inspection's observation
+                    (template token overlap >= 0.80). Complements
+                    repeat_flag_llm, which only sees one observation at a time
 
 NOTE ON COMPOSITE INDICES
   TRI/SCRI/IRWI/QCI are removed.  Raw feature shares are passed directly to
@@ -60,6 +68,7 @@ DENOMINATOR RULES
   Failed rows      : excluded from LLM features; never become false/zero labels
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -100,6 +109,55 @@ def _to_bool(series: pd.Series) -> pd.Series:
 
 def _is_blank(series: pd.Series) -> pd.Series:
     return series.isna() | (series.astype(str).str.strip() == "") | (series.astype(str).str.lower() == "nan")
+
+
+# ── Cross-inspection repeat detection ──────────────────────────────────────
+# An observation is a cross-inspection repeat when its standardized TEMPLATE
+# FIRST SENTENCE (the citation language before "Specifically,") matches an
+# observation of the SAME FEI at a STRICTLY EARLIER inspection date. The
+# template sentence is the CFR-derived citation text, so a match means the
+# same deficiency was cited again — the regulatory notion of a repeat finding.
+# Full-text similarity does not work here: shared GMP vocabulary and OCR
+# header noise give unrelated observations a ~0.45 baseline overlap, while
+# true repeats differ in their specific examples.
+# Similarity: overlap coefficient |A∩B| / min(|A|,|B|) on template tokens.
+
+CROSS_REPEAT_OVERLAP  = 0.80
+MIN_TEMPLATE_TOKENS   = 6
+
+
+def _template_tokens(text: str) -> frozenset:
+    """Tokens of the standardized citation sentence (text before 'Specifically')."""
+    t = re.sub(r"^\s*OBSERVATION\s+\d+\s*", "", str(text), flags=re.IGNORECASE)
+    head = re.split(r"[Ss]pecifically", t, maxsplit=1)[0]
+    return frozenset(re.findall(r"[a-z]{3,}", head.lower()))
+
+
+def _flag_cross_inspection_repeats(df: pd.DataFrame) -> pd.Series:
+    flags = pd.Series(False, index=df.index)
+    if "obs_text_clean" not in df.columns:
+        return flags
+    for _, grp in df.groupby("fei"):
+        if grp["insp_date"].nunique() < 2:
+            continue
+        grp = grp.sort_values("insp_date")
+        toks = {idx: _template_tokens(t) for idx, t in grp["obs_text_clean"].items()}
+        idxs = list(grp.index)
+        for i, idx in enumerate(idxs):
+            a = toks[idx]
+            if len(a) < MIN_TEMPLATE_TOKENS:
+                continue
+            cur_date = grp.loc[idx, "insp_date"]
+            for jdx in idxs[:i]:
+                if grp.loc[jdx, "insp_date"] >= cur_date:
+                    continue
+                b = toks[jdx]
+                if len(b) < MIN_TEMPLATE_TOKENS:
+                    continue
+                if len(a & b) / min(len(a), len(b)) >= CROSS_REPEAT_OVERLAP:
+                    flags.loc[idx] = True
+                    break
+    return flags
 
 
 # ── Layer 1: extraction quality ────────────────────────────────────────────
@@ -160,6 +218,7 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
     rem = scored["remediation_signal"] if ns > 0 else pd.Series(dtype=str)
     rc  = scored["root_cause_type"]    if ns > 0 else pd.Series(dtype=str)
     vc  = scored["violation_category"] if ns > 0 else pd.Series(dtype=str)
+    sc  = scored["scope"] if ns > 0 and "scope" in scored.columns else pd.Series(dtype=str)
 
     # remediation_none: NaN or literal "None" both mean no remediation mentioned
     rem_none = round(
@@ -169,11 +228,9 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
 
     llm_flags = [
         ("repeat_llm_share",         "repeat_flag_llm"),
-        ("systemic_llm_share",       "systemic_flag_llm"),
         ("patient_risk_llm_share",   "patient_risk_flag_llm"),
         ("data_integrity_llm_share", "data_integrity_flag_llm"),
         ("contamination_llm_share",  "contamination_flag_llm"),
-        ("documentation_llm_share",  "documentation_flag_llm"),
         ("investigation_llm_share",  "investigation_flag_llm"),
     ]
     flag_shares = {}
@@ -190,9 +247,17 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
         vc_shares[key] = round(_value_share(vc, cat), 4)
 
     out = {
-        "severity_high_share":         round(_value_share(sev, "High"),     4),
+        "severity_critical_share":     round(_value_share(sev, "Critical"), 4),
+        "severity_major_share":        round(_value_share(sev, "Major"),    4),
         "severity_moderate_share":     round(_value_share(sev, "Moderate"), 4),
-        "severity_low_share":          round(_value_share(sev, "Low"),       4),
+        "severity_minor_share":        round(_value_share(sev, "Minor"),    4),
+        # 4-tier analog of the old severity_high_share; single column for models
+        "severity_critmajor_share":    round(_value_share(sev, "Critical")
+                                             + _value_share(sev, "Major"),  4),
+        "scope_singlebatch_share":     round(_value_share(sc, "SingleBatch"),      4),
+        "scope_multipleproducts_share": round(_value_share(sc, "MultipleProducts"), 4),
+        "scope_facilitywide_share":    round(_value_share(sc, "FacilityWide"),     4),
+        "scope_unclear_share":         round(_value_share(sc, "Unclear"),          4),
         "dominant_violation_category": _mode_or_default(vc,  "Other"),
         "dominant_root_cause":         _mode_or_default(rc,  "Unclear"),
         "capital_root_cause_share":    round(_value_share(rc, "Capital"),    4),
@@ -214,10 +279,8 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
 def _layer4_agreement(scored: pd.DataFrame, ns: int) -> dict:
     paired = [
         ("repeat",         "has_repeat_regex",        "repeat_flag_llm"),
-        ("systemic",       "has_systemic_regex",       "systemic_flag_llm"),
         ("contamination",  "has_contamination_regex",  "contamination_flag_llm"),
         ("data_integrity", "has_data_integrity_regex", "data_integrity_flag_llm"),
-        ("documentation",  "has_documentation_regex",  "documentation_flag_llm"),
         ("investigation",  "has_investigation_regex",  "investigation_flag_llm"),
         ("patient_risk",   "has_patient_risk_regex",   "patient_risk_flag_llm"),
     ]
@@ -249,6 +312,10 @@ def _aggregate_snapshot(subset: pd.DataFrame) -> dict:
     flat = {}
     for layer in (l1, l2, l3, l4):
         flat.update(layer)
+
+    if "repeat_cross_insp" in subset.columns:
+        flat["n_repeat_cross_insp"]     = int(subset["repeat_cross_insp"].sum())
+        flat["repeat_cross_insp_share"] = round(_share(subset["repeat_cross_insp"]), 4)
     return flat
 
 
@@ -288,16 +355,20 @@ _COL_ORDER = [
     "equipment_facility_regex_share", "process_control_regex_share",
     "wl_ref_regex_share", "oos_oot_regex_share",
     # Layer 3 -- LLM categorical
-    "severity_high_share", "severity_moderate_share", "severity_low_share",
+    "severity_critical_share", "severity_major_share",
+    "severity_moderate_share", "severity_minor_share",
+    "severity_critmajor_share",
+    "scope_singlebatch_share", "scope_multipleproducts_share",
+    "scope_facilitywide_share", "scope_unclear_share",
     "dominant_violation_category", "dominant_root_cause",
     "capital_root_cause_share", "cultural_root_cause_share",
     "mixed_root_cause_share", "unclear_root_cause_share",
     "remediation_strong_share", "remediation_partial_share",
     "remediation_weak_share", "remediation_none_share",
     # Layer 3 -- LLM binary flags
-    "repeat_llm_share", "systemic_llm_share", "patient_risk_llm_share",
+    "repeat_llm_share", "patient_risk_llm_share",
     "data_integrity_llm_share", "contamination_llm_share",
-    "documentation_llm_share", "investigation_llm_share",
+    "investigation_llm_share",
     # Layer 3 -- per-category violation shares
     "vc_labcontrols_share", "vc_productioncontrols_share",
     "vc_buildingsequipment_share", "vc_orgpersonnel_share",
@@ -305,12 +376,12 @@ _COL_ORDER = [
     "vc_qualitysystem_share", "vc_other_share",
     # Layer 4 -- agreement / semantic lift
     "repeat_regex_llm_agreement",         "repeat_llm_only_share",
-    "systemic_regex_llm_agreement",       "systemic_llm_only_share",
     "contamination_regex_llm_agreement",  "contamination_llm_only_share",
     "data_integrity_regex_llm_agreement", "data_integrity_llm_only_share",
-    "documentation_regex_llm_agreement",  "documentation_llm_only_share",
     "investigation_regex_llm_agreement",  "investigation_llm_only_share",
     "patient_risk_regex_llm_agreement",   "patient_risk_llm_only_share",
+    # Cross-inspection repeat (text similarity vs earlier inspections)
+    "n_repeat_cross_insp", "repeat_cross_insp_share",
 ]
 
 
@@ -346,6 +417,12 @@ def main() -> None:
 
     df = df.dropna(subset=["fei", "insp_date"])
     print(f"  Rows with valid fei + date: {len(df):,}")
+
+    # ── Cross-inspection repeat flags ────────────────────────────────────────
+    df["repeat_cross_insp"] = _flag_cross_inspection_repeats(df)
+    n_cross = int(df["repeat_cross_insp"].sum())
+    print(f"  Cross-inspection repeats  : {n_cross} observations "
+          f"(template overlap >= {CROSS_REPEAT_OVERLAP} vs an earlier inspection of same FEI)")
 
     # ── Build snapshots ──────────────────────────────────────────────────────
     # One snapshot per (fei, insp_date): cumulative features up to that date.
@@ -404,8 +481,9 @@ def main() -> None:
 
     print("\n-- LLM lift at latest snapshot per FEI (mean across facilities) --")
     latest = out_df.sort_values("snapshot_date").groupby("fei").last().reset_index()
-    for col in ["systemic_llm_only_share", "patient_risk_llm_only_share",
-                "contamination_llm_only_share", "data_integrity_llm_only_share"]:
+    for col in ["patient_risk_llm_only_share", "contamination_llm_only_share",
+                "data_integrity_llm_only_share", "investigation_llm_only_share",
+                "repeat_cross_insp_share"]:
         if col in latest.columns:
             print(f"  {col:<40}: {latest[col].mean():.3f}")
 

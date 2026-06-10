@@ -44,7 +44,7 @@ OUT_DIR = OUT_FIGS / "timelines"
 OUT_DIR.mkdir(exist_ok=True)
 
 RISK_COLS = [
-    "severity_high_share", "patient_risk_llm_only_share", "systemic_llm_only_share",
+    "severity_critmajor_share", "patient_risk_llm_only_share", "scope_facilitywide_share",
     "contamination_llm_only_share", "data_integrity_llm_only_share", "repeat_llm_share",
     "remediation_none_share", "wl_ref_regex_share", "oos_oot_regex_share",
 ]
@@ -83,17 +83,17 @@ def load_483_timeseries(feis: set[int]) -> pd.DataFrame:
     # the m12 test design; repeat uses >0 because its median is 0.
     med_contam = ts["contamination_llm_only_share"].median()
     med_oos = ts["oos_oot_regex_share"].median()
-    med_sev = ts["severity_high_share"].median()
+    med_sev = ts["severity_critmajor_share"].median()
     n_criteria = (
         (ts["repeat_llm_only_share"] > 0).astype(int)
         + (ts["contamination_llm_only_share"] > med_contam).astype(int)
         + (ts["oos_oot_regex_share"] > med_oos).astype(int)
-        + (ts["severity_high_share"] > med_sev).astype(int)
+        + (ts["severity_critmajor_share"] > med_sev).astype(int)
     )
     ts["n_risk_criteria"] = n_criteria
     ts["high_risk_483"] = n_criteria >= 2
     print(f"[step1a] flag thresholds: contamination>{med_contam:.2f}, "
-          f"oos_oot>{med_oos:.2f}, severity_high>{med_sev:.2f}, repeat>0")
+          f"oos_oot>{med_oos:.2f}, sev_critmajor>{med_sev:.2f}, repeat>0")
     print(f"[step1a] 483 snapshots: {len(ts)} rows, {ts['fei'].nunique()} FEIs, "
           f"{int(ts['high_risk_483'].sum())} high-risk, "
           f"{int(ts['outside_panel'].sum())} outside panel window")
@@ -245,7 +245,7 @@ def build_fei_timeline(fei: int, apis: list[str], ts: pd.DataFrame, ev: pd.DataF
     for _, r in f_ts.iterrows():
         rows.append({
             "event_date": r["snapshot_date"], "event_type": "483_snapshot",
-            "event_label": f"483 snapshot: {r['n_obs_total']} obs, sev_high={r['severity_high_share']:.2f}",
+            "event_label": f"483 snapshot: {r['n_obs_total']} obs, sev_critmajor={r['severity_critmajor_share']:.2f}",
             "high_risk_483": bool(r["high_risk_483"]), "n_obs_total": r["n_obs_total"],
             **{c: r[c] for c in RISK_COLS},
         })
@@ -369,7 +369,7 @@ def plot_fei_timeline(fei: int, apis: list[str], tl: pd.DataFrame) -> Path | Non
         col = "red" if r["high_risk_483"] else "steelblue"
         ax.scatter(r["event_date"], LANES["483_snapshot"], s=size, color=col, zorder=3,
                    edgecolors="black", linewidths=0.5)
-        ax.annotate(f"{r['severity_high_share']:.2f}", (r["event_date"], LANES["483_snapshot"]),
+        ax.annotate(f"{r['severity_critmajor_share']:.2f}", (r["event_date"], LANES["483_snapshot"]),
                     textcoords="offset points", xytext=(0, -16), ha="center", fontsize=7)
         if r["high_risk_483"]:
             ax.axvline(r["event_date"], color="red", linestyle="--", linewidth=0.8, alpha=0.6, zorder=1)
@@ -482,7 +482,7 @@ def narrative(fei: int, apis: list[str], tl: pd.DataFrame) -> str:
     for _, r in snaps.iterrows():
         tag = "[HIGH RISK]" if r["high_risk_483"] else "[normal]"
         L.append(f"  - {r['event_date'].date()}: {int(r['n_obs_total'])} observations, "
-                 f"severity_high={r['severity_high_share']:.2f}, "
+                 f"severity_critmajor={r['severity_critmajor_share']:.2f}, "
                  f"patient_risk={r['patient_risk_llm_only_share']:.2f} {tag}")
 
     insp = tl[tl["event_type"].isin(["inspection_outcome", "483_issued"])]
@@ -620,8 +620,8 @@ FORWARD_FEATURES = {
     "contamination_llm_only_share": "Contamination (LLM)",
     "repeat_llm_share": "Repeat violations (LLM)",
     "oos_oot_regex_share": "OOS/OOT references (regex)",
-    "severity_high_share": "High-severity obs. (LLM)",
-    "systemic_llm_only_share": "Systemic violations (LLM)",
+    "severity_critmajor_share": "Critical+Major obs. (LLM)",
+    "scope_facilitywide_share": "Facility-wide scope (LLM)",
     "n_obs_total": "Number of observations",
 }
 

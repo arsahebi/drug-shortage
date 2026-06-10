@@ -106,7 +106,7 @@ def build_panel() -> pd.DataFrame:
         "repeat_llm_only_share",
         "contamination_llm_only_share",
         "oos_oot_regex_share",
-        "severity_high_share",
+        "severity_critmajor_share",
         "remediation_none_share",
     ]
     tri = pd.read_csv(TEXT_FEATURES_CSV, usecols=["fei"] + TEXT_COLS)

@@ -74,7 +74,9 @@ SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
 
 # ── Model ──────────────────────────────────────────────────────────────────
 MODEL_NAME = "gpt-5-mini"
-MAX_TOKENS = 2000
+MAX_TOKENS = 4000
+RATE_LIMIT_RETRIES = 4    # retries per request on RateLimitError
+RATE_LIMIT_SLEEP   = 65   # seconds; grows linearly per attempt
 SAVE_EVERY = 50      # write partial results every N observations
 
 # ── Regex flag columns → renamed output columns ────────────────────────────
@@ -468,28 +470,37 @@ def _call_openai(client, obs_row: pd.Series) -> tuple[dict, str, str]:
     prompt = _build_prompt(obs_text, obs_row.get("cfr_codes", ""))
 
     try:
-        response = client.responses.create(
-            model=MODEL_NAME,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract structured risk signals from FDA Form 483 "
-                        "observations. Return only schema-valid JSON."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            max_output_tokens=MAX_TOKENS,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "form_483_observation_signal",
-                    "strict": True,
-                    "schema": OPENAI_JSON_SCHEMA,
-                }
-            },
-        )
+        response = None
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            try:
+                response = client.responses.create(
+                    model=MODEL_NAME,
+                    input=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You extract structured risk signals from FDA Form 483 "
+                                "observations. Return only schema-valid JSON."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_output_tokens=MAX_TOKENS,
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": "form_483_observation_signal",
+                            "strict": True,
+                            "schema": OPENAI_JSON_SCHEMA,
+                        }
+                    },
+                )
+                break
+            except Exception as exc:
+                if "RateLimit" in type(exc).__name__ and attempt < RATE_LIMIT_RETRIES:
+                    time.sleep(RATE_LIMIT_SLEEP * (attempt + 1))
+                    continue
+                raise
         response_text = _get_response_text(response).strip()
         if not response_text:
             return {}, "empty_response", _response_debug(response)
@@ -510,11 +521,9 @@ def _call_openai(client, obs_row: pd.Series) -> tuple[dict, str, str]:
         preview = response_text[:160] if "response_text" in locals() else ""
         return {}, "json_error", f"{str(exc)[:120]} | text={preview}"
     except Exception as exc:
-        # Rate-limit back-off
         exc_type = type(exc).__name__
         if "RateLimit" in exc_type:
-            time.sleep(60)
-            return {}, "rate_limit", "rate limited — retry manually"
+            return {}, "rate_limit", "rate limited after retries — rerun to rescore"
         return {}, "api_error", f"{exc_type}: {str(exc)[:200]}"
 
 
@@ -641,12 +650,18 @@ already_scored: set[tuple] = set()
 existing_rows:  list[dict] = []
 
 if SIGNALS_CSV.exists() and not FORCE and not SAMPLE:
-    existing_df  = pd.read_csv(SIGNALS_CSV)
-    existing_rows = existing_df.to_dict("records")
-    for _, r in existing_df.iterrows():
+    existing_df = pd.read_csv(SIGNALS_CSV)
+    # Keep only successfully scored rows; failed rows are dropped so they
+    # get rescored on this run.
+    ok_df  = existing_df[existing_df["extraction_status"].isin(["ok", "partial"])]
+    n_fail = len(existing_df) - len(ok_df)
+    existing_rows = ok_df.to_dict("records")
+    for _, r in ok_df.iterrows():
         already_scored.add((r["fei"], r["filename"], r["obs_num"]))
     print(f"Already scored        : {len(already_scored):,}  "
           f"(set FORCE=True or use --force to re-score)")
+    if n_fail:
+        print(f"Failed rows to rescore: {n_fail}")
 
 
 # %%
