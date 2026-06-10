@@ -79,7 +79,7 @@ def compute_data() -> dict:
         }
 
     # ── Case study: FEI 3002809586 ────────────────────────────────────────────
-    d["case_study"] = {"snaps": [], "inspections": []}
+    d["case_study"] = {"snaps": [], "inspections": [], "warning_letters": []}
     if ts_raw is not None and INSP_XLSX.exists():
         ts_raw["snapshot_date"] = pd.to_datetime(ts_raw["snapshot_date"])
         ts_raw["fei"] = ts_raw["fei"].astype(int)
@@ -106,14 +106,20 @@ def compute_data() -> dict:
                 "remed":   round(float(r.get("remediation_none_share",    0) or 0), 3),
                 "sev":     round(float(r.get("severity_critmajor_share",  0) or 0), 3),
             })
-        for _, r in insp_fei.iterrows():
-            yr = round(r["Inspection End Date"].year +
-                       (r["Inspection End Date"].dayofyear - 1) / 365.25, 3)
-            d["case_study"]["inspections"].append({
-                "x":   yr,
-                "cls": cls_map.get(r["Classification"], "?"),
-                "label": r["Inspection End Date"].strftime("%b %Y"),
-            })
+        # Warning letters for this FEI (independent of 483 — issued post-inspection)
+        from config import REDICA_CSV
+        redica = pd.read_csv(REDICA_CSV)
+        redica["Event Date"] = pd.to_datetime(redica["Event Date"], errors="coerce")
+        wl_rows = redica[(redica["FEI"] == CASE_FEI) & (redica["Warning Letter"] == 1)].copy()
+        ts_min = snaps["snapshot_date"].min() if not snaps.empty else pd.Timestamp("2016-01-01")
+        for _, wr in wl_rows.iterrows():
+            if pd.notna(wr["Event Date"]) and wr["Event Date"] >= ts_min:
+                yr = round(wr["Event Date"].year +
+                           (wr["Event Date"].dayofyear - 1) / 365.25, 3)
+                d["case_study"]["warning_letters"].append({
+                    "x": yr,
+                    "label": "Warning Letter " + wr["Event Date"].strftime("%b %Y"),
+                })
 
     # ── Monthly onset count (for lead-lag caption) ────────────────────────────
     mp = _read("master_panel_monthly.csv")
@@ -161,57 +167,6 @@ def compute_data() -> dict:
             (g1["hi_rate"]*g1["n_hi"] + g1["lo_rate"]*g1["n_lo"]) / (g1["n_hi"]+g1["n_lo"]))*100, 1)
         d["fwd_n"] = int(g0["n_hi"] + g0["n_lo"])
 
-    # m11 FEI timeline events
-    ev_all = _read("fei_events_all.csv")
-    d["fei_events"] = {}
-    if ev_all is not None:
-        ev_all["event_date"] = pd.to_datetime(ev_all["event_date"], errors="coerce")
-        ev_all["year_dec"] = (ev_all["event_date"].dt.year +
-                              (ev_all["event_date"].dt.dayofyear - 1) / 365.25).round(3)
-        for fei_id, grp in ev_all.groupby("fei"):
-            firm = grp["firm_name"].dropna().iloc[0] if grp["firm_name"].notna().any() else str(fei_id)
-            apis = grp["apis"].dropna().iloc[0] if "apis" in grp.columns and grp["apis"].notna().any() else ""
-            ev483, evinsp, evrec, shbands = [], [], [], []
-            for _, r in grp.sort_values("event_date").iterrows():
-                if pd.isna(r.get("year_dec")): continue
-                yr = float(r["year_dec"]); etype = str(r["event_type"])
-                lbl = str(r.get("event_label", ""))[:70]
-                if etype == "483_snapshot":
-                    ev483.append({"yr": yr,
-                        "hr":    bool(r["high_risk_483"]) if pd.notna(r.get("high_risk_483")) else False,
-                        "n_obs": int(r["n_obs_total"]) if pd.notna(r.get("n_obs_total")) else 1,
-                        "sev":   round(float(r["severity_critmajor_share"]), 2)
-                                 if pd.notna(r.get("severity_critmajor_share")) else 0.0,
-                        "label": lbl})
-                elif etype == "inspection_outcome":
-                    evinsp.append({"yr": yr,
-                        "cls": str(r["classification"]) if pd.notna(r.get("classification")) else "?",
-                        "label": lbl})
-                elif etype == "recall":
-                    evrec.append({"yr": yr,
-                        "cls": str(r["recall_class"]) if pd.notna(r.get("recall_class")) else "?",
-                        "label": lbl})
-                elif etype == "shortage_start":
-                    drug = str(r.get("shortage_drug", ""))[:40]
-                    end_yr = None
-                    resolved = r.get("shortage_resolved_date")
-                    if pd.notna(resolved) and str(resolved) not in ("nan", "NaT", ""):
-                        try:
-                            rd = pd.to_datetime(resolved, errors="coerce")
-                            if pd.notna(rd):
-                                end_yr = round(float(rd.year + (rd.dayofyear-1)/365.25), 3)
-                        except Exception:
-                            pass
-                    shbands.append({"start": yr, "end": end_yr or 2025.5, "drug": drug})
-            d["fei_events"][str(fei_id)] = {
-                "firm": str(firm)[:55], "apis": str(apis)[:60],
-                "events_483": ev483, "events_insp": evinsp,
-                "events_recall": evrec, "shortage_bands": shbands,
-                "n_483": len(ev483),
-                "n_hr":  sum(1 for e in ev483 if e["hr"]),
-                "n_oai": sum(1 for e in evinsp if e["cls"] == "OAI"),
-                "n_recalls": len(evrec),
-            }
     return d
 
 
@@ -258,53 +213,46 @@ new Chart(document.getElementById('oaiLeadChart'),{{
     # ── Case study chart JS ───────────────────────────────────────────────────
     cs = d.get("case_study", {})
     if cs.get("snaps"):
-        snaps     = cs["snaps"]
-        cls_color = {"OAI": "#C0392B", "VAI": "#E67E22", "NAI": "#27AE60"}
-        # Build per-point classification lookup
-        insp_lookup = {round(i["x"], 3): i["cls"] for i in cs.get("inspections", [])}
-        pt_colors = [cls_color.get(insp_lookup.get(round(s["x"], 3), ""), "#999") for s in snaps]
-        pt_styles = ["triangle" if insp_lookup.get(round(s["x"], 3)) == "OAI" else "circle"
-                     for s in snaps]
-        xs         = [s["x"]     for s in snaps]
-        contam     = [s["contam"] for s in snaps]
-        remed      = [s["remed"]  for s in snaps]
-        labels_x   = [s["label"]  for s in snaps]
+        snaps  = cs["snaps"]
+        wls    = cs.get("warning_letters", [])
+        xs     = [s["x"]     for s in snaps]
+        contam = [s["contam"] for s in snaps]
+        remed  = [s["remed"]  for s in snaps]
+        labels_x = [s["label"] for s in snaps]
+        wl_xs    = [w["x"]     for w in wls]
+        wl_lbls  = [w["label"] for w in wls]
         case_js = f"""
 (function(){{
-const PT_COLORS={_j(pt_colors)};
-const PT_STYLES={_j(pt_styles)};
 const LABELS_X={_j(labels_x)};
+const WL_XS={_j(wl_xs)};
+const WL_LBLS={_j(wl_lbls)};
+const datasets=[
+  {{label:'Contamination flag',
+    data:{_j(contam)},
+    borderColor:'#E07A5F',fill:false,tension:0.2,borderWidth:2.5,
+    pointRadius:7,pointBackgroundColor:'#E07A5F',pointBorderColor:'#B5563E'}},
+  {{label:'No remediation response',
+    data:{_j(remed)},
+    borderColor:'#065A82',fill:false,tension:0.2,borderWidth:2.5,borderDash:[5,3],
+    pointRadius:7,pointBackgroundColor:'#065A82',pointBorderColor:'#044060'}}
+];
+if(WL_XS.length){{
+  datasets.push({{
+    label:'Warning Letter (FDA)',
+    type:'scatter',
+    data:WL_XS.map((x,i)=>(({{x,y:0.97,label:WL_LBLS[i]}}))  ),
+    backgroundColor:'#8B0000',borderColor:'#8B0000',
+    pointStyle:'star',pointRadius:12,showLine:false
+  }});
+}}
 new Chart(document.getElementById('caseChart'),{{
   type:'line',
-  data:{{
-    labels:{_j(xs)},
-    datasets:[
-      {{label:'Contamination flag',
-        data:{_j(contam)},
-        borderColor:'#E07A5F',backgroundColor:'rgba(224,122,95,0.08)',
-        fill:false,tension:0.2,borderWidth:2.5,
-        pointRadius:9,pointStyle:PT_STYLES,
-        pointBackgroundColor:PT_COLORS,pointBorderColor:PT_COLORS}},
-      {{label:'No remediation response',
-        data:{_j(remed)},
-        borderColor:'#065A82',backgroundColor:'rgba(6,90,130,0.08)',
-        fill:false,tension:0.2,borderWidth:2.5,borderDash:[5,3],
-        pointRadius:9,pointStyle:PT_STYLES,
-        pointBackgroundColor:PT_COLORS,pointBorderColor:PT_COLORS}}
-    ]
-  }},
+  data:{{labels:{_j(xs)},datasets}},
   options:{{maintainAspectRatio:false,
     plugins:{{
       legend:{{position:'bottom',labels:{{boxWidth:14,font:{{size:10.5}}}}}},
       tooltip:{{callbacks:{{
-        title: items=>LABELS_X[items[0].dataIndex]||'',
-        afterBody: items=>{{
-          const c=PT_COLORS[items[0].dataIndex];
-          if(c==='#C0392B') return 'Inspection outcome: OAI';
-          if(c==='#E67E22') return 'Inspection outcome: VAI';
-          if(c==='#27AE60') return 'Inspection outcome: NAI';
-          return '';
-        }}
+        title:items=>LABELS_X[items[0].dataIndex]||(items[0].raw?.label||''),
       }}}}
     }},
     scales:{{
@@ -352,87 +300,7 @@ new Chart(document.getElementById({_j(cid)}),{{
         _split_chart("recChart", d["grid_rec"], "% → drug recall within 24 months")
     )
 
-    fei_events_data = d["fei_events"]
-    timeline_js = f"""
-const FEI_EVENTS={_j(fei_events_data)};
-let _tChart=null;
-(function(){{
-  const sel=document.getElementById('feiSel');
-  if(!sel||!Object.keys(FEI_EVENTS).length){{
-    if(sel){{sel.innerHTML='<option>No data</option>';sel.disabled=true;}}return;
-  }}
-  const feiList=Object.keys(FEI_EVENTS).sort((a,b)=>{{
-    const da=FEI_EVENTS[a],db=FEI_EVENTS[b];
-    return(db.n_hr+db.n_oai*2+db.n_recalls)-(da.n_hr+da.n_oai*2+da.n_recalls);
-  }});
-  feiList.forEach(fei=>{{
-    const ev=FEI_EVENTS[fei],opt=document.createElement('option');
-    opt.value=fei;
-    opt.textContent=ev.firm+' ('+fei+')'+(ev.apis?' · '+ev.apis:'');
-    sel.appendChild(opt);
-  }});
-  function build(fei){{
-    const ev=FEI_EVENTS[fei];if(!ev)return;
-    const st=document.getElementById('feiStats');
-    if(st)st.innerHTML='<strong>'+ev.n_483+'</strong> 483s · <span style="color:#C0392B;font-weight:700;">'
-      +ev.n_hr+' high-risk</span> · <strong>'+ev.n_oai+'</strong> OAI · <strong>'+ev.n_recalls+'</strong> recalls';
-    const ds=[];
-    ev.shortage_bands.forEach((s,i)=>{{
-      ds.push({{label:i===0?'Shortage':'_',type:'line',
-        data:[{{x:s.start,y:0,label:s.drug}},{{x:s.end,y:0,label:s.drug}}],
-        borderColor:'rgba(100,100,100,0.5)',borderWidth:10,pointRadius:2,fill:false,order:0}});
-    }});
-    const hr=ev.events_483.filter(e=>e.hr),ok=ev.events_483.filter(e=>!e.hr);
-    if(hr.length)ds.push({{label:'483 High-risk',type:'scatter',
-      data:hr.map(e=>(({{x:e.yr,y:2,label:e.label,n_obs:e.n_obs,sev:e.sev}}))  ),
-      backgroundColor:'rgba(192,57,43,0.88)',borderColor:'#922B21',borderWidth:1,
-      pointRadius:ctx=>Math.max(6,Math.min(18,(ctx.raw?.n_obs||1)*1.8)),order:2}});
-    if(ok.length)ds.push({{label:'483 Normal',type:'scatter',
-      data:ok.map(e=>(({{x:e.yr,y:2,label:e.label,n_obs:e.n_obs,sev:e.sev}}))  ),
-      backgroundColor:'rgba(28,114,147,0.7)',borderColor:'#065A82',borderWidth:1,
-      pointRadius:ctx=>Math.max(5,Math.min(14,(ctx.raw?.n_obs||1)*1.5)),order:2}});
-    const CC={{OAI:'rgba(192,57,43,0.9)',VAI:'rgba(230,126,34,0.9)',NAI:'rgba(39,174,96,0.9)'}};
-    ['OAI','VAI','NAI'].forEach(c=>{{
-      const evs=ev.events_insp.filter(e=>e.cls===c);if(!evs.length)return;
-      ds.push({{label:'Insp: '+c,type:'scatter',data:evs.map(e=>(({{x:e.yr,y:3,label:e.label}}))  ),
-        backgroundColor:CC[c],borderColor:CC[c],pointStyle:'triangle',pointRadius:9,order:1}});
-    }});
-    const RC={{'Class I':'rgba(139,0,0,0.9)','Class II':'rgba(204,85,0,0.9)'}};
-    Object.entries(RC).forEach(([c,col])=>{{
-      const evs=ev.events_recall.filter(e=>e.cls===c);if(!evs.length)return;
-      ds.push({{label:'Recall '+c,type:'scatter',data:evs.map(e=>(({{x:e.yr,y:1,label:e.label}}))  ),
-        backgroundColor:col,borderColor:col,pointStyle:'rectRot',pointRadius:9,order:1}});
-    }});
-    if(_tChart)_tChart.destroy();
-    const ctx=document.getElementById('tlChart');if(!ctx)return;
-    _tChart=new Chart(ctx,{{data:{{datasets:ds}},options:{{maintainAspectRatio:false,
-      scales:{{
-        x:{{type:'linear',min:2008,max:2026,title:{{display:true,text:'Year'}},
-            ticks:{{stepSize:1,callback:v=>Number.isInteger(v)?v:''}},grid:{{color:'#EEE'}}}},
-        y:{{min:-0.5,max:3.7,ticks:{{stepSize:1,callback:v=>{{
-          return{{0:'Shortages',1:'Recalls',2:'483s',3:'Inspections'}}[Math.round(v)]||'';
-        }}}},grid:{{color:'#EEE'}}}}
-      }},
-      plugins:{{
-        legend:{{position:'bottom',labels:{{boxWidth:11,font:{{size:10}},filter:i=>!i.text.startsWith('_')}}}},
-        tooltip:{{callbacks:{{label:ctx=>{{
-          const r=ctx.raw;
-          if(r.label)return r.label;
-          if(r.n_obs!==undefined)return r.n_obs+' obs, sev='+r.sev;
-          return '';
-        }}}}}}
-      }}
-    }}}});
-    const st2=document.getElementById('feiStory'),s=[];
-    if(ev.n_hr>0)s.push('<strong>'+ev.n_hr+'/'+ev.n_483+'</strong> snapshots high-risk.');
-    if(ev.n_oai>0)s.push('<strong>'+ev.n_oai+' OAI</strong>.');
-    if(ev.n_recalls>0)s.push('<strong>'+ev.n_recalls+'</strong> recall(s).');
-    if(ev.n_hr>0&&ev.n_oai>0)s.push('Look for red ● preceding OAI ▲.');
-    if(st2)st2.innerHTML=s.join(' ')||'No high-risk events.';
-  }}
-  build(feiList[0]);
-  sel.addEventListener('change',()=>build(sel.value));
-}})();"""
+    timeline_js = ""  # removed — not informative enough
 
     n         = d["n_feis_text"]
     sn        = d["n_snaps"]
@@ -532,12 +400,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
 <section>
   <h2>Case study — one facility over 9 years (FEI {case_fei})</h2>
   <p class="sub">
-    Makes Bupropion &amp; Metformin. 7 FDA Form 483s between 2016 and 2025, covering 58% of
-    drug inspections at this facility. Point shape and color show the inspection outcome at
-    each snapshot: <span style="color:#C0392B;font-weight:700;">▲ OAI</span> ·
-    <span style="color:#E67E22;font-weight:700;">● VAI</span> ·
-    <span style="color:#27AE60;font-weight:700;">● NAI</span>.
-    Hover a point for the date.
+    Makes Bupropion &amp; Metformin. 7 FDA Form 483s between 2016 and 2025 (58% of drug
+    inspections). Each point is one dated 483 document. ★ marks a Warning Letter issued
+    by FDA — an independent regulatory action post-inspection. Hover for dates.
   </p>
   <div class="card">
     <h3>Contamination flag &amp; no-remediation share, 2016–2025</h3>
@@ -550,11 +415,11 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   </div>
   <div class="note dk">
     <strong>What the trend shows:</strong>
-    Contamination is persistently high (52–62%) across all 7 inspections — no improvement.
-    The no-remediation share <em>rises</em> from 22% (2016) to 63% (2019) and stays there —
+    Contamination is persistently high (52–62%) across all 7 snapshots — no improvement over 9 years.
+    The no-remediation share <em>rises</em> from 22% (2016) to 63% (2019) and plateaus —
     the facility keeps acknowledging the same problems in 483 text but never commits to fixing them.
-    The result: 5 of the 7 inspections ended in OAI. This is not a prediction — it is a
-    pattern visible in the document record, in chronological order.
+    A Warning Letter followed in May 2022 when these signals were already at their peak.
+    This is not a causal claim — it is a pattern visible in the document record, in order.
   </div>
 </section>
 
@@ -586,31 +451,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   </div>
 </section>
 
-<!-- SECTION 4: TIMELINE -->
-<section>
-  <h2>Chronological timeline — facility explorer</h2>
-  <p class="sub">
-    Select a facility. Four lanes: <strong>▲ Inspections</strong> (red=OAI · orange=VAI · green=NAI) ·
-    <strong>● 483 Snapshots</strong> (red=high-risk · blue=normal · size = observation count) ·
-    <strong>◆ Recalls</strong> · <strong>── Shortages</strong>.
-    Does red ● precede OAI ▲? That is the chronological test.
-  </p>
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-      <label style="font-weight:700;color:var(--navy);">Facility:</label>
-      <select id="feiSel" style="font-size:13px;padding:5px 9px;border:1px solid var(--rule);
-        border-radius:4px;flex:1;min-width:240px;max-width:520px;"></select>
-      <span id="feiStats" style="font-size:12px;color:var(--muted);"></span>
-    </div>
-    <div style="position:relative;height:300px;"><canvas id="tlChart"></canvas></div>
-    <div id="feiStory" class="note" style="margin-top:10px;font-size:12.5px;"></div>
-  </div>
-  <p style="color:var(--muted);font-size:12px;margin-top:8px;">
-    Temporal co-occurrence only — shortages may involve facilities not in this set.
-  </p>
-</section>
-
-<!-- SECTION 5: COVERAGE & NEXT STEPS -->
+<!-- SECTION 4: COVERAGE & NEXT STEPS -->
 <section>
   <h2>Coverage &amp; next steps</h2>
   <div class="two">
@@ -625,9 +466,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     <div class="box">
       <div class="box-head n">Next steps</div>
       <ul>
-        <li><strong>Stage 1:</strong> Redica inspection counts (complete, 127 FEIs) → p_esc per facility via logistic regression (m12, done).</li>
-        <li><strong>Stage 2:</strong> max/mean p_esc across facilities → drug-year shortage model, replacing raw text averaging (m07/m09, done).</li>
-        <li><strong>m13:</strong> Chronological case studies for 2 best-covered FEIs — dated text signal trajectory vs OAI/shortage outcomes.</li>
+        <li><strong>Stage 1:</strong> Redica counts → p_esc per facility (m12, done). Add Redica <em>483 critical / 483 major</em> observation counts as additional features.</li>
+        <li><strong>Stage 2:</strong> max/mean p_esc → drug-year shortage model (m07/m09, done).</li>
+        <li><strong>FAERS correlation:</strong> for the 37 text-covered FEIs, test whether 483 text severity correlates with subsequent serious adverse events for the drugs they manufacture — an independent, patient-facing outcome.</li>
         <li>Expand 483 PDF coverage — the binding constraint on text analysis.</li>
       </ul>
     </div>

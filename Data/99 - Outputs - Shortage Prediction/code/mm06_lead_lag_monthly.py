@@ -49,7 +49,7 @@ log = get_logger("mm06_lead_lag_monthly", OUT_LOGS / "mm06_lead_lag_monthly.log"
 plt.rcParams.update({"figure.dpi": 110, "savefig.bbox": "tight"})
 
 # Month offsets to examine around shortage onset
-LOOKBACK  = 12   # months before onset
+LOOKBACK  = 24   # months before onset
 LOOKAHEAD =  0   # include onset month itself
 # Control exclusion: drug-months within ±N months of ANY onset are excluded
 CONTROL_EXCL_MONTHS = 12
