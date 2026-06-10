@@ -39,6 +39,8 @@ REDICA_EVENTS = DATA / "07 - Redica" / "processed" / "SITE_RED_FLAG_EVENTS.xlsx"
 
 # 483 Text Analysis outputs (LLM-extracted FEI-level signals)
 TEXT_FEATURES_CSV = DATA / "99 - Outputs - Text Analysis" / "483_fei_context_features.csv"
+# Time-aware version: one row per (FEI, snapshot_date) — use this for shortage prediction
+TEXT_TIMESERIES_CSV = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
 # FEI→drug_norm bridge: sheet "API Only_FEI Mapping" in VALISURE_FEI (defined above)
 
 # Output paths

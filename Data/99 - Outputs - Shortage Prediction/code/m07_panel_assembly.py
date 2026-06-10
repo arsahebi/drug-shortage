@@ -20,6 +20,14 @@ Final feature set (all are values at year t, used to predict year t+1):
     valisure_mean_score, valisure_min_score, valisure_n_failing
     sole_source_ever, parenteral_ever
     prior_shortage_t, prior_shortage_w3
+    483 text features (time-aware, most-recent snapshot per FEI ≤ year-end,
+    averaged across drug's FEIs): severity_critmajor_share, scope_facilitywide_share,
+    scope_multipleproducts_share, cultural_root_cause_share, capital_root_cause_share,
+    remediation_none_share, remediation_weak_share, repeat_llm_share,
+    contamination_llm_share, data_integrity_llm_share, investigation_llm_share,
+    repeat_llm_only_share, contamination_llm_only_share, oos_oot_regex_share,
+    wl_ref_regex_share, repeat_cross_insp_share, vc_labcontrols_share,
+    vc_buildingsequipment_share, vc_qualitysystem_share, vc_productioncontrols_share
 """
 
 from __future__ import annotations
@@ -27,7 +35,7 @@ import pandas as pd
 import numpy as np
 
 from config import (OUT_DATA, OUT_LOGS, PANEL_START_YEAR, PANEL_END_YEAR,
-                    ROLLING_WINDOW_YEARS, VALISURE_FEI, TEXT_FEATURES_CSV)
+                    ROLLING_WINDOW_YEARS, VALISURE_FEI, TEXT_TIMESERIES_CSV)
 from utils import get_logger, read_table, write_table
 
 log = get_logger("m07_panel", OUT_LOGS / "m07_panel.log")
@@ -92,10 +100,10 @@ def build_panel() -> pd.DataFrame:
     panel = panel.merge(val, on="drug_norm", how="left")
     panel["has_valisure"] = panel["valisure_mean_score"].notna().astype(int)
 
-    # ---- 483 Text Features: raw LLM/regex shares (time-invariant per API) ----
-    # Composite indices (TRI/SCRI/IRWI/QCI) removed from the analysis — the m12
-    # validation grid showed raw shares carry the forward signal.
-    # FEI→drug bridge from Valisure FEI mapping (covers all 14 APIs × 129 FEIs)
+    # ---- 483 Text Features: time-aware join from FEI-level snapshot timeseries ----
+    # For each (drug_norm, year t), take the most recent snapshot per FEI with
+    # snapshot_date <= Dec 31 of year t, then average across all the drug's FEIs.
+    # Missing values remain NaN (FEIs with no 483 PDFs) — the model fills with 0.
     bridge = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping",
                            usecols=["API", "FEI_NUMBER"])
     bridge = (bridge.dropna(subset=["FEI_NUMBER"])
@@ -103,25 +111,64 @@ def build_panel() -> pd.DataFrame:
     bridge["fei"] = bridge["fei"].astype(int)
 
     TEXT_COLS = [
-        "repeat_llm_only_share",
-        "contamination_llm_only_share",
-        "oos_oot_regex_share",
+        # severity (4-tier; critmajor = Critical + Major combined)
         "severity_critmajor_share",
-        "remediation_none_share",
+        # scope (drop scope_unclear_share — reference category)
+        "scope_facilitywide_share", "scope_multipleproducts_share",
+        # root cause (drop unclear_root_cause_share)
+        "cultural_root_cause_share", "capital_root_cause_share",
+        # remediation
+        "remediation_none_share", "remediation_weak_share",
+        # LLM binary flags
+        "repeat_llm_share", "contamination_llm_share",
+        "data_integrity_llm_share", "investigation_llm_share",
+        # LLM semantic lift (LLM flagged, regex did not)
+        "repeat_llm_only_share", "contamination_llm_only_share",
+        # regex
+        "oos_oot_regex_share", "wl_ref_regex_share",
+        # algorithmic cross-inspection repeat
+        "repeat_cross_insp_share",
+        # violation categories (most informative from m12 grid)
+        "vc_labcontrols_share", "vc_buildingsequipment_share",
+        "vc_qualitysystem_share", "vc_productioncontrols_share",
     ]
-    tri = pd.read_csv(TEXT_FEATURES_CSV, usecols=["fei"] + TEXT_COLS)
-    tri["fei"] = tri["fei"].astype(int)
 
-    # Simple mean across all FEIs manufacturing the drug
-    merged = bridge.merge(tri, on="fei", how="left")
-    text_drug = merged.groupby("drug_norm")[TEXT_COLS].mean().reset_index()
+    if TEXT_TIMESERIES_CSV.exists():
+        ts_raw = pd.read_csv(TEXT_TIMESERIES_CSV, usecols=["fei", "snapshot_date"] + TEXT_COLS)
+        ts_raw["fei"] = ts_raw["fei"].astype(int)
+        ts_raw["snapshot_date"] = pd.to_datetime(ts_raw["snapshot_date"])
 
-    n_covered = text_drug["repeat_llm_only_share"].notna().sum()
-    log.info("483 text features: %d / %d drugs have coverage", n_covered, len(text_drug))
+        # For each panel year, get the most recent snapshot per FEI as of Dec 31
+        fei_year_rows = []
+        for yr in sorted(panel["year"].unique()):
+            cutoff = pd.Timestamp(f"{int(yr)}-12-31")
+            avail = ts_raw[ts_raw["snapshot_date"] <= cutoff]
+            if avail.empty:
+                continue
+            latest = avail.loc[avail.groupby("fei")["snapshot_date"].idxmax(),
+                                ["fei"] + TEXT_COLS].copy()
+            latest["year"] = yr
+            fei_year_rows.append(latest)
 
-    panel = panel.merge(text_drug, on="drug_norm", how="left")
-    for c in TEXT_COLS:
-        panel[c] = panel[c].fillna(0)
+        if fei_year_rows:
+            fei_year_text = pd.concat(fei_year_rows, ignore_index=True)
+            # Average across all FEIs manufacturing the drug in that year
+            drug_year_text = (fei_year_text.merge(bridge, on="fei", how="inner")
+                              .groupby(["drug_norm", "year"])[TEXT_COLS].mean()
+                              .reset_index())
+            panel = panel.merge(drug_year_text, on=["drug_norm", "year"], how="left")
+            n_cov = panel.groupby("drug_norm")["repeat_llm_only_share"].any().sum()
+            log.info("483 text features (time-aware): %d / %d drugs have ≥1 covered year",
+                     n_cov, panel["drug_norm"].nunique())
+        else:
+            log.warning("No 483 timeseries rows in panel year range; text features will be NaN")
+            for c in TEXT_COLS:
+                panel[c] = np.nan
+    else:
+        log.warning("TEXT_TIMESERIES_CSV not found; text features will be NaN")
+        for c in TEXT_COLS:
+            panel[c] = np.nan
+    # Leave NaN for drug-years with no snapshot coverage (model handles with fillna(0))
 
     # ---- Rolling window features ----
     rolling_cols = [
