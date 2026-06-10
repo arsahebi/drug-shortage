@@ -100,68 +100,49 @@ def build_panel() -> pd.DataFrame:
     panel = panel.merge(val, on="drug_norm", how="left")
     panel["has_valisure"] = panel["valisure_mean_score"].notna().astype(int)
 
-    # ---- 483 Text Features: time-aware join from FEI-level snapshot timeseries ----
-    # For each (drug_norm, year t), take the most recent snapshot per FEI with
-    # snapshot_date <= Dec 31 of year t, then average across all the drug's FEIs.
-    # Missing values remain NaN (FEIs with no 483 PDFs) — the model fills with 0.
+    # ---- Stage 1 escalation risk scores (from m12) ----
+    # For each (drug_norm, year t): take the most recent p_esc_24 per FEI as of
+    # Dec 31 of year t, then aggregate across the drug's FEIs.
+    # max_p_esc = worst-facility risk (captures tail risk)
+    # mean_p_esc = average across all the drug's FEIs
+    # FEIs with no text data contribute nothing to either aggregate.
     bridge = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping",
                            usecols=["API", "FEI_NUMBER"])
     bridge = (bridge.dropna(subset=["FEI_NUMBER"])
               .rename(columns={"API": "drug_norm", "FEI_NUMBER": "fei"}))
     bridge["fei"] = bridge["fei"].astype(int)
 
-    TEXT_COLS = [
-        # severity (4-tier; critmajor = Critical + Major combined)
-        "severity_critmajor_share",
-        # scope (drop scope_unclear_share — reference category)
-        "scope_facilitywide_share", "scope_multipleproducts_share",
-        # root cause (drop unclear_root_cause_share)
-        "cultural_root_cause_share", "capital_root_cause_share",
-        # remediation
-        "remediation_none_share", "remediation_weak_share",
-        # LLM binary flags
-        "repeat_llm_share", "contamination_llm_share",
-        "data_integrity_llm_share", "investigation_llm_share",
-        # LLM semantic lift (LLM flagged, regex did not)
-        "repeat_llm_only_share", "contamination_llm_only_share",
-        # regex
-        "oos_oot_regex_share", "wl_ref_regex_share",
-        # algorithmic cross-inspection repeat
-        "repeat_cross_insp_share",
-        # violation categories (most informative from m12 grid)
-        "vc_labcontrols_share", "vc_buildingsequipment_share",
-        "vc_qualitysystem_share", "vc_productioncontrols_share",
-    ]
+    p_esc_path = OUT_DATA / "fei_p_esc.parquet"
+    if p_esc_path.exists():
+        p_esc = pd.read_parquet(p_esc_path)
+        p_esc["fei"] = p_esc["fei"].astype(int)
+        p_esc["snapshot_date"] = pd.to_datetime(p_esc["snapshot_date"])
 
-    if TEXT_TIMESERIES_CSV.exists():
-        ts_raw = pd.read_csv(TEXT_TIMESERIES_CSV, usecols=["fei", "snapshot_date"] + TEXT_COLS)
-        ts_raw["fei"] = ts_raw["fei"].astype(int)
-        ts_raw["snapshot_date"] = pd.to_datetime(ts_raw["snapshot_date"])
-
-        # For each panel year, get the most recent snapshot per FEI as of Dec 31
         fei_year_rows = []
         for yr in sorted(panel["year"].unique()):
             cutoff = pd.Timestamp(f"{int(yr)}-12-31")
-            avail = ts_raw[ts_raw["snapshot_date"] <= cutoff]
+            avail = p_esc[p_esc["snapshot_date"] <= cutoff]
             if avail.empty:
                 continue
-            latest = avail.loc[avail.groupby("fei")["snapshot_date"].idxmax(),
-                                ["fei"] + TEXT_COLS].copy()
-            latest["year"] = yr
+            latest = (avail.loc[avail.groupby("fei")["snapshot_date"].idxmax(),
+                                 ["fei", "p_esc_24"]]
+                          .assign(year=yr))
             fei_year_rows.append(latest)
 
         if fei_year_rows:
-            fei_year_text = pd.concat(fei_year_rows, ignore_index=True)
-            # Average across all FEIs manufacturing the drug in that year
-            drug_year_text = (fei_year_text.merge(bridge, on="fei", how="inner")
-                              .groupby(["drug_norm", "year"])[TEXT_COLS].mean()
-                              .reset_index())
-            panel = panel.merge(drug_year_text, on=["drug_norm", "year"], how="left")
-            n_cov = panel.groupby("drug_norm")["repeat_llm_only_share"].any().sum()
-            log.info("483 text features (time-aware): %d / %d drugs have ≥1 covered year",
+            fei_year_p = pd.concat(fei_year_rows, ignore_index=True)
+            drug_year_p = (fei_year_p.merge(bridge, on="fei", how="inner")
+                           .groupby(["drug_norm", "year"])["p_esc_24"]
+                           .agg(max_p_esc="max", mean_p_esc="mean")
+                           .reset_index())
+            panel = panel.merge(drug_year_p, on=["drug_norm", "year"], how="left")
+            n_cov = panel["max_p_esc"].notna().groupby(panel["drug_norm"]).any().sum()
+            log.info("Stage 1 p_esc joined: %d / %d drugs have ≥1 covered year",
                      n_cov, panel["drug_norm"].nunique())
         else:
-            log.warning("No 483 timeseries rows in panel year range; text features will be NaN")
+            log.warning("fei_p_esc.parquet has no rows in panel year range")
+    else:
+        log.warning("fei_p_esc.parquet not found — run m12 first to generate Stage 1 scores")
             for c in TEXT_COLS:
                 panel[c] = np.nan
     else:

@@ -26,6 +26,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+try:
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.metrics import roc_auc_score
+    _SKLEARN = True
+except ImportError:
+    _SKLEARN = False
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from config import DATA, OUT_DATA, OUT_TABS, REDICA_CSV, VALISURE_FEI  # noqa: E402
@@ -184,6 +192,45 @@ def main():
     c = grid[(grid["type"] == "continuous") & grid["effect"].notna()]
     c = c.reindex(c["effect"].abs().sort_values(ascending=False).index)
     print(c.head(20)[["group", "feature", "outcome", "n_hi", "effect"]].to_string(index=False))
+
+    # ── Stage 1: multivariate logistic → p_esc per snapshot ─────────────────
+    # Fits all 6 validated escalation features jointly against esc_24.
+    # Uses leave-one-FEI-out CV so predictions are out-of-sample at facility level.
+    # Output: fei_p_esc.parquet consumed by m07 to replace raw text averaging.
+    _STAGE1_FEATS = [
+        "repeat_llm_only_share", "repeat_cross_insp_share",
+        "contamination_llm_only_share", "oos_oot_regex_share",
+        "severity_critmajor_share", "scope_facilitywide_share",
+    ]
+    if not _SKLEARN:
+        print("\nStage 1 skipped — scikit-learn not installed")
+    else:
+        feats_avail = [f for f in _STAGE1_FEATS if f in df.columns]
+        s1 = df[feats_avail + ["esc_24", "fei", "snapshot_date"]].dropna(subset=["esc_24"]).copy()
+        X1 = s1[feats_avail].fillna(0).astype(float)
+        y1 = s1["esc_24"].astype(int)
+        feis_arr = s1["fei"].values
+
+        p_cv = np.full(len(s1), float("nan"))
+        for fei_val in s1["fei"].unique():
+            te = feis_arr == fei_val
+            tr = ~te
+            if y1.values[tr].sum() < 1 or y1.values[tr].nunique() < 2:
+                p_cv[te] = float(y1.values[tr].mean()) if tr.any() else 0.5
+                continue
+            sc = StandardScaler()
+            m = LogisticRegression(penalty="l2", C=1.0, max_iter=500,
+                                   class_weight="balanced", random_state=7)
+            m.fit(sc.fit_transform(X1.values[tr]), y1.values[tr])
+            p_cv[te] = m.predict_proba(sc.transform(X1.values[te]))[:, 1]
+
+        s1 = s1.copy()
+        s1["p_esc_24"] = p_cv
+        out_path = OUT_DATA / "fei_p_esc.parquet"
+        s1[["fei", "snapshot_date", "p_esc_24"]].to_parquet(out_path, index=False)
+        valid = ~np.isnan(p_cv)
+        auc_val = roc_auc_score(y1.values[valid], p_cv[valid]) if y1.values[valid].sum() > 0 else float("nan")
+        print(f"\nStage 1 p_esc saved → {out_path}  (n={len(s1)}, LOOFEI-CV AUC={auc_val:.3f})")
 
 
 if __name__ == "__main__":

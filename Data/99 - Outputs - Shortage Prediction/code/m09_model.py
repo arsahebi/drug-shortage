@@ -49,8 +49,9 @@ log = get_logger("m09_model", OUT_LOGS / "m09_model.log")
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Features: one or two signals per source.
-# Recalls excluded — concurrent/lagging w.r.t. shortage onset, not leading indicators.
+# Two-stage feature set.
+# Stage 1 escalation risk (from m12 → m07) replaces raw 20-column text averaging.
+# Recalls excluded — concurrent/lagging w.r.t. shortage onset.
 FEATURES = [
     # FAERS adverse-event signals
     "faers_severity_score",
@@ -67,39 +68,13 @@ FEATURES = [
     # Shortage history
     "prior_shortage_t",
     "prior_shortage_w3",
-    # 483 text features — time-aware LLM/regex shares (most-recent snapshot per FEI,
-    # drug-level mean; m12 grid identifies which features carry forward signal)
-    "severity_critmajor_share",       # Critical+Major severity (4-tier recalibrated)
-    "scope_facilitywide_share",       # facility-wide vs isolated failure
-    "scope_multipleproducts_share",
-    "cultural_root_cause_share",      # management/training root cause
-    "capital_root_cause_share",       # equipment/facility root cause
-    "remediation_none_share",         # no remediation → longer shortage duration
-    "remediation_weak_share",
-    "repeat_llm_share",               # LLM: any repeat violation finding
-    "contamination_llm_share",
-    "data_integrity_llm_share",
-    "investigation_llm_share",
-    "repeat_llm_only_share",          # semantic lift: LLM flagged, regex missed
-    "contamination_llm_only_share",
-    "oos_oot_regex_share",
-    "wl_ref_regex_share",
-    "repeat_cross_insp_share",        # algorithmic: same deficiency cited across inspections
-    "vc_labcontrols_share",
-    "vc_buildingsequipment_share",
+    # Stage 1 escalation risk aggregated from FEI-level p_esc scores (m12 → m07)
+    "max_p_esc",   # worst-facility risk across the drug's FEIs
+    "mean_p_esc",  # average escalation risk across the drug's FEIs
 ]
 
-TEXT_FEATURE_COLS = [
-    "severity_critmajor_share", "scope_facilitywide_share", "scope_multipleproducts_share",
-    "cultural_root_cause_share", "capital_root_cause_share",
-    "remediation_none_share", "remediation_weak_share",
-    "repeat_llm_share", "contamination_llm_share", "data_integrity_llm_share", "investigation_llm_share",
-    "repeat_llm_only_share", "contamination_llm_only_share",
-    "oos_oot_regex_share", "wl_ref_regex_share",
-    "repeat_cross_insp_share", "vc_labcontrols_share", "vc_buildingsequipment_share",
-]
-# Ablation baseline: same feature set minus the LLM-derived text features
-FEATURES_NO_TEXT = [f for f in FEATURES if f not in TEXT_FEATURE_COLS]
+# Ablation: same features without Stage 1 scores
+FEATURES_NO_TEXT = [f for f in FEATURES if f not in ("max_p_esc", "mean_p_esc")]
 
 
 def _prep(panel: pd.DataFrame, features: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
