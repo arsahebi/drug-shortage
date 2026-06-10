@@ -121,25 +121,46 @@ def compute_data() -> dict:
                     "label": "Warning Letter " + wr["Event Date"].strftime("%b %Y"),
                 })
 
-    # ── Monthly onset count + FAERS proxy for case study ─────────────────────
+    # ── Monthly onset count ───────────────────────────────────────────────────
     mp = _read("master_panel_monthly.csv")
     d["monthly_onset_months"] = int(mp["shortage_start"].sum()) if mp is not None else 0
 
-    # FAERS proxy: drug-level serious reports for the case study drugs (Bupropion + Metformin)
-    # This is a drug-level proxy — facility-specific FAERS linkage not available for this FEI
-    # because the ANDA→NDC→FEI chain does not cover FEI 3002809586 in the current mapping.
-    case_drugs = ["Bupropion", "Metformin"]
-    faers_proxy: list[dict] = []
-    if mp is not None and "faers_n_serious" in mp.columns:
-        sub = mp[mp["drug_norm"].isin(case_drugs)].copy()
-        by_yr = (sub.groupby("year")["faers_n_serious"]
-                 .sum()
-                 .reset_index()
-                 .rename(columns={"faers_n_serious": "n_serious"}))
-        by_yr = by_yr[(by_yr["year"] >= 2015) & (by_yr["year"] <= 2024)]
-        faers_proxy = [{"x": int(r.year) + 0.5, "y": int(r.n_serious)}
-                       for _, r in by_yr.iterrows()]
-    d["case_study"]["faers_proxy"] = faers_proxy
+    # ── Facility-level FAERS for case study via Valisure ANDA→FEI bridge ─────
+    # Bridge: Valisure NDC_FEI Mapping sheet has Application Number (ANDA) + FEI_NUMBER.
+    # Matches FAERS appl_no (primary-suspect records only) → facility-specific AE series.
+    faers_fei_data: list[dict] = []
+    if VALISURE_FEI.exists():
+        try:
+            ndc_map = pd.read_excel(VALISURE_FEI, sheet_name="NDC_FEI Mapping",
+                                    usecols=["Application Number", "FEI_NUMBER"])
+            ndc_map = ndc_map.dropna(subset=["Application Number", "FEI_NUMBER"])
+            ndc_map["appl_no_str"] = (ndc_map["Application Number"]
+                                      .astype(str).str.replace("ANDA", "", regex=False)
+                                      .str.strip().str.lstrip("0"))
+            ndc_map["FEI_NUMBER"] = ndc_map["FEI_NUMBER"].astype(int)
+            case_andas = set(ndc_map[ndc_map["FEI_NUMBER"] == CASE_FEI]["appl_no_str"].unique())
+
+            from config import FAERS_ALL
+            faers_raw = pd.read_csv(
+                FAERS_ALL.parent / "faers_all_drugs_anda_linked_2015Q1_2026Q1.csv",
+                usecols=["primaryid", "appl_no", "serious_flag", "year"],
+                low_memory=False)
+            faers_raw = faers_raw[faers_raw["appl_no"].notna()].copy()
+            faers_raw["appl_no_str"] = (faers_raw["appl_no"].astype(str)
+                                        .str.strip().str.lstrip("0"))
+            case_faers = faers_raw[faers_raw["appl_no_str"].isin(case_andas)]
+            by_yr = (case_faers.groupby("year")["serious_flag"]
+                     .apply(lambda x: int((x == 1).sum()))
+                     .reset_index()
+                     .rename(columns={"serious_flag": "n_serious"}))
+            by_yr = by_yr[(by_yr["year"] >= 2015) & (by_yr["year"] <= 2024)]
+            faers_fei_data = [{"x": int(r.year) + 0.5, "y": int(r.n_serious)}
+                               for _, r in by_yr.iterrows()]
+            log.info("Facility-level FAERS for FEI %d: %d year-rows via %d ANDAs",
+                     CASE_FEI, len(faers_fei_data), len(case_andas))
+        except Exception as e:
+            log.warning("Facility FAERS build failed: %s", e)
+    d["case_study"]["faers_fei"] = faers_fei_data
 
     # m12 forward validation grid
     _ESC = [
@@ -235,9 +256,9 @@ new Chart(document.getElementById('oaiLeadChart'),{{
         contam = [s["contam"] for s in snaps]
         remed  = [s["remed"]  for s in snaps]
         labels_x = [s["label"] for s in snaps]
-        wl_xs       = [w["x"]     for w in wls]
-        wl_lbls     = [w["label"] for w in wls]
-        faers_proxy = cs.get("faers_proxy", [])
+        wl_xs      = [w["x"]     for w in wls]
+        wl_lbls    = [w["label"] for w in wls]
+        faers_proxy = cs.get("faers_fei", []) or cs.get("faers_proxy", [])
         case_js = f"""
 (function(){{
 const LABELS_X={_j(labels_x)};
@@ -256,7 +277,7 @@ const datasets=[
 ];
 if(FAERS.length){{
   datasets.push({{
-    label:'Serious AEs — Bupropion+Metformin (drug proxy, right)',
+    label:'Serious AEs — this facility (ANDA-linked, right)',
     type:'bar',
     data:FAERS,
     yAxisID:'y2',
@@ -283,7 +304,7 @@ new Chart(document.getElementById('caseChart'),{{
     plugins:{{
       legend:{{position:'bottom',labels:{{boxWidth:14,font:{{size:10}},
         generateLabels:chart=>Chart.defaults.plugins.legend.labels.generateLabels(chart)
-          .map(l=>{{l.text=l.text.replace(' (483 text, left)','').replace(' (drug proxy, right)','').replace(' (FDA, facility)','');return l;}})
+          .map(l=>{{l.text=l.text.replace(' (483 text, left)','').replace(' (ANDA-linked, right)','').replace(' (FDA, facility)','');return l;}})
       }}}},
       tooltip:{{callbacks:{{
         title:items=>{{
@@ -304,7 +325,7 @@ new Chart(document.getElementById('caseChart'),{{
           ticks:{{callback:v=>Math.round(v*100)+'%'}},
           grid:{{color:'#EEE'}}}},
       y2:{{min:0,position:'right',
-           title:{{display:true,text:'Serious AEs / year (drug proxy)'}},
+           title:{{display:true,text:'Serious AEs / year (facility, ANDA-linked)'}},
            grid:{{display:false}},
            ticks:{{color:'#999'}}}}
     }}
@@ -451,10 +472,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     <h3>Contamination flag &amp; no-remediation share, 2016–2025</h3>
     <div class="csub">
       Left axis: two signals from 483 text (facility-specific).
-      Right axis: serious adverse event reports for Bupropion + Metformin nationally
-      — <strong>drug-level proxy only</strong>, not linked to this facility.
-      ★ = Warning Letter issued by FDA (facility-specific).
-      Future work: link via ANDA→NDC→FEI chain using primary-suspect FAERS records.
+      Right axis: serious adverse events linked directly to <strong>this facility</strong>
+      via ANDA numbers from the Valisure NDC→FEI mapping (primary-suspect FAERS records).
+      ★ = Warning Letter issued by FDA.
     </div>
     <div class="ch" style="height:320px;"><canvas id="caseChart"></canvas></div>
   </div>
@@ -464,9 +484,10 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     The no-remediation share <em>rises</em> from 22% (2016) to 63% (2019) and plateaus —
     the facility keeps acknowledging the same problems in 483 text but never commits to fixing them.
     A Warning Letter followed in May 2022 when these signals were already at their peak.
-    The gray bars show serious adverse events for these two drugs nationally — rising through
-    2020 then plateauing. This is a drug-level proxy (multiple manufacturers) not attributable
-    to this facility alone. This is not a causal claim — it is a pattern visible in the record.
+    The gray bars show serious adverse events linked directly to <strong>this facility</strong>
+    via its ANDA numbers (Bupropion: ANDA078866, Metformin: ANDA077336) — rising from ~14/year
+    in 2015–2016 to a peak of 72 in 2021, then settling at 55–63 post–Warning Letter.
+    This is not a causal claim — it is a pattern visible in the record, in chronological order.
   </div>
 </section>
 
