@@ -121,9 +121,25 @@ def compute_data() -> dict:
                     "label": "Warning Letter " + wr["Event Date"].strftime("%b %Y"),
                 })
 
-    # ── Monthly onset count (for lead-lag caption) ────────────────────────────
+    # ── Monthly onset count + FAERS proxy for case study ─────────────────────
     mp = _read("master_panel_monthly.csv")
     d["monthly_onset_months"] = int(mp["shortage_start"].sum()) if mp is not None else 0
+
+    # FAERS proxy: drug-level serious reports for the case study drugs (Bupropion + Metformin)
+    # This is a drug-level proxy — facility-specific FAERS linkage not available for this FEI
+    # because the ANDA→NDC→FEI chain does not cover FEI 3002809586 in the current mapping.
+    case_drugs = ["Bupropion", "Metformin"]
+    faers_proxy: list[dict] = []
+    if mp is not None and "faers_n_serious" in mp.columns:
+        sub = mp[mp["drug_norm"].isin(case_drugs)].copy()
+        by_yr = (sub.groupby("year")["faers_n_serious"]
+                 .sum()
+                 .reset_index()
+                 .rename(columns={"faers_n_serious": "n_serious"}))
+        by_yr = by_yr[(by_yr["year"] >= 2015) & (by_yr["year"] <= 2024)]
+        faers_proxy = [{"x": int(r.year) + 0.5, "y": int(r.n_serious)}
+                       for _, r in by_yr.iterrows()]
+    d["case_study"]["faers_proxy"] = faers_proxy
 
     # m12 forward validation grid
     _ESC = [
@@ -219,40 +235,63 @@ new Chart(document.getElementById('oaiLeadChart'),{{
         contam = [s["contam"] for s in snaps]
         remed  = [s["remed"]  for s in snaps]
         labels_x = [s["label"] for s in snaps]
-        wl_xs    = [w["x"]     for w in wls]
-        wl_lbls  = [w["label"] for w in wls]
+        wl_xs       = [w["x"]     for w in wls]
+        wl_lbls     = [w["label"] for w in wls]
+        faers_proxy = cs.get("faers_proxy", [])
         case_js = f"""
 (function(){{
 const LABELS_X={_j(labels_x)};
 const WL_XS={_j(wl_xs)};
 const WL_LBLS={_j(wl_lbls)};
+const FAERS={_j(faers_proxy)};
 const datasets=[
-  {{label:'Contamination flag',
-    data:{_j(contam)},
-    borderColor:'#E07A5F',fill:false,tension:0.2,borderWidth:2.5,
+  {{label:'Contamination flag (483 text, left)',
+    data:{_j(list(zip(xs, contam)))}.map(p=>(({{x:p[0],y:p[1]}}))  ),
+    yAxisID:'y',borderColor:'#E07A5F',fill:false,tension:0.2,borderWidth:2.5,
     pointRadius:7,pointBackgroundColor:'#E07A5F',pointBorderColor:'#B5563E'}},
-  {{label:'No remediation response',
-    data:{_j(remed)},
-    borderColor:'#065A82',fill:false,tension:0.2,borderWidth:2.5,borderDash:[5,3],
+  {{label:'No remediation response (483 text, left)',
+    data:{_j(list(zip(xs, remed)))}.map(p=>(({{x:p[0],y:p[1]}}))  ),
+    yAxisID:'y',borderColor:'#065A82',fill:false,tension:0.2,borderWidth:2.5,borderDash:[5,3],
     pointRadius:7,pointBackgroundColor:'#065A82',pointBorderColor:'#044060'}}
 ];
+if(FAERS.length){{
+  datasets.push({{
+    label:'Serious AEs — Bupropion+Metformin (drug proxy, right)',
+    type:'bar',
+    data:FAERS,
+    yAxisID:'y2',
+    backgroundColor:'rgba(150,150,150,0.25)',
+    borderColor:'rgba(150,150,150,0.5)',
+    borderWidth:1,
+    barPercentage:0.6,
+  }});
+}}
 if(WL_XS.length){{
   datasets.push({{
-    label:'Warning Letter (FDA)',
+    label:'Warning Letter (FDA, facility)',
     type:'scatter',
     data:WL_XS.map((x,i)=>(({{x,y:0.97,label:WL_LBLS[i]}}))  ),
+    yAxisID:'y',
     backgroundColor:'#8B0000',borderColor:'#8B0000',
     pointStyle:'star',pointRadius:12,showLine:false
   }});
 }}
 new Chart(document.getElementById('caseChart'),{{
   type:'line',
-  data:{{labels:{_j(xs)},datasets}},
+  data:{{datasets}},
   options:{{maintainAspectRatio:false,
     plugins:{{
-      legend:{{position:'bottom',labels:{{boxWidth:14,font:{{size:10.5}}}}}},
+      legend:{{position:'bottom',labels:{{boxWidth:14,font:{{size:10}},
+        generateLabels:chart=>Chart.defaults.plugins.legend.labels.generateLabels(chart)
+          .map(l=>{{l.text=l.text.replace(' (483 text, left)','').replace(' (drug proxy, right)','').replace(' (FDA, facility)','');return l;}})
+      }}}},
       tooltip:{{callbacks:{{
-        title:items=>LABELS_X[items[0].dataIndex]||(items[0].raw?.label||''),
+        title:items=>{{
+          const r=items[0].raw;
+          if(r?.label) return r.label;
+          const i=items[0].dataIndex;
+          return LABELS_X[i]||'';
+        }}
       }}}}
     }},
     scales:{{
@@ -260,10 +299,14 @@ new Chart(document.getElementById('caseChart'),{{
           title:{{display:true,text:'Year'}},
           ticks:{{stepSize:1,callback:v=>Number.isInteger(v)?v:''}},
           grid:{{color:'#EEE'}}}},
-      y:{{min:0,max:1,
-          title:{{display:true,text:'Share of 483 observations'}},
+      y:{{min:0,max:1,position:'left',
+          title:{{display:true,text:'Share of observations (483 text)'}},
           ticks:{{callback:v=>Math.round(v*100)+'%'}},
-          grid:{{color:'#EEE'}}}}
+          grid:{{color:'#EEE'}}}},
+      y2:{{min:0,position:'right',
+           title:{{display:true,text:'Serious AEs / year (drug proxy)'}},
+           grid:{{display:false}},
+           ticks:{{color:'#999'}}}}
     }}
   }}
 }});
@@ -407,9 +450,11 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   <div class="card">
     <h3>Contamination flag &amp; no-remediation share, 2016–2025</h3>
     <div class="csub">
-      Two signals extracted from 483 observation text.
-      <em>Contamination flag</em> = share of observations mentioning contamination risk (LLM).
-      <em>No remediation</em> = share where no corrective action appears in the text.
+      Left axis: two signals from 483 text (facility-specific).
+      Right axis: serious adverse event reports for Bupropion + Metformin nationally
+      — <strong>drug-level proxy only</strong>, not linked to this facility.
+      ★ = Warning Letter issued by FDA (facility-specific).
+      Future work: link via ANDA→NDC→FEI chain using primary-suspect FAERS records.
     </div>
     <div class="ch" style="height:320px;"><canvas id="caseChart"></canvas></div>
   </div>
@@ -419,7 +464,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     The no-remediation share <em>rises</em> from 22% (2016) to 63% (2019) and plateaus —
     the facility keeps acknowledging the same problems in 483 text but never commits to fixing them.
     A Warning Letter followed in May 2022 when these signals were already at their peak.
-    This is not a causal claim — it is a pattern visible in the document record, in order.
+    The gray bars show serious adverse events for these two drugs nationally — rising through
+    2020 then plateauing. This is a drug-level proxy (multiple manufacturers) not attributable
+    to this facility alone. This is not a causal claim — it is a pattern visible in the record.
   </div>
 </section>
 
