@@ -41,6 +41,10 @@ CLI OPTIONS
   --limit N    Process only the first N pending observations (for testing).
   --fei N      Process only observations for a single FEI (for testing).
   --force      Re-score every observation even if already in the output file.
+  --sample N   Stratified sample of N observations (round-robin across FEIs).
+               Writes to 483_observation_context_signals_sampleN.csv and does
+               NOT touch the main output file. Used to validate prompt changes
+               before a full re-run.
 
 INTERACTIVE USE
   This file is organized as notebook-style cells. To run line by line, edit the
@@ -96,14 +100,15 @@ VALID_VIOLATION_CATEGORY = {
     "OrgPersonnel", "PackagingLabeling", "RecordsReports",
     "QualitySystem", "Other",
 }
-VALID_SEVERITY_TIER    = {"Low", "Moderate", "High"}
+VALID_SEVERITY_TIER    = {"Critical", "Major", "Moderate", "Minor"}
+VALID_SCOPE            = {"SingleBatch", "MultipleProducts", "FacilityWide", "Unclear"}
 VALID_ROOT_CAUSE_TYPE  = {"Capital", "Cultural", "Mixed", "Unclear"}
 VALID_REMEDIATION      = {"Strong", "Partial", "Weak", "None"}
 
 LLM_FLAG_FIELDS = [
-    "repeat_flag_llm", "systemic_flag_llm", "patient_risk_flag_llm",
+    "repeat_flag_llm", "patient_risk_flag_llm",
     "data_integrity_flag_llm", "contamination_flag_llm",
-    "documentation_flag_llm", "investigation_flag_llm",
+    "investigation_flag_llm",
 ]
 
 # ── Prompt template ────────────────────────────────────────────────────────
@@ -128,19 +133,19 @@ Return a single JSON object with EXACTLY these fields \
 {{
   "violation_category": "<LabControls | ProductionControls | BuildingsEquipment | \
 OrgPersonnel | PackagingLabeling | RecordsReports | QualitySystem | Other>",
-  "severity_tier": "<Low | Moderate | High>",
-  "severity_rationale": "<1–2 sentences explaining your severity assignment>",
+  "severity_tier": "<Critical | Major | Moderate | Minor>",
+  "severity_rationale": "<1–2 sentences. MUST reference the evidence_quote text to \
+justify the tier assignment>",
+  "scope": "<SingleBatch | MultipleProducts | FacilityWide | Unclear>",
   "root_cause_type": "<Capital | Cultural | Mixed | Unclear>",
   "root_cause_rationale": "<1–2 sentences. Capital = equipment/facility/SOP design gap; \
 Cultural = training/management/data-integrity failure; Mixed = clear evidence of both; \
 Unclear = text insufficient to decide>",
   "remediation_signal": "<Strong | Partial | Weak | None>",
   "repeat_flag_llm": <true or false — explicit evidence this is a repeat finding>,
-  "systemic_flag_llm": <true or false — describes a facility-wide or systemic failure>,
-  "patient_risk_flag_llm": <true or false — violation could directly harm patients>,
+  "patient_risk_flag_llm": <true or false — explicit harm pathway to patients exists>,
   "data_integrity_flag_llm": <true or false — explicit data integrity failure is described>,
   "contamination_flag_llm": <true or false — contamination or sterility-control risk is described>,
-  "documentation_flag_llm": <true or false — inadequate documentation is the primary finding>,
   "investigation_flag_llm": <true or false — explicit failure to investigate or inadequate investigation is described>,
   "evidence_quote": "<verbatim substring from the observation text (6–30 words) that most \
 directly supports your severity and root-cause classification>",
@@ -149,24 +154,74 @@ directly supports your severity and root-cause classification>",
 
 Field rules:
 - violation_category: choose the single best fit for the PRIMARY violation
-- severity_tier: High = direct patient-harm risk or gross deviation; \
-Moderate = significant process deviation; Low = documentation/administrative gap
+
+- severity_tier: graded like EU GMP deficiency classification. The tier is decided by \
+ONE question: what level of ACTUAL product impact does the text DOCUMENT? \
+A deficiency that merely COULD affect product quality is Moderate, no matter how \
+serious the system failure sounds. Most 483 observations are Moderate. \
+Assign the LOWEST tier that fits.
+  * Critical: the text documents that affected product was RELEASED or DISTRIBUTED: \
+affected lots were distributed; confirmed OOS product was released; contamination was \
+found in released/finished product; sterility failure in released sterile product. \
+Anchor examples: "contaminated lots were distributed before the investigation was closed"; \
+"batch failing assay specification was released without an investigation".
+  * Major: the text documents an ACTUAL defect, failure, or unreliable result found at \
+the facility, but no evidence of release: an actual OOS/failing result, contamination or \
+particulates observed in product, a failed batch, a product mix-up, falsified or \
+invalidated test data, a failed media fill. The defect must have HAPPENED, not be \
+possible. \
+Anchor examples: "particulate matter was observed in several lots"; \
+"test results were invalidated without quality unit approval".
+  * Moderate: the text documents a deficient procedure, system, or practice but NO \
+actual product defect or unreliable result: missing or failed validation, inadequate \
+or unfollowed procedures, incomplete investigations, environmental monitoring gaps, \
+aseptic practice deficiencies without observed contamination, equipment qualification \
+gaps, systems that ALLOW data deletion without evidence it occurred. This is the \
+DEFAULT tier for most observations. \
+Anchor examples: "media fill runs do not include the same number of manual interventions \
+as routine production"; "logbook data can be overwritten and original data erased"; \
+"cleaning procedures do not specify rinse times or volumes".
+  * Minor: documentation or administrative gap with no plausible product impact: \
+missing signature, outdated SOP formatting, late record filing. \
+Anchor examples: "the SOP index was not updated to reflect the current revision".
+  Decision test: released product affected -> Critical; actual defect/failure found \
+on site -> Major; deficient system or procedure only -> Moderate; paperwork only -> Minor.
+
+- scope: the breadth of the failure described in THIS observation.
+  * SingleBatch = confined to one batch, lot, line event, or single occurrence
+  * MultipleProducts = affects several batches, products, or production lines
+  * FacilityWide = quality-system-level failure affecting all production (e.g., "there \
+are no written procedures for production and process controls" — nothing batch-specific)
+  * Unclear = text insufficient to judge breadth
+
 - remediation_signal: Strong = specific corrective actions clearly stated; \
 Partial = some corrective intent mentioned; Weak = vague; None = not mentioned
+
 - repeat_flag_llm: mark true ONLY when the observation explicitly states this is \
 a repeat observation/finding, previously observed, previously cited, recurring from \
 a prior inspection, or equivalent. Do NOT mark true merely because multiple examples \
 within the same current observation recur or affect multiple products/lines.
+
+- patient_risk_flag_llm: mark true ONLY when an EXPLICIT harm pathway to patients \
+exists in the text: (a) sterile or injectable product with a contamination or sterility \
+assurance failure, OR (b) a confirmed quality defect (OOS, mix-up, wrong potency, \
+mislabeling) in product that was released or distributed, OR (c) the text states product \
+was released without required QA disposition or testing. Do NOT mark true for generic \
+quality deviations where harm would require a chain of hypotheticals. "Could affect \
+quality" is NOT a harm pathway.
+
 - data_integrity_flag_llm: mark true ONLY for explicit unreliable data, falsification, \
 backdating, deleted/altered records, missing raw data, audit-trail problems, unreported \
 results, or records that cannot be trusted. Do NOT mark true for ordinary missing SOPs, \
 incomplete documentation, weak recordkeeping, inventory location/mix-up control, or storage \
 control unless data trustworthiness is directly at issue.
+
 - contamination_flag_llm: mark true for actual contamination OR clear contamination-control \
 risk, including sterility assurance failures, aseptic processing deficiencies, environmental \
 monitoring failures, microbial/particulate contamination, inadequate cleaning/sterilization, \
 or cross-contamination controls. This flag means contamination/sterility-control risk; it \
 does NOT necessarily mean confirmed contaminated product.
+
 - investigation_flag_llm: mark true ONLY for an explicit failed, missing, delayed, \
 or inadequate investigation of a concrete event, such as a deviation, complaint, \
 batch failure, OOS/OOT result, positive unit, contamination event, or particulate \
@@ -174,6 +229,7 @@ event. Examples include missing root cause, missing CAPA, or failure to assess \
 product impact. Do NOT mark true for general missing evaluation/assessment/rationale \
 or because a procedure says an investigation would be required. Do NOT mark true for \
 validation/remediation acceptance-criteria weaknesses unless a specific event investigation failed.
+
 - evidence_quote: copy-paste a short exact phrase from the observation text — do NOT \
 paraphrase. Prefer 6–30 words and avoid OCR-damaged text when a cleaner exact quote exists.
 - confidence: lower if the text is very short, illegible, or ambiguous
@@ -189,8 +245,28 @@ OPENAI_JSON_SCHEMA = {
         "severity_tier": {
             "type": "string",
             "enum": sorted(VALID_SEVERITY_TIER),
+            "description": (
+                "Tier = documented product impact. Critical: affected product was "
+                "released/distributed. Major: an actual defect, failing result, or "
+                "unreliable data was found on site (it happened, not could happen). "
+                "Moderate: deficient procedure/system only, no actual defect documented "
+                "(the default for most observations). Minor: paperwork/administrative "
+                "gaps. Assign the LOWEST tier that fits."
+            ),
         },
-        "severity_rationale": {"type": "string"},
+        "severity_rationale": {
+            "type": "string",
+            "description": "Must reference the evidence_quote to justify the tier.",
+        },
+        "scope": {
+            "type": "string",
+            "enum": sorted(VALID_SCOPE),
+            "description": (
+                "Breadth of the failure: SingleBatch (one batch/lot/event), "
+                "MultipleProducts (several batches/products/lines), FacilityWide "
+                "(quality-system level affecting all production), Unclear."
+            ),
+        },
         "root_cause_type": {
             "type": "string",
             "enum": sorted(VALID_ROOT_CAUSE_TYPE),
@@ -209,13 +285,15 @@ OPENAI_JSON_SCHEMA = {
                 "the same current observation."
             ),
         },
-        "systemic_flag_llm": {
-            "type": "boolean",
-            "description": "True for facility-wide or repeated process-system failures.",
-        },
         "patient_risk_flag_llm": {
             "type": "boolean",
-            "description": "True when the violation could directly harm patients.",
+            "description": (
+                "True ONLY when an explicit harm pathway exists: sterile/injectable "
+                "product with contamination or sterility assurance failure; confirmed "
+                "quality defect in released/distributed product; or product released "
+                "without required QA disposition. False for generic quality deviations "
+                "where harm requires a chain of hypotheticals."
+            ),
         },
         "data_integrity_flag_llm": {
             "type": "boolean",
@@ -236,10 +314,6 @@ OPENAI_JSON_SCHEMA = {
                 "inadequate cleaning/sterilization, or cross-contamination controls. "
                 "This does not necessarily mean confirmed contaminated product."
             ),
-        },
-        "documentation_flag_llm": {
-            "type": "boolean",
-            "description": "True when inadequate documentation is a central finding.",
         },
         "investigation_flag_llm": {
             "type": "boolean",
@@ -264,11 +338,11 @@ OPENAI_JSON_SCHEMA = {
         "confidence": {"type": "number"},
     },
     "required": [
-        "violation_category", "severity_tier", "severity_rationale",
+        "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
-        "repeat_flag_llm", "systemic_flag_llm", "patient_risk_flag_llm",
+        "repeat_flag_llm", "patient_risk_flag_llm",
         "data_integrity_flag_llm", "contamination_flag_llm",
-        "documentation_flag_llm", "investigation_flag_llm",
+        "investigation_flag_llm",
         "evidence_quote", "confidence",
     ],
     "additionalProperties": False,
@@ -323,7 +397,10 @@ def _validate(result: dict, obs_text_clean: str) -> dict:
         result.get("violation_category", ""), VALID_VIOLATION_CATEGORY, "Other"
     )
     result["severity_tier"] = _coerce_categorical(
-        result.get("severity_tier", ""), VALID_SEVERITY_TIER, "Low"
+        result.get("severity_tier", ""), VALID_SEVERITY_TIER, "Minor"
+    )
+    result["scope"] = _coerce_categorical(
+        result.get("scope", ""), VALID_SCOPE, "Unclear"
     )
     result["root_cause_type"] = _coerce_categorical(
         result.get("root_cause_type", ""), VALID_ROOT_CAUSE_TYPE, "Unclear"
@@ -465,7 +542,7 @@ def _build_row(obs_row: pd.Series, llm: dict, status: str, error: str) -> dict:
 
     # LLM fields (None when extraction failed)
     for field in [
-        "violation_category", "severity_tier", "severity_rationale",
+        "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
         *LLM_FLAG_FIELDS,
         "evidence_quote", "confidence",
@@ -491,6 +568,7 @@ DRY_RUN = True       # Safe default for interactive work: no API calls
 LIMIT   = None       # e.g., 5
 FEI     = None       # e.g., 3002808406
 FORCE   = False      # Re-score rows already in SIGNALS_CSV
+SAMPLE  = None       # e.g., 50 — stratified sample to separate output file
 
 try:
     _THIS_FILE = Path(__file__).resolve()
@@ -518,11 +596,18 @@ if _RUNNING_AS_SCRIPT:
                         help="Process only observations for a single FEI (testing).")
     parser.add_argument("--force",   action="store_true",
                         help="Re-score observations already in the output file.")
+    parser.add_argument("--sample",  type=int, default=None,
+                        help="Stratified sample of N observations to a separate "
+                             "output file (prompt validation).")
     args = parser.parse_args()
     DRY_RUN = args.dry_run
     LIMIT   = args.limit
     FEI     = args.fei
     FORCE   = args.force
+    SAMPLE  = args.sample
+
+if SAMPLE:
+    SIGNALS_CSV = HERE / f"483_observation_context_signals_sample{SAMPLE}.csv"
 
 
 # %%
@@ -555,7 +640,7 @@ if FEI is not None:
 already_scored: set[tuple] = set()
 existing_rows:  list[dict] = []
 
-if SIGNALS_CSV.exists() and not FORCE:
+if SIGNALS_CSV.exists() and not FORCE and not SAMPLE:
     existing_df  = pd.read_csv(SIGNALS_CSV)
     existing_rows = existing_df.to_dict("records")
     for _, r in existing_df.iterrows():
@@ -566,7 +651,27 @@ if SIGNALS_CSV.exists() and not FORCE:
 
 # %%
 # ── Determine pending observations ────────────────────────────────────────
-if FORCE:
+if SAMPLE:
+    # Stratified sample: round-robin one observation per FEI (shuffled within
+    # FEI, seed=7) until N reached. Caps single-facility dominance and covers
+    # the maximum number of FEIs. Fresh run every time; never resumes.
+    rng_seed = 7
+    shuffled = obs_df.sample(frac=1.0, random_state=rng_seed).reset_index(drop=True)
+    by_fei = {fei_val: grp.reset_index(drop=True)
+              for fei_val, grp in shuffled.groupby("fei")}
+    picked_idx: list[pd.Series] = []
+    depth = 0
+    while len(picked_idx) < SAMPLE and depth < max(len(g) for g in by_fei.values()):
+        for fei_val in sorted(by_fei.keys()):
+            grp = by_fei[fei_val]
+            if depth < len(grp) and len(picked_idx) < SAMPLE:
+                picked_idx.append(grp.iloc[depth])
+        depth += 1
+    to_process = pd.DataFrame(picked_idx).reset_index(drop=True)
+    existing_rows = []
+    print(f"Stratified sample     : {len(to_process)} observations "
+          f"from {to_process['fei'].nunique()} FEIs (round-robin, seed={rng_seed})")
+elif FORCE:
     to_process = obs_df.copy()
     existing_rows = []
 else:
@@ -576,7 +681,7 @@ else:
     )
     to_process = obs_df[mask].copy()
 
-if LIMIT:
+if LIMIT and not SAMPLE:
     to_process = to_process.head(LIMIT)
 
 print(f"Pending to process    : {len(to_process):,}")
