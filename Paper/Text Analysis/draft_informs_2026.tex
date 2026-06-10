@@ -56,19 +56,23 @@ high-priority generic Active Pharmaceutical Ingredients (APIs).
 We construct a facility-level feature matrix combining structured regulatory outcomes
 with NLP-derived text signals, enabling systematic prediction of downstream supply
 disruptions.
-Using NLP on structured regulatory text and an LLM pipeline (GPT-4o-mini with
-LangGraph stateful extraction) for Form 483 PDF processing, we generate
-interpretable features capturing violation types, escalation patterns, and latent
-firm behavior across two theoretical frames: \emph{Agency Theory} (negligent process
-failures vs.\ persistent organizational misconduct) and \emph{Remediation Economics}
+Using NLP on structured regulatory text and an LLM extraction pipeline
+(GPT-5-mini with strict JSON schema output) for Form 483 PDF processing, we
+generate interpretable features capturing violation types, graded severity,
+failure scope, escalation patterns, and latent firm behavior across two
+theoretical frames: \emph{Agency Theory} (negligent process failures vs.\
+persistent organizational misconduct) and \emph{Remediation Economics}
 (capital-intensive vs.\ cultural root causes).
 Preliminary results reveal actionable early-warning signals: specific regulatory
 citation patterns strongly predict the most severe inspection outcomes
 (Pearson $r = 0.51$); contamination and manufacturing practice failures account for
-94\% of drug recalls in our sample; and the LLM-derived Quality Culture Index (QCI)
-ranks as the third most important predictor in a Random Forest shortage model
-(14.8\% importance), with the four text indices together accounting for approximately
-32\% of total feature importance.
+94\% of drug recalls in our sample; LLM severity grading separates the most severe
+inspection outcomes (Critical+Major share 20 percentage points higher in
+Official-Action-Indicated inspections than Voluntary-Action-Indicated); and
+16\% of observations repeat citation language from an earlier inspection of the
+same facility, identifying chronic violators.
+\todo{Update shortage-model importance claims after re-running the prediction
+pipeline with the revised raw text features.}
 These signals can be detected months to years before shortages materialize, enabling
 proactive supply chain risk management.
 \end{abstract}
@@ -119,17 +123,23 @@ This paper makes four contributions:
 \begin{enumerate}[noitemsep]
   \item A novel multi-source regulatory text dataset covering 1,280 regulatory
         events across 129 facilities and five FDA databases, linked by FEI.
-  \item A validated LLM extraction pipeline (GPT-4o-mini with LangGraph stateful
-        extraction) that converts Form 483 observation narratives into structured,
-        reproducible risk signals---with LLMs substantially outperforming
-        rule-based extraction on patient-risk and systemic-scope inference.
-  \item Four facility-level Text Risk Indices (TRI, SCRI, IRWI, QCI) that
-        aggregate observation-level signals and encode behavioral taxonomy
-        consistent with Agency Theory and Remediation Economics.
-  \item Empirical validation showing that the Quality Culture Index (QCI) is the
-        third most important predictor of drug shortage onset in a Random Forest
-        model, with the four text indices collectively accounting for $\approx$32\%
-        of total feature importance---information absent from structured databases.
+  \item A validated LLM extraction pipeline (GPT-5-mini with strict JSON schema
+        output, validated on a stratified sample before full deployment) that
+        converts Form 483 observation narratives into structured, reproducible
+        risk signals---with LLMs substantially outperforming rule-based
+        extraction on contamination and patient-risk inference.
+  \item A time-aware facility-level feature panel: cumulative text-signal
+        snapshots at each (FEI, inspection date), preventing future-information
+        leakage in prediction, plus a cross-inspection repeat detector that
+        identifies facilities cited for the same deficiency across inspections
+        years apart---encoding behavioral taxonomy consistent with Agency
+        Theory and Remediation Economics.
+  \item Empirical validation showing that LLM-graded severity tracks real
+        inspection outcomes (Critical+Major share separates OAI from VAI
+        inspections by 20 percentage points), and that text-derived features
+        carry information absent from structured databases.
+        \todo{Re-run shortage model with revised raw text features and update
+        the importance claim.}
 \end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════════
@@ -210,12 +220,13 @@ status, providing a severity-escalation signal beyond routine citations.
 \paragraph{Layer 2: LLM Pipeline for Form 483 PDF Extraction.}
 Form 483 documents contain the richest regulatory intelligence---specific
 measurements, equipment identifiers, and investigator narratives---but exist
-only as unstructured PDFs.
-We build a LangGraph stateful extraction pipeline: OCR via LangChain
-(pytesseract + PyPDFLoader) $\to$ observation-boundary chunking $\to$
-GPT-4o-mini structured JSON extraction $\to$ confidence-threshold validation
-with re-extraction on failure.
-Every LLM call is logged via LangSmith for prompt versioning and reproducibility.
+only as unstructured PDFs (38 of 82 are scanned images requiring OCR).
+The pipeline is: OCR (pytesseract) $\to$ observation-boundary chunking on
+``OBSERVATION $N$'' headers $\to$ GPT-5-mini extraction under a strict JSON
+schema $\to$ field validation with categorical coercion and an evidence guard.
+Extraction is idempotent (already-scored observations are skipped on re-run)
+and the prompt was validated on a stratified 50-observation sample with four
+automated checks before the full corpus run (Section~\ref{sec:methods}).
 
 \paragraph{Layer 3: Quality Risk Index Construction.}
 A per-facility feature matrix integrating all regulatory signals feeds
@@ -225,63 +236,80 @@ of shortage onset.
 \subsection{LLM Extraction Schema}
 
 For each Form 483 observation we send the cleaned observation text to
-\texttt{gpt-4o-mini} (OpenAI) with a structured JSON schema prompt.
+\texttt{gpt-5-mini} (OpenAI) with a structured JSON schema prompt.
 The prompt instructs the model to return exactly 15 fields:
 
 \begin{itemize}[noitemsep]
   \item \textbf{Categorical}: violation category (8 values), severity tier
-        (High/Moderate/Low), root-cause type (Capital/Cultural/Mixed/Unclear),
+        (Critical/Major/Moderate/Minor, EU GMP deficiency-classification
+        style), failure scope (SingleBatch/MultipleProducts/FacilityWide/%
+        Unclear), root-cause type (Capital/Cultural/Mixed/Unclear),
         remediation signal (Strong/Partial/Weak/None).
-  \item \textbf{Binary flags} (7): repeat finding, systemic scope, patient
-        risk, data integrity failure, contamination/sterility risk,
-        documentation deficiency, investigation failure.
+  \item \textbf{Binary flags} (5): repeat finding, patient risk, data
+        integrity failure, contamination/sterility risk, investigation failure.
   \item \textbf{Qualitative}: severity rationale, root-cause rationale,
         verbatim evidence quote, confidence score (0--1).
 \end{itemize}
 
+The severity tier is graded on \emph{documented product impact} rather than
+the seriousness of the system failure: Critical requires that affected product
+was released or distributed; Major requires an actual defect, failing result,
+or unreliable data found on site; Moderate covers deficient procedures or
+systems with no actual defect documented; Minor covers administrative gaps.
+The patient-risk flag requires an explicit harm pathway (sterile/injectable
+product with a sterility assurance failure, a confirmed defect in released
+product, or release without required QA disposition); ``could affect quality''
+does not qualify.
 The evidence quote is subject to an \emph{evidence guard}: the returned quote
 must appear verbatim in the source text; otherwise it is cleared.
-Extraction is idempotent: already-scored observations are skipped on re-run.
 
 \paragraph{Validation.}
-We manually reviewed a random sample of \todo{N} observations and compared
-LLM classifications to independent human raters.
-Inter-rater agreement: \todo{Cohen's $\kappa$ or \%}.
+Before the full corpus run, the prompt was validated on a stratified
+50-observation sample (round-robin across all 38 facilities) with four
+automated checks: (a) the severity distribution is graded rather than
+top-heavy; (b) the Critical+Major share separates OAI from VAI inspections
+(via Redica inspection classifications matched on FEI and inspection date);
+(c) flag fire rates fall in an informative range; and (d) the scope
+distribution is spread across classes.
+All four checks passed (OAI--VAI separation $+$0.20).
+An earlier prompt draft failed check (a)---84\% of sampled observations were
+rated Major---and was revised to the documented-product-impact rubric above
+before deployment.
+\todo{Add independent human-rater agreement (Cohen's $\kappa$) on a
+manually reviewed sample.}
 
 \subsection{Facility-Level Aggregation}
 
-We aggregate observation-level signals to the facility (FEI) level using
-the following composite indices, each bounded $[0, 100]$:
+We aggregate observation-level signals into \emph{time-aware cumulative
+snapshots}: one row per (FEI, 483 inspection date), where each feature is
+computed from all observations of that facility up to and including that
+date.
+The downstream shortage model joins on FEI and takes the most recent snapshot
+before each prediction period, so no feature ever encodes information from a
+future inspection.
+Rather than hand-weighted composite indices, raw feature shares are passed
+directly to the model, which learns weights from data: severity tier shares
+(including the combined Critical$+$Major share), scope shares, violation
+category shares (8 classes), root-cause and remediation shares, the five LLM
+flag shares, and two regex flags with no LLM equivalent (OOS/OOT events and
+prior-warning-letter references).
 
-\begin{align}
-\text{TRI}_i &= \left[
-    0.35 \cdot s^H_i
-  + 0.20 \cdot s^M_i
-  + 0.20 \cdot (1 - r^S_i)
-  + 0.15 \cdot f^{\text{rep}}_i
-  + 0.10 \cdot f^{\text{sys}}_i
-\right] \times 100 \label{eq:tri} \\
-\text{SCRI}_i &= \left[
-    0.50 \cdot f^{\text{contam}}_i
-  + 0.30 \cdot f^{\text{contam,rx}}_i
-  + 0.20 \cdot s^H_i
-\right] \times 100 \label{eq:scri} \\
-\text{IRWI}_i &= \left[
-    0.40 \cdot r^N_i
-  + 0.35 \cdot f^{\text{invest}}_i
-  + 0.25 \cdot r^W_i
-\right] \times 100 \label{eq:irwi} \\
-\text{QCI}_i &= \left[
-    0.40 \cdot f^{\text{sys}}_i
-  + 0.35 \cdot f^{\text{rep}}_i
-  + 0.25 \cdot c^{\text{cult}}_i
-\right] \times 100 \label{eq:qci}
-\end{align}
-
-where $s^H_i$, $s^M_i$ are severity High/Moderate shares; $r^S_i$, $r^N_i$,
-$r^W_i$ are remediation Strong/None/Weak shares; $f^{\cdot}_i$ are LLM flag
-shares; $f^{\text{contam,rx}}_i$ is the regex contamination share; and
-$c^{\text{cult}}_i$ is the cultural root-cause share, all for facility $i$.
+\paragraph{Cross-inspection repeat detection.}
+The per-observation repeat flags only catch repeats the investigator
+explicitly labels (``this is a repeat observation''), firing on 6.8\%
+(regex) and 10.0\% (LLM) of observations.
+We add a complementary signal that no per-observation method can produce:
+each 483 observation opens with a standardized citation sentence (the
+template text before ``Specifically,'').
+When that sentence matches an observation from a strictly earlier inspection
+of the same facility (token overlap $\geq 0.80$), the same deficiency was
+cited again.
+This flags 97 of 616 dated observations (15.7\%) as cross-inspection
+repeats; the feature is time-safe by construction because it only looks
+backward.
+Full-text similarity fails at this task: shared GMP vocabulary gives
+unrelated observations a $\sim$0.45 baseline token overlap, so matching is
+restricted to the standardized citation sentence.
 
 \subsection{Manufacturing Quality Risk Index (MQRI)}
 
@@ -298,8 +326,9 @@ refusals, and the contamination NLP flag; $D^{\text{mkt}}$ includes Class I
 and all-class recall counts.
 Feature weights are derived from Spearman $|\rho|$ with OAI rate across
 $n = 127$ facilities.
-In this paper we extend the MQRI by adding TRI as a regulatory domain feature
-with weight derived from \todo{correlation with OAI rate or Valisure}.
+In this paper we extend the MQRI by adding the 483 text severity signal
+(Critical$+$Major share) as a regulatory domain feature with weight derived
+from \todo{correlation with OAI rate or Valisure}.
 
 \subsection{Shortage Prediction Model}
 
@@ -309,7 +338,8 @@ We construct a drug--year panel (14 APIs $\times$ 2015--2024; $n=140$ rows,
 year $t+1$.
 Features at year $t$ include FAERS adverse-event signals, Redica
 inspection/regulatory signals, Valisure quality scores (time-invariant), and
-the four LLM-derived text indices (TRI, SCRI, IRWI, QCI), aggregated to
+the LLM-derived raw text features (severity Critical$+$Major share, scope
+shares, flag shares, cross-inspection repeat share), aggregated to
 drug level by weighted mean across FEIs (weights: $n_{\text{obs scored}}$).
 Recalls are excluded as predictors---timing analysis confirms they are
 concurrent or lagging relative to shortage onset, not leading indicators.
@@ -336,43 +366,56 @@ Table~\ref{tab:obs_desc} summarizes the LLM extraction results across
 \textbf{Signal} & \textbf{Count} & \textbf{Share (\%)} \\
 \midrule
 \multicolumn{3}{l}{\textit{Severity tier}} \\
-\quad High      & 435 & 69.9 \\
-\quad Moderate  & 174 & 28.0 \\
-\quad Low       &  13 &  2.1 \\
+\quad Critical  &  99 & 15.9 \\
+\quad Major     & 188 & 30.2 \\
+\quad Moderate  & 331 & 53.2 \\
+\quad Minor     &   4 &  0.6 \\
+\midrule
+\multicolumn{3}{l}{\textit{Failure scope}} \\
+\quad MultipleProducts & 374 & 60.1 \\
+\quad FacilityWide     & 190 & 30.5 \\
+\quad SingleBatch      &  46 &  7.4 \\
+\quad Unclear          &  12 &  1.9 \\
 \midrule
 \multicolumn{3}{l}{\textit{Primary violation domain}} \\
-\quad Production Controls  & 170 & 27.3 \\
-\quad Lab Controls         & 162 & 26.1 \\
-\quad Quality System       & 123 & 19.8 \\
-\quad Buildings/Equipment  &  71 & 11.4 \\
-\quad Records/Reports      &  61 &  9.8 \\
-\quad Personnel            &  22 &  3.5 \\
-\quad Other                &  13 &  2.1 \\
+\quad Production Controls  & 184 & 29.6 \\
+\quad Lab Controls         & 159 & 25.6 \\
+\quad Quality System       & 115 & 18.5 \\
+\quad Buildings/Equipment  &  72 & 11.6 \\
+\quad Records/Reports      &  53 &  8.5 \\
+\quad Personnel            &  21 &  3.4 \\
+\quad Packaging/Labeling   &  13 &  2.1 \\
+\quad Other                &   5 &  0.8 \\
 \midrule
 \multicolumn{3}{l}{\textit{Root-cause type}} \\
-\quad Cultural  & 279 & 44.9 \\
-\quad Mixed     & 242 & 38.9 \\
-\quad Capital   &  92 & 14.8 \\
-\quad Unclear   &   9 &  1.4 \\
+\quad Cultural  & 271 & 43.6 \\
+\quad Mixed     & 228 & 36.7 \\
+\quad Capital   & 118 & 19.0 \\
+\quad Unclear   &   5 &  0.8 \\
 \midrule
 \multicolumn{3}{l}{\textit{Remediation signal}} \\
-\quad None    & 418 & 67.2 \\
-\quad Weak    & 112 & 18.0 \\
-\quad Partial &  91 & 14.6 \\
-\quad Strong  &   1 &  0.2 \\
+\quad None    & 443 & 71.2 \\
+\quad Partial & 103 & 16.6 \\
+\quad Weak    &  74 & 11.9 \\
+\quad Strong  &   2 &  0.3 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Key finding 1: Severity is predominantly high.}
-Nearly 70\% of 483 observations in our sample are classified as High severity
-(direct patient-harm risk or gross deviation from CGMP).
-This reflects the facility composition of our sample—facilities that
-manufactured drugs subsequently tested by Valisure, which may be a
-non-random subset with higher historical inspection activity.
+\paragraph{Key finding 1: Severity grades on documented product impact.}
+Under the documented-product-impact rubric, 15.9\% of observations are
+Critical (defective product was released or distributed), 30.2\% Major
+(an actual defect or failing result found on site), and 53.2\% Moderate
+(deficient system, no defect documented).
+The Critical share is striking: roughly one in six observations in this
+sample documents defective product that reached the market.
+The graded distribution---unlike a rubric where any serious-sounding GMP
+failure rates highly---gives the tier discriminating power:
+the Critical$+$Major share is 20 percentage points higher in inspections
+that FDA classified OAI than VAI.
 
 \paragraph{Key finding 2: Cultural root causes dominate.}
-83.8\% of observations are classified as Cultural or Mixed root cause,
+80.3\% of observations are classified as Cultural or Mixed root cause,
 suggesting that the predominant drivers of CGMP violations in this sample
 are management, training, and quality-culture failures rather than
 capital/equipment gaps.
@@ -380,8 +423,8 @@ This has direct implications for corrective action: capital investment alone
 is insufficient.
 
 \paragraph{Key finding 3: Remediation is rarely mentioned.}
-67.2\% of observations mention no corrective action whatsoever, and only
-one observation (0.2\%) references a strong corrective action.
+71.2\% of observations mention no corrective action whatsoever, and only
+two observations (0.3\%) reference a strong corrective action.
 \note{This is partly structural: 483 observations are investigator-written
 findings; firm responses are submitted separately.
 However, Partial/Weak mentions do appear when investigators note commitments
@@ -394,45 +437,59 @@ on the same observations.
 
 \begin{table}[h!]
 \centering
-\caption{Semantic lift: LLM vs.\ regex flag rates (mean across 38 FEIs)}
+\caption{Semantic lift: LLM vs.\ regex flag rates ($n = 622$ observations)}
 \label{tab:lift}
 \begin{tabular}{lrrr}
 \toprule
 \textbf{Flag} & \textbf{Regex share} & \textbf{LLM share}
               & \textbf{LLM-only lift} \\
 \midrule
-Patient risk   & 19.4\% & $\sim$90\% & \textbf{71.1\%} \\
-Systemic scope & 26.3\% & $\sim$95\% & \textbf{68.9\%} \\
-Contamination  & 30.2\% & $\sim$57\% & 27.1\% \\
-Data integrity &  6.1\% & $\sim$19\% & 13.1\% \\
-Investigation  & 39.9\% & $\sim$43\% &  3.2\% \\
-Documentation  & 83.6\% & $\sim$87\% &  4.7\% \\
-Repeat finding &  4.3\% & $\sim$9\%  &  5.0\% \\
+Contamination  & 33.1\% & 58.5\% & \textbf{27.3\%} \\
+Patient risk   & 19.9\% & 33.6\% & \textbf{21.2\%} \\
+Data integrity &  5.3\% & 18.5\% & 13.8\% \\
+Investigation  & 37.5\% & 40.0\% &  7.2\% \\
+Repeat finding &  6.8\% & 10.0\% &  3.2\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The patient risk and systemic flags show the largest semantic lift:
-the LLM identifies \emph{patient risk implications} and \emph{facility-wide
-scope} in 71\% and 69\% of observations, respectively, where keyword
-rules fail.
+The contamination and patient-risk flags show the largest semantic lift:
+the LLM flags 27 and 21 percentage points of observations, respectively,
+that keyword rules miss.
 This is because these inferences require contextual reasoning
-(e.g., sterile injectable $\Rightarrow$ patient risk; ``your firm's''
-$\Rightarrow$ systemic) that regex cannot replicate.
+(e.g., a sterile product exposed to unclassified air $\Rightarrow$ patient
+risk, even though the words ``patient'' and ``contamination'' never appear)
+that regex cannot replicate.
+The reverse error also occurs: for patient risk, 7.6\% of observations are
+regex-only---the word ``patient'' appears but the LLM judged that no
+explicit harm pathway exists under the strict prompt definition.
 
-\subsection{Facility-Level Text Risk Indices}
+\subsection{Facility-Level Text Features}
 
-\todo{Table of top/bottom 10 FEIs by TRI with firm name (or anonymized).
-Add: correlation of TRI with severity\_score from node\_summary,
-correlation of TRI with n\_oai, correlation with MQRI.}
+\todo{Table of top/bottom 10 FEIs by severity\_critmajor\_share and
+repeat\_cross\_insp\_share with firm name (or anonymized).
+Add: correlation of severity\_critmajor\_share with n\_oai,
+correlation with MQRI.}
 
-\subsection{Predictive Validity: TRI vs.\ Valisure Outcomes}
+\subsection{Predictive Validity: Text Features vs.\ Valisure Outcomes}
 
-\todo{Run correlation: TRI vs.\ Valisure dissolution difference factor (2024).
-Run correlation: SCRI vs.\ Valisure NDMA/DMF.
+\todo{Run correlation: severity\_critmajor\_share vs.\ Valisure dissolution
+difference factor (2024).
+Run correlation: contamination\_llm\_share vs.\ Valisure NDMA/DMF.
 Compare to MQRI-only baseline.}
 
 \subsection{Predictive Validity: LLM Text Features in Shortage Prediction}
+
+\note{The benchmark below was estimated with the previous feature set
+(composite text indices, 3-tier severity). The extraction pipeline has since
+been revised: 4-tier severity, scope field, 5 binary flags, cross-inspection
+repeat detection, and raw feature shares in place of the four composite
+indices. The model must be re-run before these numbers are cited.}
+
+\todo{Re-run m07/m09 with the revised text features
+(severity\_critmajor\_share, scope shares, flag shares,
+repeat\_cross\_insp\_share) and replace the table, figure, and importance
+claims below.}
 
 Table~\ref{tab:model} reports grouped cross-validated AUC for the full model
 and the ablation without text features.
@@ -440,7 +497,8 @@ and the ablation without text features.
 \begin{table}[h!]
 \centering
 \caption{Shortage prediction benchmark — GroupKFold CV by drug
-         ($n=126$ usable rows; 19 events; 14 drugs, 2015--2024)}
+         ($n=126$ usable rows; 19 events; 14 drugs, 2015--2024).
+         \todo{Stale — re-run with revised text features.}}
 \label{tab:model}
 \begin{tabular}{lccc}
 \toprule
@@ -456,17 +514,11 @@ Random Forest AUC improves by $+$0.052 with text features.
 The logistic regression result is negative ($-$0.065), consistent with
 high-dimensional collinearity at $n = 19$ events---logit is not robust
 to correlated predictors in small samples.
-Figure~\ref{fig:fi} shows Random Forest feature importance:
-QCI ranks third overall (14.8\% importance), behind only FAERS severity
-scores; the four text indices combined account for $\approx$32\% of
-total RF importance.
-This demonstrates that LLM-extracted regulatory text carries predictive
-information absent from structured databases.
 
 \begin{figure}[h!]
 \centering
 \includegraphics[width=0.75\textwidth]{../../Data/99 - Outputs - Shortage Prediction/outputs/figures/feature_importance_valisure_clean.png}
-\caption{Random Forest feature importance for predicting next-year drug shortage (14 APIs, 2015--2024, GroupKFold CV by drug). Teal bars = LLM-extracted 483 text indices; navy bars = structured data features. QCI (Quality Culture Index) ranks 3rd overall (14.8\% importance), ahead of Valisure quality scores. Four text indices combined $\approx$32\% of total RF importance.}
+\caption{Random Forest feature importance for predicting next-year drug shortage (14 APIs, 2015--2024, GroupKFold CV by drug). Teal bars = LLM-extracted 483 text features; navy bars = structured data features. \todo{Regenerate with revised raw text features.}}
 \label{fig:fi}
 \end{figure}
 
@@ -475,20 +527,22 @@ information absent from structured databases.
 \label{sec:discussion}
 
 \paragraph{Form 483 text as a leading quality signal.}
-The most important finding is that QCI---derived entirely from LLM classification
-of 483 observation narratives---ranks as the third most important predictor of
-drug shortage in a Random Forest model, ahead of Valisure quality scores,
-Redica OAI counts, and prior shortage history.
-This validates the central premise: unstructured regulatory text encodes
-organizational behavior (quality culture, systemic scope, remediation commitment)
-that structured compliance databases do not capture.
-The semantic lift analysis shows that LLMs detect patient-risk implications and
-facility-wide scope in 71\% and 69\% more observations, respectively, than
-keyword rules---confirming that contextual reasoning, not pattern matching, is
-required to extract these signals.
+LLM classification of 483 observation narratives produces signals that
+structured compliance databases do not capture: graded severity that tracks
+FDA inspection outcomes (Critical$+$Major share 20pp higher in OAI than VAI
+inspections), failure scope, remediation commitment, and chronic-violator
+identification via cross-inspection repeat detection (15.7\% of
+observations repeat citation language from an earlier inspection of the
+same facility).
+\todo{Restate the shortage-model importance finding after the re-run with
+raw text features.}
+The semantic lift analysis shows that LLMs detect contamination-control risk
+and patient-risk implications in 27 and 21 percentage points more
+observations, respectively, than keyword rules---confirming that contextual
+reasoning, not pattern matching, is required to extract these signals.
 
 \paragraph{Root cause composition and Remediation Economics.}
-83.8\% of observations carry Cultural or Mixed root causes, consistent with
+80.3\% of observations carry Cultural or Mixed root causes, consistent with
 Agency Theory's prediction that persistent non-compliance reflects management
 behavior rather than capital gaps.
 CAPA programs that target equipment or procedures may therefore be
@@ -516,16 +570,14 @@ suppliers?
         publicly available inspection documents — for example, three of four
         Ampicillin-manufacturing FEIs have no 483 PDFs on file, so the
         drug-level average is derived from a single facility.
-  \item \textit{Cross-inspection repeat detection}: the current extraction
-        pipeline identifies repeated observations within a single 483 document
-        (intra-inspection repeats) but does not cross-reference violations
-        across multiple inspections of the same facility over time.
-        Manual review of FEI 3011905047 (sterile injectable manufacturer)
-        revealed identical sterility and aseptic-technique violations in both
-        a 2019 and a 2024 FDA inspection, yet the pipeline scores
-        \texttt{repeat\_llm\_share = 0}. Cross-inspection repeat detection
-        — which would substantially raise the risk signal for chronic violators
-        — is planned as a next-generation enhancement.
+  \item \textit{Cross-inspection repeat detection}: the template-sentence
+        matcher catches deficiencies re-cited under the same standardized
+        citation language (e.g., FEI 3011905047, a sterile injectable
+        manufacturer, was cited for the identical employee-training
+        deficiency in 2019 and again in 2024).
+        It will miss repeats that an investigator cites under a different
+        CFR paraphrase, so the 15.7\% cross-inspection repeat rate is a
+        lower bound.
   \item \textit{Sample size}: 14 drugs and 19 shortage events yield wide
         confidence intervals; all findings are exploratory.
   \item \textit{LLM reliability}: manual review of a sample confirms strong
@@ -543,13 +595,15 @@ We present a multi-source regulatory intelligence framework that integrates
 five FDA databases and an LLM extraction pipeline to convert Form 483
 narrative observations into structured, predictively informative quality-risk
 features.
-Key findings: (1) LLM-derived Quality Culture Index (QCI) is the third most
-important predictor of drug shortage onset in a Random Forest model (14.8\%
-importance); (2) text indices collectively account for $\approx$32\% of
-feature importance, providing information absent from structured databases;
-(3) 83.8\% of violations carry Cultural or Mixed root causes, with direct
-implications for CAPA program design; (4) contamination and cGMP failures
-account for 94\% of API-matched recalls.
+Key findings: (1) LLM-graded severity tracks real inspection outcomes
+(Critical$+$Major share 20pp higher in OAI than VAI inspections), and 15.9\%
+of observations document defective product that reached the market;
+(2) 15.7\% of observations repeat citation language from an earlier
+inspection of the same facility, identifying chronic violators that
+per-observation flags miss; (3) 80.3\% of violations carry Cultural or
+Mixed root causes, with direct implications for CAPA program design;
+(4) contamination and cGMP failures account for 94\% of API-matched recalls.
+\todo{Add shortage-model finding after the re-run with raw text features.}
 The pipeline is fully automated and reproducible from publicly available FDA
 data, offering a scalable framework for real-time manufacturing quality
 surveillance and proactive supply chain risk management---with direct
@@ -570,8 +624,10 @@ access.
 \section{LLM Flag Definitions}
 \label{app:flags}
 
-\paragraph{Extraction model.} \texttt{gpt-4o-mini} with structured JSON output
-schema (strict mode). Temperature = 0 (deterministic). Max tokens = 2000.
+\paragraph{Extraction model.} \texttt{gpt-5-mini} with structured JSON output
+schema (strict mode). Max output tokens = 4000. Rate-limited requests are
+retried with linear back-off; failed rows are re-scored on the next run
+rather than silently imputed.
 
 \paragraph{Evidence guard.} The \texttt{evidence\_quote} field must appear
 verbatim in the source observation text. If the model paraphrases, the field
@@ -584,27 +640,43 @@ is cleared to empty string rather than accepting an inaccurate citation.
   \item[\texttt{repeat\_flag\_llm}] True only when the observation explicitly
     states this is a repeat or previously-cited finding from a prior inspection.
     Not true for repeated examples within the same current observation.
-  \item[\texttt{systemic\_flag\_llm}] True when the observation describes
-    facility-wide, multi-process, multi-product, or quality-system-level failure.
-  \item[\texttt{patient\_risk\_flag\_llm}] True when the violation could
-    directly affect patient safety. Does not require confirmed patient harm.
+  \item[\texttt{patient\_risk\_flag\_llm}] True only when an explicit harm
+    pathway exists: (a) sterile/injectable product with a contamination or
+    sterility assurance failure, (b) a confirmed quality defect in released
+    or distributed product, or (c) product released without required QA
+    disposition. ``Could affect quality'' does not qualify.
   \item[\texttt{data\_integrity\_flag\_llm}] True only for explicit data
     trustworthiness failures (falsification, backdating, audit-trail problems).
     Not true for ordinary incomplete documentation.
   \item[\texttt{contamination\_flag\_llm}] True for actual contamination or
     clear contamination-control risk including sterility assurance failures.
-  \item[\texttt{documentation\_flag\_llm}] True when inadequate documentation
-    is a \emph{central} finding.
   \item[\texttt{investigation\_flag\_llm}] True only for an explicit failed,
     missing, or inadequate investigation of a concrete event.
 \end{description}
 
-\section{Composite Index Weights}
-\label{app:weights}
+\paragraph{Removed in prompt v2.} The former \texttt{systemic\_flag\_llm}
+fired on 94\% of observations (uninformative) and was replaced by the
+4-class \texttt{scope} field; \texttt{documentation\_flag\_llm} is covered
+by the RecordsReports violation category.
 
-Weights for TRI, SCRI, IRWI, and QCI are specified in
-\texttt{02\_aggregate\_fei\_features.py} and reproduced in
-Equations~\eqref{eq:tri}--\eqref{eq:qci}.
-\todo{Add empirical derivation table once correlations with OAI rate are run.}
+\section{Severity Tier Definitions (Prompt v2)}
+\label{app:severity}
+
+The tier is decided by one question: what level of actual product impact
+does the text document?
+
+\begin{description}[leftmargin=2em]
+  \item[Critical] Affected product was released or distributed (e.g.,
+    contaminated lots distributed before the investigation was closed).
+  \item[Major] An actual defect, failure, or unreliable result found at the
+    facility but no evidence of release (e.g., particulate matter observed
+    in lots; test results invalidated without quality approval).
+  \item[Moderate] A deficient procedure, system, or practice with no actual
+    product defect documented (e.g., media fills that do not mimic routine
+    production; systems that allow data deletion without evidence it
+    occurred). The default tier for most observations.
+  \item[Minor] Documentation or administrative gap with no plausible product
+    impact.
+\end{description}
 
 \end{document}
