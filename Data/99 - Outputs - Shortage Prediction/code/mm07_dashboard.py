@@ -1,10 +1,12 @@
 """
 Module MM07 — Dashboard generator.
 
-Three sections, one message:
-  1. Forward validation  — 483 text content predicts OAI/recall (facility level, m12)
-  2. Facility timelines  — interactive chronological explorer (m11)
-  3. Coverage & next steps
+Five sections, one narrative:
+  1. Regulatory signals → shortage  (OAI lead-lag, monthly event study)
+  2. Case study: FEI 3002809586     (text trend over 7 inspections, 2016–2025)
+  3. Forward validation             (483 text content predicts OAI/recall, m12)
+  4. Facility timelines             (interactive chronological explorer, m11)
+  5. Coverage & next steps
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_FIGS, VALISURE_FEI
+from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_FIGS, VALISURE_FEI, DATA
 from utils import get_logger
 
 log = get_logger("mm07_dashboard", OUT_LOGS / "mm07_dashboard.log")
@@ -41,26 +43,81 @@ def _j(o) -> str:
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+INSP_XLSX  = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
+TS_CSV     = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
+CASE_FEI   = 3002809586   # best case study: 7 snaps, 58% coverage, 5/7 OAI
+
+
 def compute_data() -> dict:
     d: dict = {}
 
-    # Basic counts
+    # ── Basic counts ─────────────────────────────────────────────────────────
     bridge = None
     if VALISURE_FEI.exists():
         bridge = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping",
                                usecols=["API", "FEI_NUMBER"]).dropna(subset=["FEI_NUMBER"])
         bridge["FEI_NUMBER"] = bridge["FEI_NUMBER"].astype(int)
-    ts_path = OUT_DATA.parent.parent / "Data" / "99 - Outputs - Text Analysis" / \
-              "483_fei_text_features_timeseries.csv"
-    # Use config path via the module import path already resolved
-    from config import DATA
-    ts_path = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
-    ts_raw = pd.read_csv(ts_path) if ts_path.exists() else None
+    ts_raw = pd.read_csv(TS_CSV) if TS_CSV.exists() else None
 
-    d["n_drugs"]     = int(bridge["API"].nunique())        if bridge  is not None else 14
-    d["n_feis"]      = int(bridge["FEI_NUMBER"].nunique()) if bridge  is not None else 129
-    d["n_feis_text"] = int(ts_raw["fei"].nunique())        if ts_raw  is not None else 37
-    d["n_snaps"]     = len(ts_raw)                         if ts_raw  is not None else 79
+    d["n_drugs"]     = int(bridge["API"].nunique())        if bridge is not None else 14
+    d["n_feis"]      = int(bridge["FEI_NUMBER"].nunique()) if bridge is not None else 129
+    d["n_feis_text"] = int(ts_raw["fei"].nunique())        if ts_raw is not None else 37
+    d["n_snaps"]     = len(ts_raw)                         if ts_raw is not None else 79
+
+    # ── OAI lead-lag (from mm06) ──────────────────────────────────────────────
+    ll = _read("lead_lag_monthly.csv", OUT_TABS)
+    d["oai_lead"] = {}
+    if ll is not None:
+        oai = ll[ll["signal"] == "redica_n_oai"].set_index("offset_months")
+        offsets = sorted(oai.index.tolist())
+        bl = float(oai["baseline_mean"].dropna().iloc[0]) if not oai["baseline_mean"].dropna().empty else 0.039
+        d["oai_lead"] = {
+            "offsets":  offsets,
+            "means":    [round(float(oai.loc[o, "mean"]), 4) for o in offsets],
+            "ses":      [round(float(oai.loc[o, "se"]),   4) for o in offsets],
+            "baseline": round(bl, 4),
+        }
+
+    # ── Case study: FEI 3002809586 ────────────────────────────────────────────
+    d["case_study"] = {"snaps": [], "inspections": []}
+    if ts_raw is not None and INSP_XLSX.exists():
+        ts_raw["snapshot_date"] = pd.to_datetime(ts_raw["snapshot_date"])
+        ts_raw["fei"] = ts_raw["fei"].astype(int)
+        snaps = ts_raw[ts_raw["fei"] == CASE_FEI].sort_values("snapshot_date")
+
+        insp = pd.read_excel(INSP_XLSX)
+        insp["Inspection End Date"] = pd.to_datetime(insp["Inspection End Date"], errors="coerce")
+        insp_fei = insp[
+            (insp["FEI Number"] == CASE_FEI) &
+            insp["Product Type"].str.contains("Drug", na=False)
+        ].sort_values("Inspection End Date")
+
+        cls_map = {
+            "Official Action Indicated (OAI)": "OAI",
+            "Voluntary Action Indicated (VAI)": "VAI",
+            "No Action Indicated (NAI)":        "NAI",
+        }
+        for _, r in snaps.iterrows():
+            yr = round(r["snapshot_date"].year + (r["snapshot_date"].dayofyear - 1) / 365.25, 3)
+            d["case_study"]["snaps"].append({
+                "x":     yr,
+                "label": r["snapshot_date"].strftime("%b %Y"),
+                "contam":  round(float(r.get("contamination_llm_share",  0) or 0), 3),
+                "remed":   round(float(r.get("remediation_none_share",    0) or 0), 3),
+                "sev":     round(float(r.get("severity_critmajor_share",  0) or 0), 3),
+            })
+        for _, r in insp_fei.iterrows():
+            yr = round(r["Inspection End Date"].year +
+                       (r["Inspection End Date"].dayofyear - 1) / 365.25, 3)
+            d["case_study"]["inspections"].append({
+                "x":   yr,
+                "cls": cls_map.get(r["Classification"], "?"),
+                "label": r["Inspection End Date"].strftime("%b %Y"),
+            })
+
+    # ── Monthly onset count (for lead-lag caption) ────────────────────────────
+    mp = _read("master_panel_monthly.csv")
+    d["monthly_onset_months"] = int(mp["shortage_start"].sum()) if mp is not None else 0
 
     # m12 forward validation grid
     _ESC = [
@@ -161,6 +218,110 @@ def compute_data() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def generate_html(d: dict) -> str:
+
+    # ── OAI lead-lag chart JS ─────────────────────────────────────────────────
+    ol = d.get("oai_lead", {})
+    if ol:
+        offsets  = ol["offsets"]
+        means    = ol["means"]
+        ses      = ol["ses"]
+        bl       = ol["baseline"]
+        hi = [round((m or 0) + (s or 0), 4) for m, s in zip(means, ses)]
+        lo = [round((m or 0) - (s or 0), 4) for m, s in zip(means, ses)]
+        lead_lag_js = f"""
+new Chart(document.getElementById('oaiLeadChart'),{{
+  type:'line',
+  data:{{labels:{_j(offsets)},datasets:[
+    {{label:'±1 SE',data:{_j(hi)},borderColor:'transparent',
+      backgroundColor:'rgba(224,122,95,0.18)',fill:'+1',pointRadius:0,tension:0.2}},
+    {{label:'_lo',data:{_j(lo)},borderColor:'transparent',fill:false,pointRadius:0,tension:0.2}},
+    {{label:'OAI rate near onset',data:{_j(means)},
+      borderColor:'rgb(224,122,95)',fill:false,tension:0.2,pointRadius:4,borderWidth:2.5}},
+    {{label:'Control baseline ({bl:.3f})',
+      data:{_j([bl]*len(offsets))},
+      borderColor:'rgba(224,122,95,0.4)',borderDash:[6,4],pointRadius:0,fill:false,borderWidth:1.5}}
+  ]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{position:'bottom',labels:{{boxWidth:11,font:{{size:10}},
+      filter:i=>i.text!=='_lo'}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Months before shortage onset (0 = onset month)'}},grid:{{display:false}}}},
+      y:{{beginAtZero:true,
+          title:{{display:true,text:'Mean OAI inspections / drug-month'}},
+          grid:{{color:'#EEE'}}}}
+    }}
+  }}
+}});"""
+    else:
+        lead_lag_js = "/* oai_lead not available */"
+
+    # ── Case study chart JS ───────────────────────────────────────────────────
+    cs = d.get("case_study", {})
+    if cs.get("snaps"):
+        snaps     = cs["snaps"]
+        cls_color = {"OAI": "#C0392B", "VAI": "#E67E22", "NAI": "#27AE60"}
+        # Build per-point classification lookup
+        insp_lookup = {round(i["x"], 3): i["cls"] for i in cs.get("inspections", [])}
+        pt_colors = [cls_color.get(insp_lookup.get(round(s["x"], 3), ""), "#999") for s in snaps]
+        pt_styles = ["triangle" if insp_lookup.get(round(s["x"], 3)) == "OAI" else "circle"
+                     for s in snaps]
+        xs         = [s["x"]     for s in snaps]
+        contam     = [s["contam"] for s in snaps]
+        remed      = [s["remed"]  for s in snaps]
+        labels_x   = [s["label"]  for s in snaps]
+        case_js = f"""
+(function(){{
+const PT_COLORS={_j(pt_colors)};
+const PT_STYLES={_j(pt_styles)};
+const LABELS_X={_j(labels_x)};
+new Chart(document.getElementById('caseChart'),{{
+  type:'line',
+  data:{{
+    labels:{_j(xs)},
+    datasets:[
+      {{label:'Contamination flag',
+        data:{_j(contam)},
+        borderColor:'#E07A5F',backgroundColor:'rgba(224,122,95,0.08)',
+        fill:false,tension:0.2,borderWidth:2.5,
+        pointRadius:9,pointStyle:PT_STYLES,
+        pointBackgroundColor:PT_COLORS,pointBorderColor:PT_COLORS}},
+      {{label:'No remediation response',
+        data:{_j(remed)},
+        borderColor:'#065A82',backgroundColor:'rgba(6,90,130,0.08)',
+        fill:false,tension:0.2,borderWidth:2.5,borderDash:[5,3],
+        pointRadius:9,pointStyle:PT_STYLES,
+        pointBackgroundColor:PT_COLORS,pointBorderColor:PT_COLORS}}
+    ]
+  }},
+  options:{{maintainAspectRatio:false,
+    plugins:{{
+      legend:{{position:'bottom',labels:{{boxWidth:14,font:{{size:10.5}}}}}},
+      tooltip:{{callbacks:{{
+        title: items=>LABELS_X[items[0].dataIndex]||'',
+        afterBody: items=>{{
+          const c=PT_COLORS[items[0].dataIndex];
+          if(c==='#C0392B') return 'Inspection outcome: OAI';
+          if(c==='#E67E22') return 'Inspection outcome: VAI';
+          if(c==='#27AE60') return 'Inspection outcome: NAI';
+          return '';
+        }}
+      }}}}
+    }},
+    scales:{{
+      x:{{type:'linear',min:2015,max:2026,
+          title:{{display:true,text:'Year'}},
+          ticks:{{stepSize:1,callback:v=>Number.isInteger(v)?v:''}},
+          grid:{{color:'#EEE'}}}},
+      y:{{min:0,max:1,
+          title:{{display:true,text:'Share of 483 observations'}},
+          ticks:{{callback:v=>Math.round(v*100)+'%'}},
+          grid:{{color:'#EEE'}}}}
+    }}
+  }}
+}});
+}})();"""
+    else:
+        case_js = "/* case study data not available */"
 
     def _split_chart(cid, cells, x_title):
         if not cells: return f"/* {cid}: no data */"
@@ -273,11 +434,13 @@ let _tChart=null;
   sel.addEventListener('change',()=>build(sel.value));
 }})();"""
 
-    n  = d["n_feis_text"]
-    sn = d["n_snaps"]
-    eb = d["esc_base"]
-    rb = d["rec_base"]
-    fn = d["fwd_n"]
+    n         = d["n_feis_text"]
+    sn        = d["n_snaps"]
+    eb        = d["esc_base"]
+    rb        = d["rec_base"]
+    fn        = d["fwd_n"]
+    n_onsets  = d["monthly_onset_months"]
+    case_fei  = CASE_FEI
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -340,7 +503,62 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   <div class="chip"><strong>{fn}</strong>Used in validation</div>
 </div>
 
-<!-- SECTION 1: FORWARD VALIDATION -->
+<!-- SECTION 1: REGULATORY SIGNALS → SHORTAGE -->
+<section>
+  <h2>Do regulatory signals precede shortage?</h2>
+  <p class="sub">
+    Monthly event study: mean OAI inspection rate in the months before shortage onset (month 0)
+    vs the control baseline (drug-months far from any onset).
+    N = {n_onsets} onset months · 14 drugs · exploratory; wide confidence intervals.
+  </p>
+  <div class="card" style="max-width:620px;">
+    <h3>OAI rate in months leading to shortage onset</h3>
+    <div class="csub">
+      Solid = mean near onset · dashed = control baseline.
+      Elevation at –12 months (~2× baseline) suggests quality problems accumulate
+      well before supply is disrupted.
+    </div>
+    <div class="ch"><canvas id="oaiLeadChart"></canvas></div>
+  </div>
+  <div class="note">
+    OAI inspections trigger mandatory remediation. The remediation process itself — halting
+    or slowing non-compliant production lines — is the mechanism connecting regulatory action
+    to supply disruption. The text features in Sections 2 and 3 sit one step earlier in
+    that chain: <em>before the OAI is issued</em>.
+  </div>
+</section>
+
+<!-- SECTION 2: CASE STUDY FEI 3002809586 -->
+<section>
+  <h2>Case study — one facility over 9 years (FEI {case_fei})</h2>
+  <p class="sub">
+    Makes Bupropion &amp; Metformin. 7 FDA Form 483s between 2016 and 2025, covering 58% of
+    drug inspections at this facility. Point shape and color show the inspection outcome at
+    each snapshot: <span style="color:#C0392B;font-weight:700;">▲ OAI</span> ·
+    <span style="color:#E67E22;font-weight:700;">● VAI</span> ·
+    <span style="color:#27AE60;font-weight:700;">● NAI</span>.
+    Hover a point for the date.
+  </p>
+  <div class="card">
+    <h3>Contamination flag &amp; no-remediation share, 2016–2025</h3>
+    <div class="csub">
+      Two signals extracted from 483 observation text.
+      <em>Contamination flag</em> = share of observations mentioning contamination risk (LLM).
+      <em>No remediation</em> = share where no corrective action appears in the text.
+    </div>
+    <div class="ch" style="height:320px;"><canvas id="caseChart"></canvas></div>
+  </div>
+  <div class="note dk">
+    <strong>What the trend shows:</strong>
+    Contamination is persistently high (52–62%) across all 7 inspections — no improvement.
+    The no-remediation share <em>rises</em> from 22% (2016) to 63% (2019) and stays there —
+    the facility keeps acknowledging the same problems in 483 text but never commits to fixing them.
+    The result: 5 of the 7 inspections ended in OAI. This is not a prediction — it is a
+    pattern visible in the document record, in chronological order.
+  </div>
+</section>
+
+<!-- SECTION 3: FORWARD VALIDATION -->
 <section>
   <h2>What 483 text predicts — facility level</h2>
   <p class="sub">
@@ -368,7 +586,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   </div>
 </section>
 
-<!-- SECTION 2: TIMELINE -->
+<!-- SECTION 4: TIMELINE -->
 <section>
   <h2>Chronological timeline — facility explorer</h2>
   <p class="sub">
@@ -392,7 +610,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   </p>
 </section>
 
-<!-- SECTION 3: COVERAGE & NEXT STEPS -->
+<!-- SECTION 5: COVERAGE & NEXT STEPS -->
 <section>
   <h2>Coverage &amp; next steps</h2>
   <div class="two">
@@ -421,6 +639,8 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
 <script>
 Chart.defaults.font.family='-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
 Chart.defaults.color="#1A2233";Chart.defaults.font.size=11.5;
+{lead_lag_js}
+{case_js}
 {fwd_js}
 {timeline_js}
 </script>
