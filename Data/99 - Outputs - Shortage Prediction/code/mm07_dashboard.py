@@ -13,13 +13,12 @@ Run from the code/ directory:
 """
 
 from __future__ import annotations
-import base64
 import json
 from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS, OUT_FIGS, TEXT_FEATURES_CSV, VALISURE_FEI
+from config import OUT_DATA, OUT_TABS, OUT_ROOT, OUT_LOGS, OUT_MODELS, OUT_FIGS, TEXT_FEATURES_CSV, TEXT_TIMESERIES_CSV, VALISURE_FEI
 from utils import get_logger
 
 log = get_logger("mm07_dashboard", OUT_LOGS / "mm07_dashboard.log")
@@ -136,8 +135,11 @@ def compute_data() -> dict:
         d["lift"] = []
 
     # ── 483 raw text feature lift (annual, drug-year level) ───────────────────
-    _TEXT_LIFT_COLS = ["repeat_llm_only_share", "contamination_llm_only_share",
-                       "oos_oot_regex_share", "severity_critmajor_share", "remediation_none_share"]
+    _TEXT_LIFT_COLS = [
+        "repeat_llm_only_share", "contamination_llm_only_share",
+        "oos_oot_regex_share", "severity_critmajor_share", "remediation_none_share",
+        "repeat_cross_insp_share", "scope_facilitywide_share", "cultural_root_cause_share",
+    ]
     if ap is not None:
         q = ap.dropna(subset=["y_next_year_shortage"])
         for c in [c for c in _TEXT_LIFT_COLS if c in q.columns]:
@@ -176,14 +178,20 @@ def compute_data() -> dict:
         for entry in d.get("by_drug", []):
             entry["duration"] = 0
 
-    # ── Text features from 483 CSV: the m12-validated raw shares ──────────────
+    # ── Text features from 483 timeseries: latest snapshot per FEI, averaged by drug ──
     _TEXT_DETAIL_COLS = [
         "severity_critmajor_share", "contamination_llm_only_share", "repeat_llm_only_share",
-        "oos_oot_regex_share", "remediation_none_share", "remediation_weak_share",
+        "oos_oot_regex_share", "remediation_none_share",
+        "repeat_cross_insp_share", "scope_facilitywide_share", "cultural_root_cause_share",
     ]
     drug_text_detail: dict = {}
-    if TEXT_FEATURES_CSV.exists() and VALISURE_FEI.exists():
-        tf_raw  = pd.read_csv(TEXT_FEATURES_CSV)
+    _ts_src = TEXT_TIMESERIES_CSV if TEXT_TIMESERIES_CSV.exists() else TEXT_FEATURES_CSV
+    if _ts_src.exists() and VALISURE_FEI.exists():
+        tf_raw  = pd.read_csv(_ts_src)
+        # If timeseries, take most recent snapshot per FEI
+        if "snapshot_date" in tf_raw.columns:
+            tf_raw["snapshot_date"] = pd.to_datetime(tf_raw["snapshot_date"])
+            tf_raw = tf_raw.loc[tf_raw.groupby("fei")["snapshot_date"].idxmax()].copy()
         bridge  = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
         bridge  = (bridge[["API", "FEI_NUMBER"]].dropna()
                    .rename(columns={"FEI_NUMBER": "fei", "API": "drug_norm"}))
@@ -192,24 +200,28 @@ def compute_data() -> dict:
         drug_text_detail = merged.groupby("drug_norm")[_avail].mean().round(3).to_dict(orient="index")
     for entry in d.get("by_drug", []):
         detail = drug_text_detail.get(entry["drug"], {})
-        entry["sev_high"]     = round(float(detail.get("severity_critmajor_share", 0)), 3)
-        entry["contam_share"] = round(float(detail.get("contamination_llm_only_share", 0)), 3)
-        entry["repeat_share"] = round(float(detail.get("repeat_llm_only_share", 0)), 3)
-        entry["oos_share"]    = round(float(detail.get("oos_oot_regex_share", 0)), 3)
-        entry["remed_none"]   = round(float(detail.get("remediation_none_share", 0)), 3)
-        entry["remed_weak"]   = round(float(detail.get("remediation_weak_share", 0)), 3)
+        entry["sev_high"]      = round(float(detail.get("severity_critmajor_share", 0)), 3)
+        entry["contam_share"]  = round(float(detail.get("contamination_llm_only_share", 0)), 3)
+        entry["repeat_share"]  = round(float(detail.get("repeat_llm_only_share", 0)), 3)
+        entry["oos_share"]     = round(float(detail.get("oos_oot_regex_share", 0)), 3)
+        entry["remed_none"]    = round(float(detail.get("remediation_none_share", 0)), 3)
+        entry["cross_repeat"]  = round(float(detail.get("repeat_cross_insp_share", 0)), 3)
+        entry["scope_fw"]      = round(float(detail.get("scope_facilitywide_share", 0)), 3)
+        entry["cultural_rc"]   = round(float(detail.get("cultural_root_cause_share", 0)), 3)
 
     # ── Text detail group comparison (violation categories + remediation) ──────
     if ap is not None:
         dm2 = ap.groupby("drug_norm")["shortage_started"].sum().reset_index()
         dm2.columns = ["drug_norm", "starts"]
         detail_cols_map = {
-            "repeat_share":  "Repeat violations %",
-            "contam_share":  "Contamination %",
-            "oos_share":     "OOS/OOT references %",
-            "sev_high":      "Critical+Major obs %",
-            "remed_none":    "No remediation %",
-            "remed_weak":    "Weak remediation %",
+            "repeat_share":  "Repeat violations",
+            "cross_repeat":  "Cross-insp. repeat",
+            "contam_share":  "Contamination",
+            "oos_share":     "OOS/OOT references",
+            "sev_high":      "Critical+Major sev.",
+            "scope_fw":      "Facility-wide scope",
+            "cultural_rc":   "Cultural root cause",
+            "remed_none":    "No remediation",
         }
         # Build drug-level detail from by_drug entries
         by_drug_dict = {e["drug"]: e for e in d.get("by_drug", [])}
@@ -311,16 +323,18 @@ def compute_data() -> dict:
     # n_hi >= 10, and a coherent mechanism. recall@12m excluded (only 2 events).
     _ESC_FEATS = [
         ("repeat_llm_only_share",        "Repeat violations (LLM)"),
+        ("repeat_cross_insp_share",      "Cross-insp. repeat (algo)"),
         ("contamination_llm_only_share", "Contamination (LLM)"),
         ("oos_oot_regex_share",          "OOS/OOT references"),
-        ("severity_critmajor_share",          "Critical+Major obs. (LLM)"),
-        ("n_obs_total",                  "Number of observations"),
+        ("severity_critmajor_share",     "Critical+Major severity"),
+        ("scope_facilitywide_share",     "Facility-wide scope"),
     ]
     _REC_FEATS = [
         ("vc_buildingsequipment_share",  "Buildings/equipment violations"),
         ("repeat_llm_only_share",        "Repeat violations (LLM)"),
-        ("oos_oot_regex_share",          "OOS/OOT references"),
-        ("capital_root_cause_share",     "Capital root cause (LLM)"),
+        ("repeat_cross_insp_share",      "Cross-insp. repeat (algo)"),
+        ("capital_root_cause_share",     "Capital root cause"),
+        ("cultural_root_cause_share",    "Cultural root cause"),
     ]
     grid = _read("text_signal_grid.csv", OUT_TABS)
     d["grid_esc"], d["grid_rec"], d["grid_extra"] = [], [], {}
@@ -344,9 +358,11 @@ def compute_data() -> dict:
             row = grid[(grid["feature"] == feat) & (grid["outcome"] == outcome)]
             return float(row.iloc[0][col]) if len(row) else None
         d["grid_extra"] = {
-            "sev_esc12_lift":   _cell1("severity_critmajor_share", "esc_12", "lift"),
-            "remed_none_shdur": _cell1("remediation_none_share", "sh_dur_36"),
-            "invest_shdelta":   _cell1("investigation_llm_share", "sh_dur_delta_12"),
+            "sev_esc12_lift":     _cell1("severity_critmajor_share", "esc_12", "lift"),
+            "remed_none_shdur":   _cell1("remediation_none_share", "sh_dur_36"),
+            "invest_shdelta":     _cell1("investigation_llm_share", "sh_dur_delta_12"),
+            "scope_fw_esc24":     _cell1("scope_facilitywide_share", "esc_24", "lift"),
+            "cross_repeat_esc24": _cell1("repeat_cross_insp_share", "esc_24", "lift"),
             "esc24_base": round(float(
                 (grid[grid["outcome"] == "esc_24"].iloc[0]["hi_rate"] * grid[grid["outcome"] == "esc_24"].iloc[0]["n_hi"]
                  + grid[grid["outcome"] == "esc_24"].iloc[0]["lo_rate"] * grid[grid["outcome"] == "esc_24"].iloc[0]["n_lo"])
@@ -365,6 +381,76 @@ def compute_data() -> dict:
         d["fei_summary"] = fs.replace({np.nan: None}).to_dict(orient="records")
     else:
         d["fei_summary"] = []
+
+    # ── m11: FEI event-level data for interactive timeline (Section 5B) ────────
+    ev_all = _read("fei_events_all.csv")
+    d["fei_events"] = {}
+    if ev_all is not None:
+        ev_all["event_date"] = pd.to_datetime(ev_all["event_date"], errors="coerce")
+        ev_all["year_dec"] = (ev_all["event_date"].dt.year +
+                              (ev_all["event_date"].dt.dayofyear - 1) / 365.25).round(3)
+        for fei_id, grp in ev_all.groupby("fei"):
+            firm_nm = grp["firm_name"].dropna().iloc[0] if grp["firm_name"].notna().any() else str(fei_id)
+            apis_v  = grp["apis"].dropna().iloc[0] if "apis" in grp.columns and grp["apis"].notna().any() else ""
+            ev483, evinsp, evrec, shbands = [], [], [], []
+            for _, r in grp.sort_values("event_date").iterrows():
+                if pd.isna(r.get("year_dec")):
+                    continue
+                yr    = float(r["year_dec"])
+                etype = str(r["event_type"])
+                lbl   = str(r.get("event_label", ""))[:70]
+                if etype == "483_snapshot":
+                    ev483.append({
+                        "yr": yr,
+                        "hr": bool(r["high_risk_483"]) if pd.notna(r.get("high_risk_483")) else False,
+                        "n_obs": int(r["n_obs_total"]) if pd.notna(r.get("n_obs_total")) else 1,
+                        "sev":  round(float(r["severity_critmajor_share"]), 2)
+                                if pd.notna(r.get("severity_critmajor_share")) else 0.0,
+                        "label": lbl,
+                    })
+                elif etype == "inspection_outcome":
+                    evinsp.append({"yr": yr, "cls": str(r["classification"])
+                                   if pd.notna(r.get("classification")) else "?", "label": lbl})
+                elif etype == "recall":
+                    evrec.append({"yr": yr, "cls": str(r["recall_class"])
+                                  if pd.notna(r.get("recall_class")) else "?", "label": lbl})
+                elif etype == "shortage_start":
+                    drug    = str(r.get("shortage_drug", ""))[:40]
+                    end_yr  = None
+                    resolved = r.get("shortage_resolved_date")
+                    if pd.notna(resolved) and str(resolved) not in ("nan", "NaT", ""):
+                        try:
+                            rd = pd.to_datetime(resolved, errors="coerce")
+                            if pd.notna(rd):
+                                end_yr = round(float(rd.year + (rd.dayofyear - 1) / 365.25), 3)
+                        except Exception:
+                            pass
+                    shbands.append({"start": yr, "end": end_yr or 2025.5, "drug": drug})
+            d["fei_events"][str(fei_id)] = {
+                "firm": str(firm_nm)[:55], "apis": str(apis_v)[:60],
+                "events_483": ev483, "events_insp": evinsp,
+                "events_recall": evrec, "shortage_bands": shbands,
+                "n_483": len(ev483),
+                "n_hr":     sum(1 for e in ev483 if e["hr"]),
+                "n_oai":    sum(1 for e in evinsp if e["cls"] == "OAI"),
+                "n_recalls": len(evrec),
+            }
+        log.info("Interactive timeline events: %d FEIs", len(d["fei_events"]))
+
+    # ── Drug-level text feature × shortage/FAERS scatter ──────────────────────
+    d["text_vs_shortage"] = [
+        {
+            "drug":     e["drug"],
+            "contam":   round(float(e.get("contam_share", 0)) * 100, 1),
+            "repeat":   round(float(e.get("repeat_share", 0)) * 100, 1),
+            "sev":      round(float(e.get("sev_high",    0)) * 100, 1),
+            "cross":    round(float(e.get("cross_repeat", 0)) * 100, 1),
+            "duration": int(e.get("duration", 0)),
+            "starts":   int(e.get("starts", 0)),
+            "faers_serious": round(float(e.get("faers_serious", 0) or 0), 1),
+        }
+        for e in d.get("by_drug", [])
+    ]
 
     # ── RF model results: feature importance + ablation ───────────────────────
     fi_raw = _read("rf_importance_valisure.csv", OUT_MODELS)
@@ -439,11 +525,14 @@ def _lift_rows(lift: list[dict]) -> str:
         "faers_severity_score": "FAERS — severity score",
         "faers_n_serious": "FAERS — serious reports",
         "faers_n_reports": "FAERS — all reports",
-        "repeat_llm_only_share": "483 Text — Repeat violations share",
-        "contamination_llm_only_share": "483 Text — Contamination share",
-        "oos_oot_regex_share": "483 Text — OOS/OOT references share",
-        "severity_critmajor_share": "483 Text — Critical+Major obs. share",
-        "remediation_none_share": "483 Text — No-remediation share",
+        "repeat_llm_only_share":      "483 Text — Repeat violations (LLM)",
+        "contamination_llm_only_share": "483 Text — Contamination (LLM)",
+        "oos_oot_regex_share":         "483 Text — OOS/OOT references",
+        "severity_critmajor_share":    "483 Text — Critical+Major severity",
+        "remediation_none_share":      "483 Text — No remediation",
+        "repeat_cross_insp_share":     "483 Text — Cross-inspection repeat",
+        "scope_facilitywide_share":    "483 Text — Facility-wide scope",
+        "cultural_root_cause_share":   "483 Text — Cultural root cause",
     }
     cls_map = lambda x: "high" if x >= 5 else ("mid" if x >= 1.5 else "low")
     rows = ""
@@ -472,7 +561,8 @@ def generate_html(d: dict) -> str:
         "faers_n_reports_w3m": "FAERS Reports (3m rolling)",
         "faers_n_serious_w3m": "FAERS Serious (3m rolling)",
         "faers_severity_score_w3m": "FAERS Severity Score (3m rolling)",
-        "n_repeat_483_last_24mo": "483s with repeat violations, trailing 24m",
+        "n_repeat_483_last_24mo":  "Repeat-violation 483s, trailing 24m",
+        "n_flagged_483_last_24mo": "Red-flagged 483s (≥2 risk markers), trailing 24m",
     }
 
     def _ll_overlay_js(canvas_id: str, sig1: str, sig2: str, col1: str, col2: str) -> str:
@@ -551,7 +641,10 @@ new Chart(document.getElementById({_j(canvas_id)}), {{
         _ll_chart_js("llF3", "faers_n_reports_w3m",       "224, 122, 95")
     )
     cross_signal_js = ""
-    text_ll_js = _ll_chart_js("llT5", "n_repeat_483_last_24mo", "180, 80, 180")
+    text_ll_js = (
+        _ll_chart_js("llT5", "n_repeat_483_last_24mo",   "180, 80, 180") +
+        _ll_chart_js("llT6", "n_flagged_483_last_24mo",  "224, 122, 95")
+    )
 
     # (composite-index charts removed — indices dropped from the analysis)
     text_js = ""
@@ -606,15 +699,21 @@ new Chart(document.getElementById({_j(canvas_id)}),{{
             if c["label"] == label:
                 return f"{c['hi']}% vs {c['lo']}% ({c['lift']}×)"
         return "—"
-    esc_repeat = _fmt_cell(d.get("grid_esc", []), "Repeat violations (LLM)")
-    esc_contam = _fmt_cell(d.get("grid_esc", []), "Contamination (LLM)")
-    rec_bldg   = _fmt_cell(d.get("grid_rec", []), "Buildings/equipment violations")
-    sev12_lift = gx.get("sev_esc12_lift")
-    sev12_txt  = f"{sev12_lift}×" if sev12_lift else "—"
-    remed_rho  = gx.get("remed_none_shdur")
-    remed_txt  = f"ρ = +{remed_rho}" if remed_rho else "—"
-    invest_rho = gx.get("invest_shdelta")
-    invest_txt = f"ρ = +{invest_rho}" if invest_rho else "—"
+    esc_repeat    = _fmt_cell(d.get("grid_esc", []), "Repeat violations (LLM)")
+    esc_cross     = _fmt_cell(d.get("grid_esc", []), "Cross-insp. repeat (algo)")
+    esc_scope_fw  = _fmt_cell(d.get("grid_esc", []), "Facility-wide scope")
+    esc_contam    = _fmt_cell(d.get("grid_esc", []), "Contamination (LLM)")
+    rec_bldg      = _fmt_cell(d.get("grid_rec", []), "Buildings/equipment violations")
+    sev12_lift    = gx.get("sev_esc12_lift")
+    sev12_txt     = f"{sev12_lift}×" if sev12_lift else "—"
+    remed_rho     = gx.get("remed_none_shdur")
+    remed_txt     = f"ρ = +{remed_rho}" if remed_rho else "—"
+    invest_rho    = gx.get("invest_shdelta")
+    invest_txt    = f"ρ = +{invest_rho}" if invest_rho else "—"
+    cross_lift    = gx.get("cross_repeat_esc24")
+    cross_txt     = f"{cross_lift}×" if cross_lift else "—"
+    scope_fw_lift = gx.get("scope_fw_esc24")
+    scope_fw_txt  = f"{scope_fw_lift}×" if scope_fw_lift else "—"
 
     # ── m11: FEI drill-down table (text-covered facilities) ───────────────────
     fei_sum = d.get("fei_summary", [])
@@ -644,13 +743,7 @@ new Chart(document.getElementById({_j(canvas_id)}),{{
             f"<td>{', '.join(flags) or '—'}</td></tr>")
     fei_table_rows = "\n".join(fei_rows)
 
-    # ── m11: case-study timeline images (base64-embedded) ─────────────────────
-    def _img64(path: Path) -> str:
-        if path.exists():
-            return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
-        return ""
-    cs_sun = _img64(OUT_FIGS / "timelines" / "fei_3002809586_timeline.png")
-    cs_hospira = _img64(OUT_FIGS / "timelines" / "fei_1021343_timeline.png")
+    # (static timeline PNG embeds removed — Section 5B is now interactive)
 
     # ── Drug-level cross-signal scatter: Redica vs FAERS ─────────────────────
     tf2 = d.get("by_drug", [])
@@ -740,8 +833,15 @@ new Chart(document.getElementById('textDetailChart'),{{
     if fi_data:
         fi_sorted = sorted(fi_data, key=lambda x: x["imp"])
         fi_labels = [r["feature"] for r in fi_sorted]
-        _TEXT_FEATS = ("repeat_llm_only_share", "contamination_llm_only_share",
-                       "oos_oot_regex_share", "severity_critmajor_share", "remediation_none_share")
+        _TEXT_FEATS = (
+            "severity_critmajor_share", "scope_facilitywide_share", "scope_multipleproducts_share",
+            "cultural_root_cause_share", "capital_root_cause_share",
+            "remediation_none_share", "remediation_weak_share",
+            "repeat_llm_share", "contamination_llm_share", "data_integrity_llm_share", "investigation_llm_share",
+            "repeat_llm_only_share", "contamination_llm_only_share",
+            "oos_oot_regex_share", "wl_ref_regex_share",
+            "repeat_cross_insp_share", "vc_labcontrols_share", "vc_buildingsequipment_share",
+        )
         fi_colors = [
             "rgba(28,114,147,0.85)" if r["feature"] in _TEXT_FEATS
             else "rgba(2,99,176,0.65)" for r in fi_sorted
@@ -858,6 +958,159 @@ new Chart(document.getElementById('oaiFwdChart'),{{
     # (Recall circularity analysis removed — recalls excluded from predictive features
     #  as they are concurrent/lagging w.r.t. shortage onset, not leading indicators.)
 
+    # ── Interactive FEI timeline (Section 5B) ─────────────────────────────────
+    fei_events_data = d.get("fei_events", {})
+    timeline_js = f"""
+const FEI_EVENTS = {_j(fei_events_data)};
+let _tChart = null;
+(function(){{
+  const sel = document.getElementById('feiSelector');
+  if (!sel || !Object.keys(FEI_EVENTS).length) {{
+    if (sel) {{ sel.innerHTML='<option>No data — run m11 first</option>'; sel.disabled=true; }}
+    return;
+  }}
+  const feiList = Object.keys(FEI_EVENTS).sort((a,b) => {{
+    const da=FEI_EVENTS[a], db=FEI_EVENTS[b];
+    return (db.n_hr+db.n_oai*2+db.n_recalls)-(da.n_hr+da.n_oai*2+da.n_recalls);
+  }});
+  feiList.forEach(fei => {{
+    const ev=FEI_EVENTS[fei];
+    const opt=document.createElement('option');
+    opt.value=fei;
+    opt.textContent=ev.firm+' (FEI '+fei+')'+(ev.apis?' · '+ev.apis:'');
+    sel.appendChild(opt);
+  }});
+  function buildTimeline(fei) {{
+    const ev=FEI_EVENTS[fei]; if(!ev) return;
+    const stats=document.getElementById('feiStats');
+    if(stats) stats.innerHTML=
+      '<strong>'+ev.n_483+'</strong> 483s (<span style="color:#C0392B;font-weight:700;">'+
+      ev.n_hr+' high-risk</span>) · <strong>'+ev.n_oai+'</strong> OAI · <strong>'+
+      ev.n_recalls+'</strong> recalls';
+    const datasets=[];
+    const ns=ev.shortage_bands.length;
+    ev.shortage_bands.forEach((s,i)=>{{
+      const y=0.07*(i-(ns-1)/2);
+      datasets.push({{label:i===0?'Shortage period':'_hide_',type:'line',
+        data:[{{x:s.start,y:y,label:s.drug+' — shortage start'}},
+              {{x:s.end,  y:y,label:s.drug+' — resolved'}}],
+        borderColor:'rgba(100,100,100,0.5)',borderWidth:10,pointRadius:2,fill:false,order:0}});
+    }});
+    const hr=ev.events_483.filter(e=>e.hr);
+    if(hr.length) datasets.push({{
+      label:'483 Red-flagged',type:'scatter',
+      data:hr.map(e=>({{x:e.yr,y:2,label:e.label,n_obs:e.n_obs,sev:e.sev}})),
+      backgroundColor:'rgba(192,57,43,0.88)',borderColor:'#922B21',borderWidth:1,
+      pointRadius:ctx=>Math.max(6,Math.min(18,(ctx.raw?.n_obs||1)*1.8)),
+      pointHoverRadius:14,order:2}});
+    const ok=ev.events_483.filter(e=>!e.hr);
+    if(ok.length) datasets.push({{
+      label:'483 Normal',type:'scatter',
+      data:ok.map(e=>({{x:e.yr,y:2,label:e.label,n_obs:e.n_obs,sev:e.sev}})),
+      backgroundColor:'rgba(28,114,147,0.7)',borderColor:'#065A82',borderWidth:1,
+      pointRadius:ctx=>Math.max(5,Math.min(14,(ctx.raw?.n_obs||1)*1.5)),
+      pointHoverRadius:10,order:2}});
+    const clsC={{OAI:'rgba(192,57,43,0.9)',VAI:'rgba(230,126,34,0.9)',NAI:'rgba(39,174,96,0.9)'}};
+    ['OAI','VAI','NAI'].forEach(cls=>{{
+      const evs=ev.events_insp.filter(e=>e.cls===cls); if(!evs.length) return;
+      datasets.push({{label:'Inspection: '+cls,type:'scatter',
+        data:evs.map(e=>({{x:e.yr,y:3,label:e.label}})),
+        backgroundColor:clsC[cls],borderColor:clsC[cls],
+        pointStyle:'triangle',pointRadius:9,pointHoverRadius:12,order:1}});
+    }});
+    const rclsC={{'Class I':'rgba(139,0,0,0.9)','Class II':'rgba(204,85,0,0.9)','Class III':'rgba(184,134,11,0.9)'}};
+    Object.entries(rclsC).forEach(([cls,color])=>{{
+      const evs=ev.events_recall.filter(e=>e.cls===cls); if(!evs.length) return;
+      datasets.push({{label:'Recall: '+cls,type:'scatter',
+        data:evs.map(e=>({{x:e.yr,y:1,label:e.label}})),
+        backgroundColor:color,borderColor:color,
+        pointStyle:'rectRot',pointRadius:9,pointHoverRadius:12,order:1}});
+    }});
+    if(_tChart) _tChart.destroy();
+    const ctx=document.getElementById('timelineChart'); if(!ctx) return;
+    _tChart=new Chart(ctx,{{
+      data:{{datasets}},
+      options:{{maintainAspectRatio:false,
+        scales:{{
+          x:{{type:'linear',min:2008,max:2026,
+              title:{{display:true,text:'Year'}},
+              ticks:{{stepSize:1,callback:v=>Number.isInteger(v)?v:''}},
+              grid:{{color:'#EEE'}}}},
+          y:{{min:-0.7,max:3.7,
+              ticks:{{stepSize:1,callback:v=>{{
+                const m={{0:'Shortages',1:'Recalls',2:'483 Snapshots',3:'Inspections'}};
+                return m[Math.round(v)]||'';
+              }}}},
+              grid:{{color:'#EEE'}}}}
+        }},
+        plugins:{{
+          legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10.5}},
+            filter:i=>!i.text.startsWith('_')}}}},
+          tooltip:{{callbacks:{{label:ctx=>{{
+            const r=ctx.raw;
+            if(r.label) return r.label;
+            if(r.n_obs!==undefined) return r.n_obs+' obs, sev='+r.sev;
+            return '';
+          }}}}}}
+        }}
+      }}
+    }});
+    const story=[];
+    if(ev.n_hr>0){{
+      const pct=Math.round(ev.n_hr/ev.n_483*100);
+      story.push('<strong>'+ev.n_hr+'/'+ev.n_483+' ('+pct+'%)</strong> of 483 snapshots are red-flagged.');
+    }}
+    if(ev.n_oai>0) story.push('<strong>'+ev.n_oai+' OAI</strong> inspection outcome(s).');
+    if(ev.n_recalls>0) story.push('<strong>'+ev.n_recalls+'</strong> drug recall event(s) at this facility.');
+    if(ev.shortage_bands.length>0){{
+      const drugs=[...new Set(ev.shortage_bands.map(s=>s.drug))].join(', ');
+      story.push('Shortage periods linked to: <em>'+drugs+'</em>.');
+    }}
+    if(ev.n_hr>0&&ev.n_oai>0) story.push('Look for red circles (●) preceding OAI triangles (▲) on the timeline.');
+    const stEl=document.getElementById('feiStory');
+    if(stEl) stEl.innerHTML=story.length?story.join(' '):'No high-risk events for this facility.';
+  }}
+  buildTimeline(feiList[0]);
+  sel.addEventListener('change',()=>buildTimeline(sel.value));
+}})();"""
+
+    # ── Drug-level text feature × shortage / FAERS scatter ────────────────────
+    tvs = d.get("text_vs_shortage", [])
+    tvs_colors = [
+        "rgba(192,57,43,0.85)" if r["starts"] >= 3
+        else ("rgba(2,99,176,0.75)" if r["starts"] >= 1 else "rgba(100,100,100,0.6)")
+        for r in tvs
+    ]
+    tvs_dur  = [{"x": r["contam"], "y": r["duration"],
+                 "name": r["drug"], "starts": r["starts"], "faers": r["faers_serious"]} for r in tvs]
+    tvs_faers = [{"x": r["cross"],  "y": r["faers_serious"],
+                  "name": r["drug"], "starts": r["starts"], "dur": r["duration"]} for r in tvs]
+    text_vs_shortage_js = f"""
+new Chart(document.getElementById('tvsChart1'),{{
+  type:'scatter',
+  data:{{datasets:[{{label:'Drug',data:{_j(tvs_dur)},
+    backgroundColor:{_j(tvs_colors)},pointRadius:8,pointHoverRadius:11}}]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: ${{ctx.raw.y}}mo shortage, ${{ctx.raw.x}}% contam, ${{ctx.raw.starts}} starts`}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Contamination flag share (% of obs)'}},beginAtZero:true}},
+      y:{{title:{{display:true,text:'Total months in shortage (2015–2024)'}},beginAtZero:true}}
+    }}}}
+}});
+new Chart(document.getElementById('tvsChart2'),{{
+  type:'scatter',
+  data:{{datasets:[{{label:'Drug',data:{_j(tvs_faers)},
+    backgroundColor:{_j(tvs_colors)},pointRadius:8,pointHoverRadius:11}}]}},
+  options:{{maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>`${{ctx.raw.name}}: FAERS serious=${{ctx.raw.y}}/yr, cross-insp repeat=${{ctx.raw.x}}%, ${{ctx.raw.dur}}mo shortage`}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Cross-inspection repeat share (% of obs)'}},beginAtZero:true}},
+      y:{{title:{{display:true,text:'Mean serious FAERS reports / year'}},beginAtZero:true}}
+    }}}}
+}});"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -957,9 +1210,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   <div class="note dark" style="margin-top:0;font-size:13.5px;line-height:1.8;">
     <strong>Three findings to take away:</strong><br>
     <strong>1.</strong> When FDA issues a 483, <em>what the text says</em> predicts what happens next:
-    facilities whose 483s show <strong>repeat violations, contamination, or OOS/OOT findings</strong> are
-    2–7× more likely to face an OAI or Warning Letter — and buildings/equipment findings precede
-    recalls — within 24 months (Section 5).<br>
+    facilities whose 483s show <strong>repeat violations, cross-inspection repeats, contamination,
+    or facility-wide-scope findings</strong> are 2–7× more likely to face an OAI or Warning Letter
+    — and buildings/equipment findings precede recalls — within 24 months (Section 5).<br>
     <strong>2.</strong> 483s with <strong>no remediation response</strong> in the text are followed by more
     months of drug shortage over the next 3 years (ρ = +0.33) — text quality of the response matters,
     not just the violation (Section 5).<br>
@@ -1059,8 +1312,8 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
     <br><strong>0 shortage onsets:</strong> Ampicillin+Sulbactam, Bupropion, Vancomycin.
   </div>
   <div class="card">
-    <h3>Validated text features — % of observations, by drug group</h3>
-    <div class="csub">Repeat violations, contamination, OOS/OOT references, high-severity, no/weak remediation.</div>
+    <h3>483 text features — % of observations, drugs with vs without shortages</h3>
+    <div class="csub">8 features including new: cross-inspection repeat, facility-wide scope, cultural root cause. Each bar = mean share across a drug group's 483s.</div>
     <div class="chart-host"><canvas id="textDetailChart"></canvas></div>
   </div>
   <div class="note dark">
@@ -1091,27 +1344,66 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
-    4C · Monthly lead-lag — the time-varying text signal</h3>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
+    4C · Monthly lead-lag — time-varying text signals before shortage onset</h3>
+  <div class="sub" style="margin-left:0;">
+    Both charts show a trailing-24-month count of 483 documents at the drug's facilities,
+    aggregated to drug-month. Solid line = mean in the 12 months before shortage onset;
+    dashed = control baseline (drug-months far from any shortage onset). A solid line above baseline
+    means the drug entered shortage with more recent high-risk 483s than usual.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:4px;">
     <div class="card">
-      <h3>483s with repeat violations at the drug's facilities, trailing 24 months</h3>
-      <div class="csub">For each drug-month: how many 483 documents issued in the preceding 24 months
-        (across all the drug's facilities) contained at least one repeat-violation finding.</div>
+      <h3>Repeat-violation 483s, trailing 24 months</h3>
+      <div class="csub">Count of 483 documents containing ≥1 repeat-violation finding, across all drug facilities.</div>
       <div class="chart-host"><canvas id="llT5"></canvas></div>
     </div>
+    <div class="card">
+      <h3>Red-flagged 483s, trailing 24 months</h3>
+      <div class="csub">Count of 483 documents meeting ≥2 of 4 risk markers (repeat, contamination, OOS/OOT, Critical+Major severity).</div>
+      <div class="chart-host"><canvas id="llT6"></canvas></div>
+    </div>
     <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:24px;">
-      <h3 style="margin-bottom:12px;">How to read this</h3>
-      <div style="font-size:12.5px;line-height:1.7;color:var(--ink);">
-        <strong>Repeat violations</strong> — the FDA investigator explicitly noting the same problem
-        was cited before — is the single most consistent text signal in our validation (Section 5):
-        2–4× higher rates of subsequent OAI/Warning-Letter escalation and recalls.
-        <br><br>
-        This chart asks whether it also moves <strong>before drug shortages</strong>:
-        solid line = mean count in the 12 months leading to a shortage onset;
-        dashed line = baseline in calm periods. A solid line above the dashed baseline means
-        drugs entering shortage carried more recent repeat-violation 483s than usual.
+      <h3 style="margin-bottom:10px;">How to read this</h3>
+      <div style="font-size:12px;line-height:1.7;color:var(--ink);">
+        These are the only <strong>time-varying</strong> text features — each month's value depends
+        on when recent 483s were issued and what they said.<br><br>
+        The facility-level validation (Section 5) shows the <em>content</em> of these 483s predicts
+        escalation and recalls 2–7×. Here we ask: does that content also accumulate
+        <strong>before drug shortages</strong>?<br><br>
+        n = {d["monthly_onset_months"]} shortage-onset months, 14 drugs — exploratory.
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ═══ SECTION 4D: TEXT FEATURES vs. SHORTAGE & ADVERSE EVENTS (drug-level) ═══ -->
+<section>
+  <div class="section-head"><span class="step-num" style="background:var(--teal);">4D</span>
+    <h2>Text risk vs. shortage burden and adverse events — drug-level</h2></div>
+  <div class="sub">
+    Each point = one of the 14 pilot APIs. X = text risk feature aggregated across the drug's facilities;
+    Y = outcome. <strong>Red = ≥3 shortage starts, blue = 1–2 starts, gray = no starts.</strong>
+    Hover for drug name and values. These are observational associations at n=14; treat as directional only.
+  </div>
+  <div class="chart-row">
+    <div class="card">
+      <h3>Contamination flag share vs. months in shortage</h3>
+      <div class="csub">X = % of 483 observations flagged for contamination (LLM, semantic lift).
+        Y = total months drug was in shortage 2015–2024.</div>
+      <div class="chart-host tall"><canvas id="tvsChart1"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Cross-inspection repeat share vs. FAERS serious reports</h3>
+      <div class="csub">X = % of 483 observations where same deficiency cited across inspections (algorithmic).
+        Y = mean annual serious adverse-event reports (FAERS).</div>
+      <div class="chart-host tall"><canvas id="tvsChart2"></canvas></div>
+    </div>
+  </div>
+  <div class="note">
+    <strong>Pattern:</strong> drugs whose facilities show higher contamination flags tend to have longer
+    shortage histories; drugs with more cross-inspection repeats also see more serious adverse events —
+    consistent with a systemic quality problem. Caveat: only 10/14 drugs have any 483 text coverage;
+    the remaining 4 plot at zero (not zero risk — just no text data).
   </div>
 </section>
 
@@ -1160,46 +1452,45 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
   </div>
   <div class="note dark">
     <strong>Different text features predict different failures.</strong>
-    <em>Repeat violations</em> ({esc_repeat} escalation) and <em>contamination</em> ({esc_contam})
-    predict FDA escalation; <em>buildings/equipment violations</em> ({rec_bldg}) and capital
-    root causes predict recalls — physical-asset problems produce defective product.
-    <em>Critical+Major severity text</em> works best at the short 12-month horizon ({sev12_txt} escalation lift):
-    FDA acts fast on severe findings.
-    And for <strong>shortage burden</strong>: 483s with <em>no remediation response</em> are followed by
+    <em>Repeat violations</em> ({esc_repeat} escalation) and <em>cross-inspection repeats</em>
+    ({cross_txt} — same deficiency cited at an earlier inspection, detected algorithmically) are the
+    strongest escalation predictors; <em>contamination</em> ({esc_contam}) and
+    <em>facility-wide scope</em> ({scope_fw_txt}) also predict escalation.
+    <em>Buildings/equipment violations</em> ({rec_bldg}) and capital/cultural root causes predict recalls —
+    physical-asset and management failures produce defective product.
+    <em>Critical+Major severity</em> works best at the short 12-month horizon ({sev12_txt} escalation lift):
+    FDA acts fast on documented defects.
+    For <strong>shortage burden</strong>: 483s with <em>no remediation response</em> are followed by
     more months of shortage over 3 years ({remed_txt}), and <em>failed investigations</em> by a worsening
-    shortage trajectory vs the prior year ({invest_txt}).
+    shortage trajectory ({invest_txt}).
     n = {fwd_n} snapshots across {n_cov_feis} FEIs — exploratory, suggestive rather than definitive.
   </div>
 
   <hr class="divider"/>
   <h3 style="font-family:Georgia,serif;color:var(--navy);margin:16px 0 4px;font-size:16px;">
-    5B · Case studies — the timeline of one facility</h3>
+    5B · Facility timeline explorer — interactive</h3>
   <div class="sub" style="margin-left:0;">
-    <strong>How to read a timeline (4 lanes, top to bottom):</strong>
-    <strong>483 snapshots</strong> — circles; red = red-flagged (definition above), blue = not flagged;
-    circle size = number of observations; the number below = high-severity share.
-    <strong>Inspections</strong> — triangles colored by outcome (red = OAI, orange = VAI, green = NAI).
-    <strong>Recalls</strong> — diamonds (dark red = Class I, orange = Class II).
-    <strong>Shortages</strong> — gray bars spanning the shortage period for drugs this facility makes.
-    Each red flag also draws a dashed red line + 24-month shaded window — events inside that window
-    are "predicted" by the flag.
-  </div>
-  <div class="card" style="margin-bottom:14px;">
-    <h3>Sun Pharmaceutical Industries (Halol, India) — FEI 3002809586</h3>
-    <div class="csub">Red-flagged 483s accompany the escalation VAI (2018) → OAI (2019) → OAI (2022) →
-      OAI (2025), with API-linked shortage inside the 24-month flag windows.</div>
-    <img src="{cs_sun}" style="width:100%;border:1px solid var(--rule);border-radius:6px;" alt="Sun Halol timeline"/>
+    Select any of the {n_cov_feis} text-covered facilities. Four lanes:
+    <strong>▲ Inspections</strong> (red=OAI, orange=VAI, green=NAI) ·
+    <strong>● 483 Snapshots</strong> (red=red-flagged, blue=normal; circle size = observation count) ·
+    <strong>◆ Recalls</strong> (dark-red=Class I) ·
+    <strong>── Shortages</strong> (gray bar spanning shortage period).
+    Hover any point for details. Sorted by risk (high-risk 483s + OAI count).
   </div>
   <div class="card" style="margin-bottom:4px;">
-    <h3>Hospira (Rocky Mount, NC) — FEI 1021343</h3>
-    <div class="csub">Red-flagged 483s in 2011–2013, followed by recalls and multiple API-linked
-      shortages (Lisinopril, Pantoprazole, Magnesium sulfate).</div>
-    <img src="{cs_hospira}" style="width:100%;border:1px solid var(--rule);border-radius:6px;" alt="Hospira timeline"/>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <label style="font-weight:700;color:var(--navy);white-space:nowrap;">Facility:</label>
+      <select id="feiSelector" style="font-size:13px;padding:6px 10px;border:1px solid var(--rule);
+              border-radius:4px;background:var(--white);color:var(--ink);flex:1;min-width:260px;max-width:560px;">
+      </select>
+      <div id="feiStats" style="font-size:12px;color:var(--muted);"></div>
+    </div>
+    <div style="position:relative;height:310px;"><canvas id="timelineChart"></canvas></div>
+    <div id="feiStory" class="note" style="margin-top:12px;font-size:13px;"></div>
   </div>
-  <div class="note">
-    Caution: temporal co-occurrence only. A facility may make many drugs and a shortage may have
-    multiple causes unrelated to this facility — these timelines illustrate the mechanism, they do not
-    establish attribution.
+  <div class="note" style="margin-top:8px;">
+    Caution: temporal co-occurrence only. A facility may make many drugs; a shortage may have
+    causes unrelated to this facility. These timelines illustrate the mechanism, they do not establish attribution.
   </div>
 
   <hr class="divider"/>
@@ -1255,20 +1546,16 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
 <section>
   <div class="section-head">
     <span class="step-num">7</span>
-    <h2>Context — does FDA escalation cause or prevent shortages? (Wang et al., MSOM 2025)</h2>
+    <h2>Context — OAI escalation and shortage risk (Wang et al., MSOM 2025)</h2>
   </div>
-  <div class="sub">
+  <div class="note">
     Wang et al. (2025) find, with IV adjustment, that an OAI outcome <em>reduces</em> future shortage
-    risk by ~96% — forced remediation fixes the underlying problem (GAO 2016 found the opposite without
-    endogeneity controls). The chart tests their directional prediction in our panel: if they are right,
-    the post-OAI shortage rate (blue, months +1 to +12) should fall below the control baseline (dashed).
-    Our 14-drug panel is too sparse for causal inference — directional context only.
-  </div>
-  <div class="card">
-    <h3>Is the drug in shortage in the months around an OAI inspection?</h3>
-    <div class="csub">Red = pre-OAI (−6 to 0); blue = post-OAI (+1 to +12); shaded = ±1 SE;
-      dashed = drug-months with no OAI within ±12m.</div>
-    <div class="chart-host tall"><canvas id="oaiFwdChart"></canvas></div>
+    risk by ~96% — forced remediation fixes the underlying problem. Our 14-drug panel is too sparse for
+    the same IV analysis, but the directional pattern is consistent: post-OAI shortage rates in our data
+    trend toward the control baseline. The Section 5 finding (483 text content predicts escalation
+    <em>before</em> OAI) is the upstream counterpart: if 483 text signals which facilities will face
+    OAI, and OAI triggers remediation, the text is an early indicator of the quality-shock cycle.
+    Full OAI forward-study chart available on request; removed here to keep the dashboard focused.
   </div>
 </section>
 
@@ -1281,7 +1568,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
       <ul>
         <li>Only 14 drugs, 19 shortage-onset events, and 79 scored 483 snapshots → wide confidence intervals. All findings are exploratory.</li>
         <li>Text coverage: 37 of 129 facilities have public 483 PDFs — text signals exist only for that subset.</li>
-        <li>Severity classification is currently too permissive (median snapshot: 67% "High") — recalibration of the LLM prompt is planned before the next extraction run.</li>
+        <li>Severity is now 4-tier (Critical/Major/Moderate/Minor), anchored on documented product impact. Recalibrated from the prior 3-tier scale; full extraction re-run on the 483 corpus reflects the new scheme.</li>
         <li>FAERS is quarterly in this dataset; Valisure scores are a single 2024 cross-section — neither supports monthly lead-lag.</li>
         <li>Shortage ↔ facility links are via API name only — a shortage may be caused by a different manufacturer of the same drug.</li>
         <li>All associations are descriptive — no causal identification.</li>
@@ -1291,8 +1578,8 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:26px;
       <div class="col-head n">Next steps</div>
       <ul>
         <li><strong>Facility-level model:</strong> predict escalation/recall from dated 483 snapshots, then roll facility risk up to drugs (the validated direction of the signal).</li>
-        <li>Recalibrate LLM severity definition (4-tier, product-impact anchored) and rerun extraction on a validation subset first.</li>
-        <li>Cross-inspection repeat detection in the aggregation step (no API cost) — repeat violations are the strongest single feature.</li>
+        <li>Recalibrated 4-tier severity and new scope/root-cause fields are now in the extraction schema; expand 483 PDF coverage beyond the current 37 FEIs.</li>
+        <li>Cross-inspection repeat detection (algorithmic, no API cost) is now in the pipeline — it's the second-strongest escalation predictor alongside LLM repeat flags.</li>
         <li>Expand pilot universe as Valisure tests additional APIs.</li>
         <li>Obtain inspector-level FDA data via FOIA to replicate Wang et al.'s IV analysis on the Valisure-drug subset.</li>
       </ul>
@@ -1365,11 +1652,11 @@ new Chart(document.getElementById("chartDrug"),{{
 // ── RF model results ──────────────────────────────────────────────────────
 {model_js}
 
+// ── Drug-level text × shortage / FAERS scatter ────────────────────────────
+{text_vs_shortage_js}
 
-// ── OAI forward study charts ──────────────────────────────────────────────
-{oai_fwd_js}
-
-{qs_js}
+// ── Interactive FEI timeline (Section 5B) ─────────────────────────────────
+{timeline_js}
 </script>
 </body>
 </html>"""

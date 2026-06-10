@@ -44,8 +44,9 @@ OUT_DIR = OUT_FIGS / "timelines"
 OUT_DIR.mkdir(exist_ok=True)
 
 RISK_COLS = [
-    "severity_critmajor_share", "patient_risk_llm_only_share", "scope_facilitywide_share",
-    "contamination_llm_only_share", "data_integrity_llm_only_share", "repeat_llm_share",
+    "severity_critmajor_share", "scope_facilitywide_share",
+    "contamination_llm_only_share", "repeat_llm_share", "repeat_cross_insp_share",
+    "cultural_root_cause_share", "vc_buildingsequipment_share",
     "remediation_none_share", "wl_ref_regex_share", "oos_oot_regex_share",
 ]
 
@@ -482,8 +483,9 @@ def narrative(fei: int, apis: list[str], tl: pd.DataFrame) -> str:
     for _, r in snaps.iterrows():
         tag = "[HIGH RISK]" if r["high_risk_483"] else "[normal]"
         L.append(f"  - {r['event_date'].date()}: {int(r['n_obs_total'])} observations, "
-                 f"severity_critmajor={r['severity_critmajor_share']:.2f}, "
-                 f"patient_risk={r['patient_risk_llm_only_share']:.2f} {tag}")
+                 f"sev_critmajor={r['severity_critmajor_share']:.2f}, "
+                 f"scope_fw={r.get('scope_facilitywide_share', float('nan')):.2f}, "
+                 f"cross_repeat={r.get('repeat_cross_insp_share', float('nan')):.2f} {tag}")
 
     insp = tl[tl["event_type"].isin(["inspection_outcome", "483_issued"])]
     L.append(f"\nInspection outcomes (Redica): {len(insp)}")
@@ -617,12 +619,16 @@ def export_cooccurrence_stats(timelines: dict[int, pd.DataFrame], ts: pd.DataFra
 # Outcome: severe regulatory action (OAI classification or Warning Letter)
 # at the same FEI within 24 months of the snapshot.
 FORWARD_FEATURES = {
-    "contamination_llm_only_share": "Contamination (LLM)",
-    "repeat_llm_share": "Repeat violations (LLM)",
-    "oos_oot_regex_share": "OOS/OOT references (regex)",
-    "severity_critmajor_share": "Critical+Major obs. (LLM)",
-    "scope_facilitywide_share": "Facility-wide scope (LLM)",
-    "n_obs_total": "Number of observations",
+    "contamination_llm_only_share":  "Contamination (LLM)",
+    "repeat_llm_share":              "Repeat violations (LLM)",
+    "repeat_cross_insp_share":       "Cross-inspection repeat (algo)",
+    "oos_oot_regex_share":           "OOS/OOT references (regex)",
+    "severity_critmajor_share":      "Critical+Major obs. (LLM)",
+    "scope_facilitywide_share":      "Facility-wide scope (LLM)",
+    "cultural_root_cause_share":     "Cultural root cause (LLM)",
+    "vc_buildingsequipment_share":   "Buildings/equipment violations",
+    "remediation_none_share":        "No remediation (LLM)",
+    "n_obs_total":                   "Number of observations",
 }
 
 
@@ -672,6 +678,44 @@ def export_snapshot_forward_stats(ts: pd.DataFrame) -> Path:
     print(f"[step6] snapshot forward-validation stats saved: {path}")
     print(stats[["label", "n_hi", "n_lo", "hi_rate", "lo_rate", "lift"]].to_string(index=False))
     return path
+
+
+# ---------------------------------------------------------------- Step 7 (export)
+def _export_fei_events(timelines: dict[int, pd.DataFrame],
+                       valisure_feis: dict[int, list[str]]) -> None:
+    """Export compact event-level data for the dashboard interactive timeline viewer.
+    Only FEIs with ≥1 483 snapshot are exported (text-covered subset)."""
+    ETYPES = {"483_snapshot", "inspection_outcome", "recall", "shortage_start"}
+    KEEP = [
+        "fei", "firm_name", "event_date", "event_type", "event_label",
+        "classification", "high_risk_483", "n_obs_total",
+        "severity_critmajor_share", "recall_class", "shortage_drug",
+        "shortage_resolved_date",
+    ]
+    chunks = []
+    for fei_id, tl in timelines.items():
+        if tl.empty:
+            continue
+        if not (tl["event_type"] == "483_snapshot").any():
+            continue
+        sub = tl[tl["event_type"].isin(ETYPES)].copy()
+        for c in KEEP:
+            if c not in sub.columns:
+                sub[c] = np.nan
+        sub = sub[KEEP].copy()
+        sub["apis"] = ", ".join(valisure_feis.get(fei_id, []))
+        chunks.append(sub)
+    if not chunks:
+        print("[step7] No FEI events to export")
+        return
+    df = pd.concat(chunks, ignore_index=True)
+    df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    df["shortage_resolved_date"] = pd.to_datetime(
+        df["shortage_resolved_date"], errors="coerce"
+    ).dt.strftime("%Y-%m-%d")
+    path = OUT_DATA / "fei_events_all.csv"
+    df.to_csv(path, index=False)
+    print(f"[step7] FEI event timeline data: {path} ({len(df)} rows, {df['fei'].nunique()} FEIs)")
 
 
 # ---------------------------------------------------------------- main
@@ -727,6 +771,8 @@ def main():
     (OUT_DIR / "fei_timeline_narratives.txt").write_text("\n\n" + ("\n\n" + "=" * 70 + "\n\n").join(narratives))
     print(f"\n[step5] summary saved: {OUT_DIR / 'fei_timeline_summary.csv'} ({len(summary)} FEIs)")
     print(summary.head(15).to_string(index=False))
+
+    _export_fei_events(timelines, valisure_feis)
 
     if not args.fei:
         export_drug_month_feature(ts, valisure_feis)
