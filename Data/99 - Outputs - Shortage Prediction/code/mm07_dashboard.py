@@ -215,8 +215,19 @@ def compute_data() -> dict:
         ("cultural_root_cause_share",    "Cultural root cause"),
         ("contamination_llm_share",      "Contamination (LLM)"),
     ]
+    _SH_DUR_FEATS = [
+        ("remediation_none_share",       "No remediation response"),
+        ("remediation_weak_share",       "Weak remediation response"),
+        ("vc_productioncontrols_share",  "Production controls violations"),
+        ("scope_singlebatch_share",      "Single-batch scope"),
+        ("scope_facilitywide_share",     "Facility-wide scope"),
+        ("repeat_llm_share",             "Repeat violations"),
+        ("investigation_llm_only_share", "Failed investigation (LLM)"),
+        ("repeat_llm_only_share",        "Repeat violations (LLM-only)"),
+    ]
+
     grid = _read("text_signal_grid.csv", OUT_TABS)
-    d["grid_esc"] = d["grid_rec"] = []
+    d["grid_esc"] = d["grid_rec"] = d["grid_shdur"] = []
     d["esc_base"] = d["rec_base"] = 0.0
     d["fwd_n"] = d["n_feis_text"]
     if grid is not None:
@@ -240,6 +251,13 @@ def compute_data() -> dict:
         d["rec_base"] = round(float(
             (g1["hi_rate"]*g1["n_hi"] + g1["lo_rate"]*g1["n_lo"]) / (g1["n_hi"]+g1["n_lo"]))*100, 1)
         d["fwd_n"] = int(g0["n_hi"] + g0["n_lo"])
+        # Spearman rho for shortage duration (36m horizon)
+        sh_rows = []
+        for feat, label in _SH_DUR_FEATS:
+            r = grid[(grid["feature"] == feat) & (grid["outcome"] == "sh_dur_36")]
+            if len(r) and pd.notna(r.iloc[0]["effect"]):
+                sh_rows.append({"label": label, "rho": round(float(r.iloc[0]["effect"]), 3)})
+        d["grid_shdur"] = sorted(sh_rows, key=lambda x: x["rho"])
 
     return d
 
@@ -400,9 +418,41 @@ new Chart(document.getElementById({_j(cid)}),{{
 }});
 }})();"""
 
+    # Shortage duration ρ chart
+    shdur = d.get("grid_shdur", [])
+    if shdur:
+        sh_labels = [r["label"] for r in shdur]
+        sh_rhos   = [r["rho"]   for r in shdur]
+        sh_colors = [
+            "rgba(224,122,95,0.80)" if v > 0 else "rgba(28,114,147,0.75)"
+            for v in sh_rhos
+        ]
+        shdur_js = f"""
+new Chart(document.getElementById('shDurChart'),{{
+  type:'bar',
+  data:{{labels:{_j(sh_labels)},datasets:[{{
+    label:'Spearman ρ',data:{_j(sh_rhos)},
+    backgroundColor:{_j(sh_colors)},borderRadius:3
+  }}]}},
+  options:{{maintainAspectRatio:false,indexAxis:'y',
+    plugins:{{legend:{{display:false}},
+      tooltip:{{callbacks:{{label:ctx=>'ρ = '+ctx.raw}}}}}},
+    scales:{{
+      x:{{title:{{display:true,text:'Spearman ρ with shortage months (next 36m)'}},
+          min:-0.5,max:0.5,
+          ticks:{{callback:v=>v.toFixed(1)}},
+          grid:{{color:'#EEE'}}}},
+      y:{{grid:{{display:false}},ticks:{{font:{{size:10.5}}}}}}
+    }}
+  }}
+}});"""
+    else:
+        shdur_js = "/* sh_dur data not available */"
+
     fwd_js = (
         _split_chart("escChart", d["grid_esc"], "% → OAI or Warning Letter within 24 months") +
-        _split_chart("recChart", d["grid_rec"], "% → drug recall within 24 months")
+        _split_chart("recChart", d["grid_rec"], "% → drug recall within 24 months") +
+        shdur_js
     )
 
     timeline_js = ""  # removed — not informative enough
@@ -538,10 +588,25 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     </div>
   </div>
   <div class="note dk">
-    <strong>Key:</strong> repeat violations (2.8×), OOS/OOT references (2.7×), and contamination flags (2.4×)
-    predict regulatory escalation; quality system violations (7.2×) and OOS/OOT references (4.0×)
-    predict recalls; facilities with no remediation response in the text show longer shortage duration
-    (ρ = +0.28, 36m horizon). n = {fn} documents, {n} FEIs — exploratory.
+    <strong>Escalation &amp; recall:</strong> repeat violations (2.8×), OOS/OOT (2.7×), contamination (2.4×)
+    predict OAI/Warning Letter; quality system violations (7.2×) and OOS/OOT (4.0×) predict recalls.
+    n = {fn} documents, {n} FEIs — exploratory.
+  </div>
+
+  <div style="margin-top:18px;">
+    <h3 style="font-family:Georgia,serif;font-size:16px;color:var(--navy);margin:0 0 4px;">
+      Preliminary: 483 text features vs shortage duration (Spearman ρ, 36-month horizon)</h3>
+    <p class="sub" style="margin-left:0;">
+      Orange = positive association (more of this feature → longer shortage months);
+      teal = negative. Drug-level outcome — shortage months for the drugs made by each FEI's facility.
+      <strong>Preliminary:</strong> text covers only 37/129 FEIs; the shortage signal reflects
+      partial regulatory history of facilities making those drugs. Full picture requires
+      complete 483 coverage across all manufacturers of each drug.
+    </p>
+    <div class="card">
+      <div class="csub">n ≈ 60 FEI-snapshots with sufficient monthly panel coverage · Spearman ρ</div>
+      <div class="ch" style="height:260px;"><canvas id="shDurChart"></canvas></div>
+    </div>
   </div>
 </section>
 
