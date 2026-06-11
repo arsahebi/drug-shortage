@@ -155,7 +155,31 @@ directly supports your severity and root-cause classification>",
 }}
 
 Field rules:
-- violation_category: choose the single best fit for the PRIMARY violation
+- violation_category: choose the single best fit for the PRIMARY violation domain. \
+Definitions:
+  * LabControls: laboratory and testing deficiencies — test methods, specifications, \
+OOS/OOT investigation procedures, stability testing, calibration or qualification of \
+laboratory instruments, sampling plans, reserve samples (21 CFR 211.160–211.194).
+  * ProductionControls: manufacturing process deficiencies — batch production and control \
+records, manufacturing instructions, in-process testing and controls, yield calculations, \
+component handling, charge-in of components, process validation (21 CFR 211.100–211.132).
+  * BuildingsEquipment: facility and equipment deficiencies — facility design and \
+maintenance, HVAC, utilities, equipment cleaning and sanitization, preventive maintenance, \
+calibration of non-laboratory equipment, equipment qualification (21 CFR 211.42–211.68).
+  * OrgPersonnel: people and organization deficiencies — training and qualification of \
+personnel, responsibilities and independence of the quality control unit, consultant use, \
+personnel hygiene (21 CFR 211.22, 211.25–211.34).
+  * PackagingLabeling: packaging and labeling deficiencies — label issuance and \
+reconciliation, label accuracy, cut label controls, packaging specifications, examination \
+of labeled and packaged products (21 CFR 211.122–211.137).
+  * RecordsReports: documentation and recordkeeping deficiencies — batch records, \
+laboratory records, distribution records, complaint files, annual product review, \
+record retention (21 CFR 211.180–211.198).
+  * QualitySystem: overall quality management system deficiencies — quality unit \
+authority and independence, change control, CAPA system, deviation management, \
+supplier/vendor qualification, internal audits. Use this when the failure is in the \
+quality management framework itself rather than a specific operational domain.
+  * Other: does not clearly fit any of the above domains.
 
 - severity_tier: graded like EU GMP deficiency classification. The tier is decided by \
 ONE question: what level of ACTUAL product impact does the text DOCUMENT? \
