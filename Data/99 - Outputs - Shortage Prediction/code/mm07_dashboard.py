@@ -79,7 +79,7 @@ def compute_data() -> dict:
         }
 
     # ── Case study: FEI 3002809586 ────────────────────────────────────────────
-    d["case_study"] = {"snaps": [], "inspections": [], "warning_letters": []}
+    d["case_study"] = {"snaps": [], "inspections": [], "warning_letters": [], "oai_dates": []}
     if ts_raw is not None and INSP_XLSX.exists():
         ts_raw["snapshot_date"] = pd.to_datetime(ts_raw["snapshot_date"])
         ts_raw["fei"] = ts_raw["fei"].astype(int)
@@ -106,6 +106,16 @@ def compute_data() -> dict:
                 "remed":   round(float(r.get("remediation_none_share",    0) or 0), 3),
                 "sev":     round(float(r.get("severity_critmajor_share",  0) or 0), 3),
             })
+        # OAI inspection dates (separate markers, not coloring text points)
+        for _, r in insp_fei.iterrows():
+            if r["Classification"] == "Official Action Indicated (OAI)" and pd.notna(r["Inspection End Date"]):
+                yr = round(r["Inspection End Date"].year +
+                           (r["Inspection End Date"].dayofyear - 1) / 365.25, 3)
+                d["case_study"]["oai_dates"].append({
+                    "x": yr,
+                    "label": "OAI " + r["Inspection End Date"].strftime("%b %Y"),
+                })
+
         # Warning letters for this FEI (independent of 483 — issued post-inspection)
         from config import REDICA_CSV
         redica = pd.read_csv(REDICA_CSV)
@@ -128,17 +138,20 @@ def compute_data() -> dict:
     # ── Facility-level FAERS for case study via Valisure ANDA→FEI bridge ─────
     # Bridge: Valisure NDC_FEI Mapping sheet has Application Number (ANDA) + FEI_NUMBER.
     # Matches FAERS appl_no (primary-suspect records only) → facility-specific AE series.
-    faers_fei_data: list[dict] = []
+    faers_bupropion: list[dict] = []
+    faers_metformin: list[dict] = []
     if VALISURE_FEI.exists():
         try:
             ndc_map = pd.read_excel(VALISURE_FEI, sheet_name="NDC_FEI Mapping",
-                                    usecols=["Application Number", "FEI_NUMBER"])
+                                    usecols=["Application Number", "FEI_NUMBER", "API"])
             ndc_map = ndc_map.dropna(subset=["Application Number", "FEI_NUMBER"])
             ndc_map["appl_no_str"] = (ndc_map["Application Number"]
                                       .astype(str).str.replace("ANDA", "", regex=False)
                                       .str.strip().str.lstrip("0"))
             ndc_map["FEI_NUMBER"] = ndc_map["FEI_NUMBER"].astype(int)
-            case_andas = set(ndc_map[ndc_map["FEI_NUMBER"] == CASE_FEI]["appl_no_str"].unique())
+            case_rows = ndc_map[ndc_map["FEI_NUMBER"] == CASE_FEI]
+            # ANDA→drug label for this facility
+            anda_drug = dict(zip(case_rows["appl_no_str"], case_rows["API"].str.title()))
 
             from config import FAERS_ALL
             faers_raw = pd.read_csv(
@@ -148,19 +161,26 @@ def compute_data() -> dict:
             faers_raw = faers_raw[faers_raw["appl_no"].notna()].copy()
             faers_raw["appl_no_str"] = (faers_raw["appl_no"].astype(str)
                                         .str.strip().str.lstrip("0"))
-            case_faers = faers_raw[faers_raw["appl_no_str"].isin(case_andas)]
-            by_yr = (case_faers.groupby("year")["serious_flag"]
-                     .apply(lambda x: int((x == 1).sum()))
-                     .reset_index()
-                     .rename(columns={"serious_flag": "n_serious"}))
-            by_yr = by_yr[(by_yr["year"] >= 2015) & (by_yr["year"] <= 2024)]
-            faers_fei_data = [{"x": int(r.year) + 0.5, "y": int(r.n_serious)}
-                               for _, r in by_yr.iterrows()]
-            log.info("Facility-level FAERS for FEI %d: %d year-rows via %d ANDAs",
-                     CASE_FEI, len(faers_fei_data), len(case_andas))
+            case_faers = faers_raw[faers_raw["appl_no_str"].isin(anda_drug)].copy()
+            case_faers["drug"] = case_faers["appl_no_str"].map(anda_drug)
+
+            def _to_bars(df, drug_label):
+                sub = df[df["drug"] == drug_label]
+                by_yr = (sub.groupby("year")["serious_flag"]
+                         .apply(lambda x: int((x == 1).sum()))
+                         .reset_index()
+                         .rename(columns={"serious_flag": "n_serious"}))
+                by_yr = by_yr[(by_yr["year"] >= 2015) & (by_yr["year"] <= 2024)]
+                return [{"x": int(r.year) + 0.5, "y": int(r.n_serious)} for _, r in by_yr.iterrows()]
+
+            faers_bupropion = _to_bars(case_faers, "Bupropion")
+            faers_metformin = _to_bars(case_faers, "Metformin")
+            log.info("Facility FAERS split: Bupropion=%d rows, Metformin=%d rows",
+                     len(faers_bupropion), len(faers_metformin))
         except Exception as e:
             log.warning("Facility FAERS build failed: %s", e)
-    d["case_study"]["faers_fei"] = faers_fei_data
+    d["case_study"]["faers_bupropion"] = faers_bupropion
+    d["case_study"]["faers_metformin"] = faers_metformin
 
     # m12 forward validation grid
     _ESC = [
@@ -256,62 +276,59 @@ new Chart(document.getElementById('oaiLeadChart'),{{
         contam = [s["contam"] for s in snaps]
         remed  = [s["remed"]  for s in snaps]
         labels_x = [s["label"] for s in snaps]
-        wl_xs      = [w["x"]     for w in wls]
-        wl_lbls    = [w["label"] for w in wls]
-        faers_proxy = cs.get("faers_fei", []) or cs.get("faers_proxy", [])
+        wl_xs   = [w["x"]     for w in wls]
+        wl_lbls = [w["label"] for w in wls]
+        oai_xs  = [o["x"]     for o in cs.get("oai_dates", [])]
+        oai_lbl = [o["label"] for o in cs.get("oai_dates", [])]
+        f_bup   = cs.get("faers_bupropion", [])
+        f_met   = cs.get("faers_metformin",  [])
         case_js = f"""
 (function(){{
 const LABELS_X={_j(labels_x)};
-const WL_XS={_j(wl_xs)};
-const WL_LBLS={_j(wl_lbls)};
-const FAERS={_j(faers_proxy)};
 const datasets=[
-  {{label:'Contamination flag (483 text, left)',
+  {{label:'Contamination flag',
     data:{_j(list(zip(xs, contam)))}.map(p=>(({{x:p[0],y:p[1]}}))  ),
     yAxisID:'y',borderColor:'#E07A5F',fill:false,tension:0.2,borderWidth:2.5,
-    pointRadius:7,pointBackgroundColor:'#E07A5F',pointBorderColor:'#B5563E'}},
-  {{label:'No remediation response (483 text, left)',
+    pointRadius:6,pointBackgroundColor:'#E07A5F',pointBorderColor:'#B5563E'}},
+  {{label:'No remediation response',
     data:{_j(list(zip(xs, remed)))}.map(p=>(({{x:p[0],y:p[1]}}))  ),
     yAxisID:'y',borderColor:'#065A82',fill:false,tension:0.2,borderWidth:2.5,borderDash:[5,3],
-    pointRadius:7,pointBackgroundColor:'#065A82',pointBorderColor:'#044060'}}
+    pointRadius:6,pointBackgroundColor:'#065A82',pointBorderColor:'#044060'}}
 ];
-if(FAERS.length){{
-  datasets.push({{
-    label:'Serious AEs — this facility (ANDA-linked, right)',
-    type:'bar',
-    data:FAERS,
-    yAxisID:'y2',
-    backgroundColor:'rgba(150,150,150,0.25)',
-    borderColor:'rgba(150,150,150,0.5)',
-    borderWidth:1,
-    barPercentage:0.6,
-  }});
-}}
-if(WL_XS.length){{
-  datasets.push({{
-    label:'Warning Letter (FDA, facility)',
-    type:'scatter',
-    data:WL_XS.map((x,i)=>(({{x,y:0.97,label:WL_LBLS[i]}}))  ),
-    yAxisID:'y',
-    backgroundColor:'#8B0000',borderColor:'#8B0000',
-    pointStyle:'star',pointRadius:12,showLine:false
-  }});
-}}
+if({_j(f_bup)}.length) datasets.push({{
+  label:'Serious AEs — Bupropion',type:'bar',
+  data:{_j(f_bup)},yAxisID:'y2',
+  backgroundColor:'rgba(224,122,95,0.35)',borderColor:'rgba(224,122,95,0.7)',
+  borderWidth:1,barPercentage:0.45,categoryPercentage:0.9,stack:'s'
+}});
+if({_j(f_met)}.length) datasets.push({{
+  label:'Serious AEs — Metformin',type:'bar',
+  data:{_j(f_met)},yAxisID:'y2',
+  backgroundColor:'rgba(28,114,147,0.30)',borderColor:'rgba(28,114,147,0.6)',
+  borderWidth:1,barPercentage:0.45,categoryPercentage:0.9,stack:'s'
+}});
+if({_j(oai_xs)}.length) datasets.push({{
+  label:'OAI inspection',type:'scatter',
+  data:{_j(oai_xs)}.map((x,i)=>(({{x,y:0.94,label:{_j(oai_lbl)}[i]}}))  ),
+  yAxisID:'y',backgroundColor:'#C0392B',borderColor:'#922B21',
+  pointStyle:'triangle',pointRadius:11,showLine:false
+}});
+if({_j(wl_xs)}.length) datasets.push({{
+  label:'Warning Letter',type:'scatter',
+  data:{_j(wl_xs)}.map((x,i)=>(({{x,y:0.94,label:{_j(wl_lbls)}[i]}}))  ),
+  yAxisID:'y',backgroundColor:'#8B0000',borderColor:'#8B0000',
+  pointStyle:'star',pointRadius:13,showLine:false
+}});
 new Chart(document.getElementById('caseChart'),{{
-  type:'line',
-  data:{{datasets}},
+  type:'line',data:{{datasets}},
   options:{{maintainAspectRatio:false,
     plugins:{{
-      legend:{{position:'bottom',labels:{{boxWidth:14,font:{{size:10}},
-        generateLabels:chart=>Chart.defaults.plugins.legend.labels.generateLabels(chart)
-          .map(l=>{{l.text=l.text.replace(' (483 text, left)','').replace(' (ANDA-linked, right)','').replace(' (FDA, facility)','');return l;}})
-      }}}},
+      legend:{{position:'bottom',labels:{{boxWidth:12,font:{{size:10}}}}}},
       tooltip:{{callbacks:{{
         title:items=>{{
           const r=items[0].raw;
           if(r?.label) return r.label;
-          const i=items[0].dataIndex;
-          return LABELS_X[i]||'';
+          return LABELS_X[items[0].dataIndex]||'';
         }}
       }}}}
     }},
@@ -321,13 +338,12 @@ new Chart(document.getElementById('caseChart'),{{
           ticks:{{stepSize:1,callback:v=>Number.isInteger(v)?v:''}},
           grid:{{color:'#EEE'}}}},
       y:{{min:0,max:1,position:'left',
-          title:{{display:true,text:'Share of observations (483 text)'}},
+          title:{{display:true,text:'Share of 483 observations'}},
           ticks:{{callback:v=>Math.round(v*100)+'%'}},
           grid:{{color:'#EEE'}}}},
       y2:{{min:0,position:'right',
-           title:{{display:true,text:'Serious AEs / year (facility, ANDA-linked)'}},
-           grid:{{display:false}},
-           ticks:{{color:'#999'}}}}
+           title:{{display:true,text:'Serious AEs / year (ANDA-linked)'}},
+           grid:{{display:false}},ticks:{{color:'#999'}}}}
     }}
   }}
 }});
@@ -438,25 +454,11 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
 <!-- SECTION 1: REGULATORY SIGNALS → SHORTAGE -->
 <section>
   <h2>Do regulatory signals precede shortage?</h2>
-  <p class="sub">
-    Monthly event study: mean OAI inspection rate in the months before shortage onset (month 0)
-    vs the control baseline (drug-months far from any onset).
-    N = {n_onsets} onset months · 14 drugs · exploratory; wide confidence intervals.
-  </p>
+  <p class="sub">Mean OAI rate across {n_onsets} shortage onset events (14 drugs, 2015–2024) vs control baseline. Exploratory — wide confidence intervals at this sample size.</p>
   <div class="card" style="max-width:620px;">
     <h3>OAI rate in months leading to shortage onset</h3>
-    <div class="csub">
-      Solid = mean near onset · dashed = control baseline.
-      Elevation at –12 months (~2× baseline) suggests quality problems accumulate
-      well before supply is disrupted.
-    </div>
+    <div class="csub">Solid line = mean near onset · dashed = control baseline.</div>
     <div class="ch"><canvas id="oaiLeadChart"></canvas></div>
-  </div>
-  <div class="note">
-    OAI inspections trigger mandatory remediation. The remediation process itself — halting
-    or slowing non-compliant production lines — is the mechanism connecting regulatory action
-    to supply disruption. The text features in Sections 2 and 3 sit one step earlier in
-    that chain: <em>before the OAI is issued</em>.
   </div>
 </section>
 
@@ -471,10 +473,10 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   <div class="card">
     <h3>Contamination flag &amp; no-remediation share, 2016–2025</h3>
     <div class="csub">
-      Left axis: two signals from 483 text (facility-specific).
-      Right axis: serious adverse events linked directly to <strong>this facility</strong>
-      via ANDA numbers from the Valisure NDC→FEI mapping (primary-suspect FAERS records).
-      ★ = Warning Letter issued by FDA.
+      Left axis: two signals from 483 text (facility-specific, 7 snapshots covering 58% of drug inspections).
+      Right axis: serious AEs linked to <strong>this facility</strong> via ANDA numbers
+      (primary-suspect FAERS records), split by drug.
+      ▲ = OAI inspection · ★ = Warning Letter.
     </div>
     <div class="ch" style="height:320px;"><canvas id="caseChart"></canvas></div>
   </div>
