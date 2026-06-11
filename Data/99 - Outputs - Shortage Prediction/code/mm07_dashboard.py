@@ -447,15 +447,15 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
 <div class="chips">
   <div class="chip"><strong>{d["n_feis"]}</strong>Total FEIs</div>
   <div class="chip"><strong>{n}</strong>FEIs with text</div>
-  <div class="chip"><strong>{sn}</strong>Scored snapshots</div>
-  <div class="chip"><strong>{fn}</strong>Used in validation</div>
+  <div class="chip"><strong>{sn}</strong>483 documents scored</div>
+  <div class="chip"><strong>{fn}</strong>In forward validation</div>
 </div>
 
 <!-- SECTION 1: REGULATORY SIGNALS → SHORTAGE -->
 <section>
   <h2>Do regulatory signals precede shortage?</h2>
   <p class="sub">Mean OAI rate across {n_onsets} shortage onset events (14 drugs, 2015–2024) vs control baseline. Exploratory — wide confidence intervals at this sample size.</p>
-  <div class="card" style="max-width:620px;">
+  <div class="card">
     <h3>OAI rate in months leading to shortage onset</h3>
     <div class="csub">Solid line = mean near onset · dashed = control baseline.</div>
     <div class="ch"><canvas id="oaiLeadChart"></canvas></div>
@@ -468,7 +468,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
   <p class="sub">
     Makes Bupropion &amp; Metformin. 7 FDA Form 483s between 2016 and 2025 (58% of drug
     inspections). Each point is one dated 483 document. ★ marks a Warning Letter issued
-    by FDA — an independent regulatory action post-inspection. Hover for dates.
+    by FDA. Hover for dates.
   </p>
   <div class="card">
     <h3>Contamination flag &amp; no-remediation share, 2016–2025</h3>
@@ -497,8 +497,8 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
 <section>
   <h2>What 483 text predicts — facility level</h2>
   <p class="sub">
-    {fn} snapshots split at each feature's median. Every facility already received a 483 —
-    differences come from <strong>what the text says</strong>, not the document's existence.
+    {fn} FDA Form 483 documents from {n} facilities, split at each feature's median.
+    Every facility already received a 483 — differences come from <strong>what the text says</strong>.
     Base rates: escalation {eb}% · recall {rb}%.
   </p>
   <div class="row2">
