@@ -5,20 +5,20 @@
 ## 1. Signals that precede shortage onset (month offsets −12 to 0)
 | Signal | Avg elevation (−12 to −4m) | Peak offset | Peak vs baseline |
 |---|---|---|---|
-| recall_cgmp | ↑ +0.067 | -11m | +0.517 |
-| recall_total | ↑ +0.064 | -11m | +0.500 |
-| redica_n_483_critical | ↑ +0.021 | -1m | +0.220 |
-| recall_contam | ↑ +0.009 | -7m | +0.038 |
+| redica_n_inspections | ↑ +0.035 | -23m | +0.443 |
+| recall_cgmp | ↑ +0.027 | -11m | +0.517 |
+| recall_total | ↑ +0.020 | -11m | +0.500 |
+| recall_contam | ↑ +0.004 | -7m | +0.038 |
+| redica_n_oai | — -0.002 | -21m | +0.052 |
 | recall_class_I | — -0.002 | -3m | +0.037 |
-| recall_potency | — -0.002 | -12m | -0.002 |
-| redica_n_warning_letters | — -0.004 | +0m | +0.060 |
-| redica_n_oai | — -0.016 | -12m | +0.044 |
-| redica_n_inspections | — -0.077 | -1m | +0.314 |
-| faers_severity_score_w3m | — -1.108 | -8m | +17.398 |
-| faers_n_serious_w3m | — -3.002 | -12m | +10.103 |
-| faers_n_reports_w3m | — -10.762 | -7m | +0.767 |
+| recall_potency | — -0.002 | -24m | -0.002 |
+| redica_n_warning_letters | — -0.006 | +0m | +0.060 |
+| redica_n_483_critical | — -0.009 | -1m | +0.220 |
+| faers_n_serious_w3m | — -12.675 | -16m | +11.414 |
+| faers_severity_score_w3m | — -18.462 | -16m | +30.939 |
+| faers_n_reports_w3m | — -21.817 | -17m | +3.358 |
 
-**Suggestive leading signals:** `recall_cgmp` shows the largest average elevation before shortage onset (+0.067 vs baseline in months −12 to −4). This is exploratory; the wide error bars (small n=26 events) prevent firm conclusions.
+**Suggestive leading signals:** `redica_n_inspections` shows the largest average elevation before shortage onset (+0.035 vs baseline in months −12 to −4). This is exploratory; the wide error bars (small n=26 events) prevent firm conclusions.
 
 ---
 ## 2. Recall circularity
