@@ -79,7 +79,7 @@ def compute_data() -> dict:
         }
 
     # ── Case study: FEI 3002809586 ────────────────────────────────────────────
-    d["case_study"] = {"snaps": [], "inspections": [], "warning_letters": [], "oai_dates": []}
+    d["case_study"] = {"snaps": [], "inspections": [], "warning_letters": [], "oai_dates": [], "recalls": []}
     if ts_raw is not None and INSP_XLSX.exists():
         ts_raw["snapshot_date"] = pd.to_datetime(ts_raw["snapshot_date"])
         ts_raw["fei"] = ts_raw["fei"].astype(int)
@@ -116,7 +116,26 @@ def compute_data() -> dict:
                     "label": "OAI " + r["Inspection End Date"].strftime("%b %Y"),
                 })
 
-        # Warning letters for this FEI (independent of 483 — issued post-inspection)
+        # Recalls for this FEI
+        recall_file = DATA / "22 - FDA - Recall" / "raw" / "Recall Data.xlsx"
+        if recall_file.exists():
+            rec_df = pd.read_excel(recall_file)
+            rec_df["FEI Number"] = pd.to_numeric(rec_df["FEI Number"], errors="coerce").astype("Int64")
+            rec_df["Center Classification Date"] = pd.to_datetime(
+                rec_df["Center Classification Date"], errors="coerce")
+            rec_fei = rec_df[(rec_df["FEI Number"] == CASE_FEI) &
+                             (rec_df["Product Type"] == "Drugs")].copy()
+            for _, rr in rec_fei.iterrows():
+                if pd.notna(rr["Center Classification Date"]):
+                    yr = round(rr["Center Classification Date"].year +
+                               (rr["Center Classification Date"].dayofyear - 1) / 365.25, 3)
+                    cls = str(rr.get("Product Classification", ""))
+                    d["case_study"]["recalls"].append({
+                        "x": yr,
+                        "label": f"Recall ({cls}) {rr['Center Classification Date'].strftime('%b %Y')}",
+                    })
+
+        # Warning letters for this FEI
         from config import REDICA_CSV
         redica = pd.read_csv(REDICA_CSV)
         redica["Event Date"] = pd.to_datetime(redica["Event Date"], errors="coerce")
@@ -280,6 +299,8 @@ new Chart(document.getElementById('oaiLeadChart'),{{
         wl_lbls = [w["label"] for w in wls]
         oai_xs  = [o["x"]     for o in cs.get("oai_dates", [])]
         oai_lbl = [o["label"] for o in cs.get("oai_dates", [])]
+        rec_xs  = [r["x"]     for r in cs.get("recalls", [])]
+        rec_lbl = [r["label"] for r in cs.get("recalls", [])]
         f_bup   = cs.get("faers_bupropion", [])
         f_met   = cs.get("faers_metformin",  [])
         case_js = f"""
@@ -312,6 +333,12 @@ if({_j(oai_xs)}.length) datasets.push({{
   data:{_j(oai_xs)}.map((x,i)=>(({{x,y:0.94,label:{_j(oai_lbl)}[i]}}))  ),
   yAxisID:'y',backgroundColor:'#C0392B',borderColor:'#922B21',
   pointStyle:'triangle',pointRadius:11,showLine:false
+}});
+if({_j(rec_xs)}.length) datasets.push({{
+  label:'Drug recall',type:'scatter',
+  data:{_j(rec_xs)}.map((x,i)=>(({{x,y:0.87,label:{_j(rec_lbl)}[i]}}))  ),
+  yAxisID:'y',backgroundColor:'#6A0572',borderColor:'#6A0572',
+  pointStyle:'rectRot',pointRadius:11,showLine:false
 }});
 if({_j(wl_xs)}.length) datasets.push({{
   label:'Warning Letter',type:'scatter',
@@ -476,7 +503,7 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
       Left axis: two signals from 483 text (facility-specific, 7 snapshots covering 58% of drug inspections).
       Right axis: serious AEs linked to <strong>this facility</strong> via ANDA numbers
       (primary-suspect FAERS records), split by drug.
-      ▲ = OAI inspection · ★ = Warning Letter.
+      ▲ = OAI · ★ = Warning Letter · ◆ = Recall.
     </div>
     <div class="ch" style="height:320px;"><canvas id="caseChart"></canvas></div>
   </div>
@@ -486,10 +513,9 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     The no-remediation share <em>rises</em> from 22% (2016) to 63% (2019) and plateaus —
     the facility keeps acknowledging the same problems in 483 text but never commits to fixing them.
     A Warning Letter followed in May 2022 when these signals were already at their peak.
-    The gray bars show serious adverse events linked directly to <strong>this facility</strong>
-    via its ANDA numbers (Bupropion: ANDA078866, Metformin: ANDA077336) — rising from ~14/year
-    in 2015–2016 to a peak of 72 in 2021, then settling at 55–63 post–Warning Letter.
-    This is not a causal claim — it is a pattern visible in the record, in chronological order.
+    Text signals elevated throughout · 5 OAIs · Warning Letter (May 2022) · Class II recall (May 2023).
+    Serious AEs linked to this facility via ANDA: rising from ~14/year (2015–16) to 72 in 2021,
+    settling at 55–63 after the Warning Letter. Not causal — a pattern visible in chronological order.
   </div>
 </section>
 
@@ -528,18 +554,19 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     <div class="box">
       <div class="box-head l">Limitations</div>
       <ul>
-        <li>37/129 FEIs have text (28.7%); median inspection coverage within those is ~22%.</li>
-        <li>14 drugs, 79 snapshots — all findings are exploratory.</li>
-        <li>No causal identification.</li>
+        <li>37/129 FEIs have public 483 PDFs (28.7%); median inspection coverage is ~22% even within those.</li>
+        <li>14 drugs, 79 scored documents — exploratory; wide confidence intervals throughout.</li>
+        <li><strong>Shortage data cannot be linked to facilities:</strong> UUtah shortage records are at the drug level only — no FEI or NDC. Connecting 483 text signals to shortage requires complete inspection text for <em>all</em> facilities making a drug, aggregated to the drug level. This needs full 483 history from Redica (or systematic FDA FOIA) for all 129 FEIs, not just the 37 with public PDFs.</li>
+        <li>No causal identification. All associations are observational.</li>
       </ul>
     </div>
     <div class="box">
       <div class="box-head n">Next steps</div>
       <ul>
-        <li><strong>Stage 1:</strong> Redica counts → p_esc per facility (m12, done). Add Redica <em>483 critical / 483 major</em> observation counts as additional features.</li>
-        <li><strong>Stage 2:</strong> max/mean p_esc → drug-year shortage model (m07/m09, done).</li>
-        <li><strong>FAERS correlation:</strong> for the 37 text-covered FEIs, test whether 483 text severity correlates with subsequent serious adverse events for the drugs they manufacture — an independent, patient-facing outcome.</li>
-        <li>Expand 483 PDF coverage — the binding constraint on text analysis.</li>
+        <li><strong>Two-stage predictive model:</strong> facility-level escalation risk (Redica inspection history) → drug-level shortage model. Groundwork complete; full evaluation pending.</li>
+        <li><strong>Complete 483 coverage:</strong> obtain full inspection text for all 129 FEIs from Redica — prerequisite for linking text signals to shortage outcomes.</li>
+        <li><strong>FAERS at facility level:</strong> ANDA→NDC→FEI linkage now works for 34/37 text-covered FEIs; extend to the full 129 FEI set once 483 coverage is complete.</li>
+        <li>Add Redica <em>483 critical / 483 major</em> observation counts to the escalation model.</li>
       </ul>
     </div>
   </div>
