@@ -203,19 +203,17 @@ def compute_data() -> dict:
 
     # m12 forward validation grid
     _ESC = [
-        ("repeat_llm_only_share",        "Repeat violations"),
+        ("repeat_llm_only_share",        "Repeat violations (LLM)"),
+        ("oos_oot_regex_share",          "OOS/OOT references"),
+        ("contamination_llm_only_share", "Contamination (LLM)"),
         ("repeat_cross_insp_share",      "Cross-insp. repeat"),
-        ("contamination_llm_only_share", "Contamination"),
-        ("oos_oot_regex_share",          "OOS/OOT refs"),
-        ("severity_critmajor_share",     "Crit+Major severity"),
-        ("scope_facilitywide_share",     "Facility-wide scope"),
     ]
     _REC = [
-        ("vc_buildingsequipment_share",  "Buildings/equipment"),
-        ("repeat_llm_only_share",        "Repeat violations"),
-        ("repeat_cross_insp_share",      "Cross-insp. repeat"),
-        ("capital_root_cause_share",     "Capital root cause"),
+        ("vc_qualitysystem_share",       "Quality system violations"),
+        ("oos_oot_regex_share",          "OOS/OOT references"),
+        ("severity_critical_share",      "Critical severity"),
         ("cultural_root_cause_share",    "Cultural root cause"),
+        ("contamination_llm_share",      "Contamination (LLM)"),
     ]
     grid = _read("text_signal_grid.csv", OUT_TABS)
     d["grid_esc"] = d["grid_rec"] = []
@@ -540,10 +538,10 @@ footer{{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;
     </div>
   </div>
   <div class="note dk">
-    <strong>Key:</strong> repeat violations and cross-inspection repeats predict escalation (2–7×);
-    buildings/equipment violations predict recalls; facilities with no remediation response
-    show longer supply disruption (ρ = +0.33, 36m horizon).
-    n = {fn} snapshots, {n} FEIs — exploratory.
+    <strong>Key:</strong> repeat violations (2.8×), OOS/OOT references (2.7×), and contamination flags (2.4×)
+    predict regulatory escalation; quality system violations (7.2×) and OOS/OOT references (4.0×)
+    predict recalls; facilities with no remediation response in the text show longer shortage duration
+    (ρ = +0.28, 36m horizon). n = {fn} documents, {n} FEIs — exploratory.
   </div>
 </section>
 
