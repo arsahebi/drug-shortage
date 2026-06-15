@@ -72,6 +72,13 @@ DATA       = HERE.parent                             # .../Data/
 OBS_CSV    = DATA / "12 - FDA - 483" / "processed" / "483_observations.csv"
 SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
 
+# ── Source mode — set via --source argument (overrides below after argparse) ──
+# "pdf"    : read from 483_observations.csv, text col = obs_text_clean (default)
+# "redica" : read from redica_483_observations.csv, text col = obs_text
+SOURCE = "pdf"
+_REDICA_OBS_CSV     = HERE / "redica_483_observations.csv"
+_REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals.csv"
+
 # ── Model ──────────────────────────────────────────────────────────────────
 MODEL_NAME = "gpt-5-mini"
 MAX_TOKENS = 4000
@@ -487,7 +494,7 @@ def _call_openai(client, obs_row: pd.Series) -> tuple[dict, str, str]:
     Call the OpenAI API for one observation row.
     Returns (llm_result_dict, extraction_status, extraction_error).
     """
-    obs_text = str(obs_row.get("obs_text_clean", "")).strip()
+    obs_text = str(obs_row.get("obs_text_clean") or obs_row.get("obs_text") or "").strip()
     if len(obs_text) < 30:
         return {}, "skipped_short", "obs_text_clean too short (<30 chars)"
 
@@ -559,11 +566,11 @@ def _build_row(obs_row: pd.Series, llm: dict, status: str, error: str) -> dict:
     row: dict = {
         # Stable join keys
         "fei":            obs_row["fei"],
-        "filename":       obs_row["filename"],
+        "filename":       obs_row.get("filename", ""),
         "insp_date":      obs_row.get("insp_date", ""),
         "obs_num":        obs_row["obs_num"],
         # Source text / metadata
-        "obs_text_clean": obs_row.get("obs_text_clean", ""),
+        "obs_text_clean": obs_row.get("obs_text_clean") or obs_row.get("obs_text", ""),
         "cfr_codes":      obs_row.get("cfr_codes", ""),
         "n_cfrs":         obs_row.get("n_cfrs", 0),
         "n_examples":     obs_row.get("n_examples", 0),
@@ -632,12 +639,22 @@ if _RUNNING_AS_SCRIPT:
     parser.add_argument("--sample",  type=int, default=None,
                         help="Stratified sample of N observations to a separate "
                              "output file (prompt validation).")
+    parser.add_argument("--source",  choices=["pdf", "redica"], default="pdf",
+                        help="Input source: 'pdf' (default, 483_observations.csv) or "
+                             "'redica' (redica_483_observations.csv).")
     args = parser.parse_args()
     DRY_RUN = args.dry_run
     LIMIT   = args.limit
     FEI     = args.fei
     FORCE   = args.force
     SAMPLE  = args.sample
+    SOURCE  = args.source
+
+# ── Apply source-dependent paths ──────────────────────────────────────────
+if SOURCE == "redica":
+    OBS_CSV     = _REDICA_OBS_CSV
+    SIGNALS_CSV = _REDICA_SIGNALS_CSV
+# pdf source keeps the defaults set above
 
 if SAMPLE:
     SIGNALS_CSV = HERE / f"483_observation_context_signals_sample{SAMPLE}.csv"
@@ -681,7 +698,9 @@ if SIGNALS_CSV.exists() and not FORCE and not SAMPLE:
     n_fail = len(existing_df) - len(ok_df)
     existing_rows = ok_df.to_dict("records")
     for _, r in ok_df.iterrows():
-        already_scored.add((r["fei"], r["filename"], r["obs_num"]))
+        key = (r["fei"], r.get("insp_date", r.get("filename", "")), r["obs_num"]) \
+              if SOURCE == "redica" else (r["fei"], r.get("filename", ""), r["obs_num"])
+        already_scored.add(key)
     print(f"Already scored        : {len(already_scored):,}  "
           f"(set FORCE=True or use --force to re-score)")
     if n_fail:
@@ -715,7 +734,11 @@ elif FORCE:
     existing_rows = []
 else:
     mask = obs_df.apply(
-        lambda r: (r["fei"], r["filename"], r["obs_num"]) not in already_scored,
+        lambda r: (
+            (r["fei"], r.get("insp_date", ""), r["obs_num"])
+            if SOURCE == "redica"
+            else (r["fei"], r.get("filename", ""), r["obs_num"])
+        ) not in already_scored,
         axis=1,
     )
     to_process = obs_df[mask].copy()
@@ -771,7 +794,7 @@ if not DRY_RUN and client is not None:
     for i, (_, obs_row) in enumerate(to_process.iterrows(), 1):
         fei_id   = obs_row["fei"]
         obs_num  = obs_row["obs_num"]
-        filename = str(obs_row["filename"])
+        filename = str(obs_row.get("filename", ""))
 
         print(f"[{i:4d}/{total}] FEI {fei_id}  obs {obs_num:3d}  ", end="", flush=True)
 

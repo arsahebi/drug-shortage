@@ -2,41 +2,44 @@
 03_validate_vs_redica.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Validates LLM-extracted features against Redica's pre-structured
-categorizations on the set of 483 documents present in both sources.
+categorizations.
 
-Inputs
-  483_observation_context_signals.csv     (PDF+LLM pipeline, Step 1)
-  redica_483_observations.csv             (Redica structured, Step 0)
+Two validation tracks
+─────────────────────
 
-Matching
-  Documents are matched on (fei, insp_date) — there is no shared
-  observation-level ID, so all comparisons are at the DOCUMENT level
-  (aggregating over all observations in the same 483).
+  TRACK A — Observation-level (primary, most reliable)
+    Input: redica_483_obs_llm_signals.csv
+    The LLM was run on the SAME Redica observation text. Comparison
+    is row-by-row — no matching problem, no ambiguity about which
+    observations correspond. This directly answers: do our prompt
+    rules reproduce Redica's categorization?
 
-Three validation tasks
-  1. Severity agreement
-       Redica uses 3 tiers: Critical / Major / Other.
-       Our LLM uses 4 tiers: Critical / Major / Moderate / Minor.
-       Mapping: Critical→Critical, Major→Major, {Moderate,Minor}→Other.
-       Metric: per-document agreement on the dominant severity tier;
-               per-document Spearman ρ of Critical+Major share;
-               overall confusion matrix (our collapsed 3-tier vs Redica).
+    Requires: run  python3 01_extract_observation_signals.py --source redica
+    before this script.
 
-  2. Violation category agreement
-       Redica QSL Area is mapped to our 8-class violation_category schema
-       via the table in 00_load_redica_obs.py (stored in redica_vc column).
-       Metric: per-document agreement on dominant violation category;
-               overall confusion matrix.
+  TRACK B — Document-level cross-source (secondary)
+    Input: 483_observation_context_signals.csv  (PDF+LLM)
+           redica_483_observations.csv           (Redica structured)
+    Observations from the two sources for the same 483 (matched by
+    FEI + date) cannot be aligned row-by-row. Comparison is at the
+    document level (dominant tier, Crit+Major share, any-DI flag).
+    This cross-source track is useful for checking consistency
+    between PDF text and Redica text, but is less conclusive than
+    Track A.
 
-  3. Data integrity flag agreement
-       Redica: DI Labels list non-empty → document-level DI present.
-       Ours:   any observation in the document has data_integrity_flag_llm=True.
-       Metric: document-level precision, recall, F1 (Redica = ground truth).
+Comparable fields (columns Redica provides → our LLM equivalents)
+  redica_severity  (Critical/Major/Other)    ↔  severity_tier (collapsed)
+  redica_vc        (QSL-mapped, 8-class)     ↔  violation_category
+  redica_di_flag   (DI Labels non-empty)     ↔  data_integrity_flag_llm
 
-Outputs (written to the same folder as this script)
-  redica_validation_doc_level.csv   — one row per overlapping document
-  redica_validation_summary.csv     — aggregate metrics table
-  (console print of all results)
+Fields with no Redica equivalent (not compared here):
+  contamination_flag_llm, root_cause_type, remediation_signal,
+  patient_risk_flag_llm, investigation_flag_llm, scope
+
+Outputs
+  redica_validation_obs_level.csv    Track A: per-observation comparison
+  redica_validation_doc_level.csv    Track B: per-document comparison
+  redica_validation_summary.csv      Aggregate metrics from both tracks
 """
 
 from __future__ import annotations
@@ -46,258 +49,251 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
-from sklearn.metrics import confusion_matrix, classification_report
 
 HERE = Path(__file__).resolve().parent
 
-OUR_CSV    = HERE / "483_observation_context_signals.csv"
-REDICA_CSV = HERE / "redica_483_observations.csv"
-OUT_DOC    = HERE / "redica_validation_doc_level.csv"
-OUT_SUMM   = HERE / "redica_validation_summary.csv"
+LLM_PDF_CSV    = HERE / "483_observation_context_signals.csv"
+LLM_REDICA_CSV = HERE / "redica_483_obs_llm_signals.csv"
+REDICA_CSV     = HERE / "redica_483_observations.csv"
 
-# Severity collapse: our 4-tier → Redica 3-tier
-SEVERITY_COLLAPSE = {
-    "Critical": "Critical",
-    "Major":    "Major",
-    "Moderate": "Other",
-    "Minor":    "Other",
-}
+OUT_OBS  = HERE / "redica_validation_obs_level.csv"
+OUT_DOC  = HERE / "redica_validation_doc_level.csv"
+OUT_SUMM = HERE / "redica_validation_summary.csv"
+
+SEVERITY_COLLAPSE = {"Critical": "Critical", "Major": "Major",
+                     "Moderate": "Other", "Minor": "Other"}
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def dominant(series: pd.Series) -> str:
-    """Most common non-null value in a series, or '' if all null."""
-    counts = series.dropna().value_counts()
+def dominant(s: pd.Series) -> str:
+    counts = s.dropna().value_counts()
     return counts.index[0] if len(counts) else ""
 
+def cm_share(s: pd.Series) -> float:
+    s = s.dropna()
+    return float(s.isin({"Critical", "Major"}).mean()) if len(s) else np.nan
 
-def crit_major_share(severity_series: pd.Series, valid_values: set) -> float:
-    """Share of observations that are Critical or Major (NaN excluded)."""
-    s = severity_series.dropna()
-    s = s[s.isin(valid_values)]
-    if len(s) == 0:
-        return np.nan
-    return (s.isin({"Critical", "Major"})).mean()
+def any_flag(s: pd.Series) -> bool:
+    return bool(s.fillna(False).any())
 
-
-def doc_di_flag(flag_series: pd.Series) -> bool:
-    """True if any observation in the document has a DI flag."""
-    return bool(flag_series.any())
-
-
-# ── load & prepare ───────────────────────────────────────────────────────────
-
-def load_our(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    # keep only LLM-scored rows
-    df = df[df["extraction_status"].isin(["ok", "partial"])].copy()
-    df["insp_date"] = pd.to_datetime(df["insp_date"]).dt.date
-    df["severity_collapsed"] = df["severity_tier"].map(SEVERITY_COLLAPSE)
-    return df
-
-
-def load_redica(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    df["insp_date"] = pd.to_datetime(df["insp_date"]).dt.date
-    return df
-
-
-# ── document-level aggregation ───────────────────────────────────────────────
-
-def agg_our(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate our observations to document level (fei, insp_date)."""
-    grp = df.groupby(["fei", "insp_date"])
-    return pd.DataFrame({
-        "our_n_obs":            grp.size(),
-        "our_dom_severity":     grp["severity_collapsed"].apply(dominant),
-        "our_cm_share":         grp["severity_collapsed"].apply(
-                                    lambda s: crit_major_share(s, {"Critical","Major","Other"})),
-        "our_dom_vc":           grp["violation_category"].apply(dominant),
-        "our_di_flag":          grp["data_integrity_flag_llm"].apply(doc_di_flag),
-        "our_contam_flag":      grp["contamination_flag_llm"].apply(doc_di_flag),
-        "our_patient_flag":     grp["patient_risk_flag_llm"].apply(doc_di_flag),
-        "our_invest_flag":      grp["investigation_flag_llm"].apply(doc_di_flag),
-    }).reset_index()
-
-
-def agg_redica(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate Redica observations to document level (fei, insp_date)."""
-    grp = df.groupby(["fei", "insp_date"])
-    return pd.DataFrame({
-        "red_n_obs":    grp.size(),
-        "red_dom_sev":  grp["redica_severity"].apply(dominant),
-        "red_cm_share": grp["redica_severity"].apply(
-                            lambda s: crit_major_share(s, {"Critical","Major","Other"})),
-        "red_dom_vc":   grp["redica_vc"].apply(dominant),
-        "red_di_flag":  grp["redica_di_flag"].apply(doc_di_flag),
-    }).reset_index()
-
-
-# ── validation tasks ─────────────────────────────────────────────────────────
-
-def task1_severity(docs: pd.DataFrame) -> dict:
-    """Severity: dominant-tier agreement + Critical+Major share correlation."""
-    sub = docs.dropna(subset=["our_dom_severity", "red_dom_sev"])
-    agree = (sub["our_dom_severity"] == sub["red_dom_sev"]).mean()
-
-    cm_sub = docs.dropna(subset=["our_cm_share", "red_cm_share"])
-    rho, pval = spearmanr(cm_sub["our_cm_share"], cm_sub["red_cm_share"])
-    mae = (cm_sub["our_cm_share"] - cm_sub["red_cm_share"]).abs().mean()
-
-    print("\n── Severity Agreement ──────────────────────────────────────")
-    print(f"  Documents compared (dominant tier): {len(sub)}")
-    print(f"  Dominant tier agreement: {agree:.1%}")
-    print(f"  Documents compared (Crit+Major share): {len(cm_sub)}")
-    print(f"  Spearman ρ (Crit+Major share): {rho:.3f}  p={pval:.3f}")
-    print(f"  Mean absolute difference in Crit+Major share: {mae:.3f}")
-
-    if len(sub) > 0:
-        labels = sorted(set(sub["our_dom_severity"]) | set(sub["red_dom_sev"]))
-        cm = confusion_matrix(sub["red_dom_sev"], sub["our_dom_severity"], labels=labels)
-        print(f"\n  Confusion matrix  (rows=Redica, cols=ours):")
-        print(f"  {'':12s}" + "  ".join(f"{l:>10s}" for l in labels))
-        for i, row_label in enumerate(labels):
-            print(f"  {row_label:12s}" + "  ".join(f"{cm[i,j]:>10d}" for j in range(len(labels))))
-
-    return {
-        "metric": ["dominant_tier_agreement", "cm_share_spearman_rho",
-                   "cm_share_spearman_p", "cm_share_mae"],
-        "value":  [round(agree, 4), round(rho, 4), round(pval, 4), round(mae, 4)],
-        "n_docs": [len(sub), len(cm_sub), len(cm_sub), len(cm_sub)],
-    }
-
-
-def task2_violation_cat(docs: pd.DataFrame) -> dict:
-    """Violation category: dominant-category agreement."""
-    sub = docs.dropna(subset=["our_dom_vc", "red_dom_vc"])
-    sub = sub[(sub["our_dom_vc"] != "") & (sub["red_dom_vc"] != "")]
-    agree = (sub["our_dom_vc"] == sub["red_dom_vc"]).mean()
-
-    print("\n── Violation Category Agreement ────────────────────────────")
-    print(f"  Documents compared: {len(sub)}")
-    print(f"  Dominant category agreement: {agree:.1%}")
-
-    if len(sub) > 0:
-        labels = sorted(set(sub["our_dom_vc"]) | set(sub["red_dom_vc"]))
-        cm = confusion_matrix(sub["red_dom_vc"], sub["our_dom_vc"], labels=labels)
-        print(f"\n  Confusion matrix  (rows=Redica, cols=ours):")
-        header = "  " + " ".join(f"{l[:12]:>13s}" for l in labels)
-        print(header)
-        for i, row_label in enumerate(labels):
-            print(f"  {row_label[:12]:12s} " +
-                  " ".join(f"{cm[i,j]:>13d}" for j in range(len(labels))))
-
-    disagree = sub[sub["our_dom_vc"] != sub["red_dom_vc"]][
-        ["fei", "insp_date", "red_dom_vc", "our_dom_vc"]
-    ]
-    if len(disagree):
-        print(f"\n  Disagreement cases ({len(disagree)}):")
-        print(disagree.to_string(index=False))
-
-    return {
-        "metric": ["dominant_vc_agreement"],
-        "value":  [round(agree, 4)],
-        "n_docs": [len(sub)],
-    }
-
-
-def task3_di_flag(docs: pd.DataFrame) -> dict:
-    """Data integrity flag: document-level precision / recall / F1."""
-    sub = docs.dropna(subset=["our_di_flag", "red_di_flag"])
-    y_true = sub["red_di_flag"].astype(int)
-    y_pred = sub["our_di_flag"].astype(int)
-
+def prf(y_true, y_pred):
+    """Precision, recall, F1 for binary series."""
     tp = int(((y_true == 1) & (y_pred == 1)).sum())
     fp = int(((y_true == 0) & (y_pred == 1)).sum())
     fn = int(((y_true == 1) & (y_pred == 0)).sum())
     tn = int(((y_true == 0) & (y_pred == 0)).sum())
-
-    prec   = tp / (tp + fp) if (tp + fp) else 0.0
-    recall = tp / (tp + fn) if (tp + fn) else 0.0
-    f1     = 2 * prec * recall / (prec + recall) if (prec + recall) else 0.0
-
-    print("\n── Data Integrity Flag Agreement ───────────────────────────")
-    print(f"  Documents compared: {len(sub)}")
-    print(f"  Redica positive (DI present): {int(y_true.sum())} / {len(sub)}")
-    print(f"  Ours positive  (DI flagged):  {int(y_pred.sum())} / {len(sub)}")
-    print(f"  TP={tp}  FP={fp}  FN={fn}  TN={tn}")
-    print(f"  Precision: {prec:.3f}")
-    print(f"  Recall:    {recall:.3f}")
-    print(f"  F1:        {f1:.3f}")
-
-    fn_docs = sub[(y_true == 1) & (y_pred == 0)][["fei", "insp_date"]]
-    if len(fn_docs):
-        print(f"\n  False negatives (Redica flagged DI, our LLM did not):")
-        print(fn_docs.to_string(index=False))
-
-    return {
-        "metric": ["di_precision", "di_recall", "di_f1"],
-        "value":  [round(prec, 4), round(recall, 4), round(f1, 4)],
-        "n_docs": [len(sub)] * 3,
-    }
+    p  = tp / (tp + fp) if (tp + fp) else 0.0
+    r  = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2*p*r / (p+r) if (p+r) else 0.0
+    return p, r, f1, tp, fp, fn, tn
 
 
-# ── main ─────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# TRACK A — observation-level (LLM run on Redica text)
+# ════════════════════════════════════════════════════════════════════════════
+
+def track_a(redica: pd.DataFrame) -> list[dict]:
+    if not LLM_REDICA_CSV.exists():
+        print("\n[Track A] redica_483_obs_llm_signals.csv not found.")
+        print("  Run: python3 01_extract_observation_signals.py --source redica")
+        print("  Track A skipped.\n")
+        return []
+
+    llm = pd.read_csv(LLM_REDICA_CSV)
+    llm = llm[llm["extraction_status"].isin(["ok", "partial"])].copy()
+    llm["insp_date"] = pd.to_datetime(llm["insp_date"]).dt.strftime("%Y-%m-%d")
+    llm["severity_collapsed"] = llm["severity_tier"].map(SEVERITY_COLLAPSE)
+
+    # Join on (fei, insp_date, obs_num) — same source, should be 1:1
+    merged = redica.merge(
+        llm[["fei", "insp_date", "obs_num",
+             "severity_collapsed", "violation_category",
+             "data_integrity_flag_llm", "contamination_flag_llm",
+             "patient_risk_flag_llm", "investigation_flag_llm",
+             "scope", "root_cause_type", "remediation_signal",
+             "confidence"]],
+        on=["fei", "insp_date", "obs_num"],
+        how="inner",
+    )
+    merged.to_csv(OUT_OBS, index=False)
+
+    n = len(merged)
+    print(f"\n{'━'*66}")
+    print("TRACK A — Observation-level  (LLM on Redica text vs Redica labels)")
+    print(f"{'━'*66}")
+    print(f"  Matched observations: {n}  (of {len(redica)} Redica / {len(llm)} LLM)")
+    if n == 0:
+        print("  No matched rows — check fei/insp_date/obs_num alignment.")
+        return []
+
+    results = []
+
+    # ── A1. Severity ──────────────────────────────────────────────────────
+    sev = merged.dropna(subset=["redica_severity", "severity_collapsed"])
+    agree_sev = (sev["redica_severity"] == sev["severity_collapsed"]).mean()
+    labels = sorted(set(sev["redica_severity"]) | set(sev["severity_collapsed"]))
+    print(f"\n  A1. Severity  (n={len(sev)})")
+    print(f"      Agreement: {agree_sev:.1%}")
+    print(f"      Redica distribution:  {sev['redica_severity'].value_counts().to_dict()}")
+    print(f"      LLM distribution:     {sev['severity_collapsed'].value_counts().to_dict()}")
+    from sklearn.metrics import confusion_matrix as _cm
+    if len(sev) > 0:
+        cm = _cm(sev["redica_severity"], sev["severity_collapsed"], labels=labels)
+        print(f"      Confusion matrix (rows=Redica, cols=LLM):")
+        print(f"      {'':12s}" + "  ".join(f"{l:>10s}" for l in labels))
+        for i, rl in enumerate(labels):
+            print(f"      {rl:12s}" + "  ".join(f"{cm[i,j]:>10d}" for j in range(len(labels))))
+    results.append({"track": "A", "metric": "severity_agreement",
+                    "value": round(agree_sev, 4), "n": len(sev)})
+
+    # ── A2. Violation category ────────────────────────────────────────────
+    vc = merged.dropna(subset=["redica_vc", "violation_category"])
+    vc = vc[(vc["redica_vc"] != "") & (vc["violation_category"] != "")]
+    agree_vc = (vc["redica_vc"] == vc["violation_category"]).mean()
+    print(f"\n  A2. Violation category  (n={len(vc)})")
+    print(f"      Agreement: {agree_vc:.1%}")
+    vc_labels = sorted(set(vc["redica_vc"]) | set(vc["violation_category"]))
+    if len(vc) > 0:
+        cm = _cm(vc["redica_vc"], vc["violation_category"], labels=vc_labels)
+        print(f"      Confusion matrix (rows=Redica, cols=LLM):")
+        hdr = "      " + "".join(f"{l[:11]:>12s}" for l in vc_labels)
+        print(hdr)
+        for i, rl in enumerate(vc_labels):
+            print(f"      {rl[:11]:11s} " + "".join(f"{cm[i,j]:>12d}" for j in range(len(vc_labels))))
+    results.append({"track": "A", "metric": "violation_category_agreement",
+                    "value": round(agree_vc, 4), "n": len(vc)})
+
+    # ── A3. Data integrity flag ───────────────────────────────────────────
+    di = merged.dropna(subset=["redica_di_flag", "data_integrity_flag_llm"])
+    y_true = di["redica_di_flag"].astype(int)
+    y_pred = di["data_integrity_flag_llm"].astype(int)
+    p, r, f1, tp, fp, fn, tn = prf(y_true, y_pred)
+    print(f"\n  A3. Data integrity flag  (n={len(di)})")
+    print(f"      Redica positive: {int(y_true.sum())}   LLM positive: {int(y_pred.sum())}")
+    print(f"      TP={tp}  FP={fp}  FN={fn}  TN={tn}")
+    print(f"      Precision={p:.3f}  Recall={r:.3f}  F1={f1:.3f}")
+    for m, v in [("di_precision", p), ("di_recall", r), ("di_f1", f1)]:
+        results.append({"track": "A", "metric": m, "value": round(v, 4), "n": len(di)})
+
+    # ── A4. QSL area disagrement analysis ────────────────────────────────
+    print(f"\n  A4. Top violation-category disagreements:")
+    dis = vc[vc["redica_vc"] != vc["violation_category"]]
+    if len(dis):
+        top = (dis.groupby(["redica_vc", "violation_category"])
+               .size().reset_index(name="count")
+               .sort_values("count", ascending=False).head(10))
+        print(top.to_string(index=False))
+    else:
+        print("      No disagreements.")
+
+    return results
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TRACK B — document-level cross-source (PDF vs Redica)
+# ════════════════════════════════════════════════════════════════════════════
+
+def track_b(redica: pd.DataFrame) -> list[dict]:
+    if not LLM_PDF_CSV.exists():
+        print("\n[Track B] 483_observation_context_signals.csv not found. Skipped.")
+        return []
+
+    pdf = pd.read_csv(LLM_PDF_CSV)
+    pdf = pdf[pdf["extraction_status"].isin(["ok", "partial"])].copy()
+    pdf["insp_date"] = pd.to_datetime(pdf["insp_date"]).dt.strftime("%Y-%m-%d")
+    pdf["severity_collapsed"] = pdf["severity_tier"].map(SEVERITY_COLLAPSE)
+
+    # aggregate to document level
+    def agg_pdf(df):
+        g = df.groupby(["fei", "insp_date"])
+        return pd.DataFrame({
+            "pdf_n_obs":    g.size(),
+            "pdf_dom_sev":  g["severity_collapsed"].apply(dominant),
+            "pdf_cm_share": g["severity_collapsed"].apply(cm_share),
+            "pdf_dom_vc":   g["violation_category"].apply(dominant),
+            "pdf_di_flag":  g["data_integrity_flag_llm"].apply(any_flag),
+        }).reset_index()
+
+    def agg_red(df):
+        g = df.groupby(["fei", "insp_date"])
+        return pd.DataFrame({
+            "red_n_obs":    g.size(),
+            "red_dom_sev":  g["redica_severity"].apply(dominant),
+            "red_cm_share": g["redica_severity"].apply(cm_share),
+            "red_dom_vc":   g["redica_vc"].apply(dominant),
+            "red_di_flag":  g["redica_di_flag"].apply(any_flag),
+        }).reset_index()
+
+    docs = agg_pdf(pdf).merge(agg_red(redica), on=["fei", "insp_date"], how="inner")
+    docs.to_csv(OUT_DOC, index=False)
+
+    n = len(docs)
+    print(f"\n{'━'*66}")
+    print("TRACK B — Document-level cross-source  (PDF+LLM vs Redica labels)")
+    print(f"{'━'*66}")
+    print(f"  Overlapping documents (FEI+date): {n}")
+    if n == 0:
+        return []
+
+    results = []
+
+    # severity
+    sev = docs.dropna(subset=["pdf_dom_sev", "red_dom_sev"])
+    agree_sev = (sev["pdf_dom_sev"] == sev["red_dom_sev"]).mean()
+    cm_sub = docs.dropna(subset=["pdf_cm_share", "red_cm_share"])
+    rho, pval = spearmanr(cm_sub["pdf_cm_share"], cm_sub["red_cm_share"])
+    print(f"\n  B1. Severity dominant-tier agreement:  {agree_sev:.1%}  (n={len(sev)})")
+    print(f"      Crit+Major share Spearman ρ: {rho:.3f}  p={pval:.3f}  (n={len(cm_sub)})")
+    results += [{"track": "B", "metric": "doc_severity_agreement",
+                 "value": round(agree_sev, 4), "n": len(sev)},
+                {"track": "B", "metric": "doc_cm_share_spearman_rho",
+                 "value": round(rho, 4), "n": len(cm_sub)}]
+
+    # violation category
+    vc = docs.dropna(subset=["pdf_dom_vc", "red_dom_vc"])
+    vc = vc[(vc["pdf_dom_vc"] != "") & (vc["red_dom_vc"] != "")]
+    agree_vc = (vc["pdf_dom_vc"] == vc["red_dom_vc"]).mean()
+    print(f"\n  B2. Violation category agreement:      {agree_vc:.1%}  (n={len(vc)})")
+    results.append({"track": "B", "metric": "doc_vc_agreement",
+                    "value": round(agree_vc, 4), "n": len(vc)})
+
+    # DI flag
+    di = docs.dropna(subset=["pdf_di_flag", "red_di_flag"])
+    p, r, f1, tp, fp, fn, tn = prf(di["red_di_flag"].astype(int),
+                                    di["pdf_di_flag"].astype(int))
+    print(f"\n  B3. DI flag (doc-level): "
+          f"Precision={p:.3f}  Recall={r:.3f}  F1={f1:.3f}  (n={len(di)})")
+    for m, v in [("doc_di_precision", p), ("doc_di_recall", r), ("doc_di_f1", f1)]:
+        results.append({"track": "B", "metric": m, "value": round(v, 4), "n": len(di)})
+
+    return results
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
-    our    = load_our(OUR_CSV)
-    redica = load_redica(REDICA_CSV)
+    redica = pd.read_csv(REDICA_CSV)
+    redica["insp_date"] = pd.to_datetime(redica["insp_date"]).dt.strftime("%Y-%m-%d")
+    print(f"Redica observations loaded: {len(redica)}  ({redica['fei'].nunique()} FEIs)")
 
-    print(f"Our pipeline: {len(our)} obs, {our['fei'].nunique()} FEIs")
-    print(f"Redica:       {len(redica)} obs, {redica['fei'].nunique()} FEIs")
+    results_a = track_a(redica)
+    results_b = track_b(redica)
 
-    # ── document-level overlap ───────────────────────────────────────────────
-    our_docs    = agg_our(our)
-    redica_docs = agg_redica(redica)
+    # save summary
+    all_results = results_a + results_b
+    if all_results:
+        pd.DataFrame(all_results).to_csv(OUT_SUMM, index=False)
+        print(f"\nSummary → {OUT_SUMM}")
 
-    docs = our_docs.merge(redica_docs, on=["fei", "insp_date"], how="inner")
-    print(f"\nOverlapping documents (FEI+date): {len(docs)}")
-    print(f"  Our obs in overlap:    {docs['our_n_obs'].sum()}")
-    print(f"  Redica obs in overlap: {docs['red_n_obs'].sum()}")
-
-    if len(docs) == 0:
-        print("No overlap — cannot validate. Check that 00_load_redica_obs.py has been run.")
-        return
-
-    # ── run three validation tasks ───────────────────────────────────────────
-    r1 = task1_severity(docs)
-    r2 = task2_violation_cat(docs)
-    r3 = task3_di_flag(docs)
-
-    # ── save outputs ─────────────────────────────────────────────────────────
-    docs.to_csv(OUT_DOC, index=False)
-    print(f"\nDocument-level results → {OUT_DOC}")
-
-    summary_rows = []
-    for result in [r1, r2, r3]:
-        for m, v, n in zip(result["metric"], result["value"], result["n_docs"]):
-            summary_rows.append({"metric": m, "value": v, "n_docs": n})
-    pd.DataFrame(summary_rows).to_csv(OUT_SUMM, index=False)
-    print(f"Summary metrics → {OUT_SUMM}")
-
-    # ── interpretation note ──────────────────────────────────────────────────
-    print("""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Interpretation note
-  Severity and violation category are validated at the dominant-tier
-  level because observations from the two sources cannot be matched
-  1:1 (no shared observation ID). A document with 5 observations in
-  Redica and 8 in ours is expected — different extraction methods.
-  Agreement on the dominant tier and on the Crit+Major share is the
-  most meaningful cross-source comparison available.
-
-  DI flag is validated as a document-level binary: did any observation
-  in this document trigger the flag? This is the cleanest possible
-  ground-truth comparison.
-
-  Signals NOT validated here (no Redica ground truth):
-    contamination_flag_llm, root_cause_type, remediation_signal,
-    patient_risk_flag_llm, investigation_flag_llm, scope.
-  The quality of these signals must be assessed via human review
-  (see expert review document).
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""")
+    print(f"\n{'━'*66}")
+    print("Columns NOT compared (no Redica ground truth):")
+    print("  contamination_flag_llm, patient_risk_flag_llm,")
+    print("  investigation_flag_llm, scope, root_cause_type, remediation_signal")
+    print("  → validate these via expert review (see expert review document).")
+    print(f"{'━'*66}\n")
 
 
 if __name__ == "__main__":

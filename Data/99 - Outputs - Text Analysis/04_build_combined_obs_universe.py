@@ -37,9 +37,10 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 
-OUR_CSV    = HERE / "483_observation_context_signals.csv"
-REDICA_CSV = HERE / "redica_483_observations.csv"
-OUT_CSV    = HERE / "483_combined_obs_universe.csv"
+OUR_CSV         = HERE / "483_observation_context_signals.csv"
+REDICA_CSV      = HERE / "redica_483_observations.csv"
+REDICA_LLM_CSV  = HERE / "redica_483_obs_llm_signals.csv"   # optional; created by 01 --source redica
+OUT_CSV         = HERE / "483_combined_obs_universe.csv"
 
 # Columns carried from the PDF+LLM pipeline
 PDF_COLS = [
@@ -102,6 +103,26 @@ def main() -> None:
 
     print(f"PDF+LLM pipeline:  {len(pdf)} obs, {pdf['fei'].nunique()} FEIs")
     print(f"Redica structured: {len(redica)} obs, {redica['fei'].nunique()} FEIs")
+
+    # ── merge Redica LLM signals if available ────────────────────────────────
+    if REDICA_LLM_CSV.exists():
+        llm_red = pd.read_csv(REDICA_LLM_CSV)
+        llm_red = llm_red[llm_red["extraction_status"].isin(["ok", "partial"])].copy()
+        llm_red["insp_date"] = pd.to_datetime(llm_red["insp_date"]).dt.strftime("%Y-%m-%d")
+        llm_red["fei"] = llm_red["fei"].astype("int64")
+        llm_cols = [c for c in llm_red.columns
+                    if c in ("violation_category", "severity_tier", "severity_rationale",
+                             "scope", "root_cause_type", "root_cause_rationale",
+                             "remediation_signal", "evidence_quote", "confidence",
+                             "model_name", "extraction_status")
+                    or c.endswith("_flag_llm")]
+        llm_red = llm_red[["fei", "insp_date", "obs_num"] + llm_cols]
+        redica = redica.merge(llm_red, on=["fei", "insp_date", "obs_num"], how="left")
+        n_scored = redica["violation_category"].notna().sum()
+        print(f"Redica LLM signals merged: {n_scored}/{len(redica)} obs scored")
+    else:
+        print("Redica LLM signals not found — run: "
+              "python3 01_extract_observation_signals.py --source redica")
 
     # ── concatenate ──────────────────────────────────────────────────────────
     combined = pd.concat([pdf, redica], ignore_index=True, sort=False)
