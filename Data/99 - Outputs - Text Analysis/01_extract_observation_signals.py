@@ -112,11 +112,14 @@ VALID_VIOLATION_CATEGORY = {
 VALID_SEVERITY_TIER    = {"Critical", "Major", "Moderate", "Minor"}
 VALID_SCOPE            = {"SingleBatch", "MultipleProducts", "FacilityWide", "Unclear"}
 VALID_ROOT_CAUSE_TYPE  = {"Capital", "Cultural", "Mixed", "Unclear"}
-VALID_REMEDIATION      = {"Strong", "Partial", "Weak", "None"}
+VALID_REMEDIATION           = {"Strong", "Partial", "Weak", "None"}
+VALID_DATA_INTEGRITY_TYPE   = {
+    "Falsification", "AuditTrail", "RawData", "ContemporaneousRecording", "NoIssue"
+}
 
 LLM_FLAG_FIELDS = [
     "repeat_flag_llm", "patient_risk_flag_llm",
-    "data_integrity_flag_llm", "contamination_flag_llm",
+    "contamination_flag_llm",
     "investigation_flag_llm",
 ]
 
@@ -153,7 +156,7 @@ Unclear = text insufficient to decide>",
   "remediation_signal": "<Strong | Partial | Weak | None>",
   "repeat_flag_llm": <true or false — explicit evidence this is a repeat finding>,
   "patient_risk_flag_llm": <true or false — explicit harm pathway to patients exists>,
-  "data_integrity_flag_llm": <true or false — explicit data integrity failure is described>,
+  "data_integrity_type": "<Falsification | AuditTrail | RawData | ContemporaneousRecording | NoIssue>",
   "contamination_flag_llm": <true or false — contamination or sterility-control risk is described>,
   "investigation_flag_llm": <true or false — explicit failure to investigate or inadequate investigation is described>,
   "evidence_quote": "<verbatim substring from the observation text (6–30 words) that most \
@@ -199,12 +202,17 @@ found in released/finished product; sterility failure in released sterile produc
 Anchor examples: "contaminated lots were distributed before the investigation was closed"; \
 "batch failing assay specification was released without an investigation".
   * Major: the text documents an ACTUAL defect, failure, or unreliable result found at \
-the facility, but no evidence of release: an actual OOS/failing result, contamination or \
-particulates observed in product, a failed batch, a product mix-up, falsified or \
-invalidated test data, a failed media fill. The defect must have HAPPENED, not be \
-possible. \
+the facility (but no evidence of release); OR a significant systemic failure where the \
+risk of an actual product defect is near-certain without immediate correction. \
+Confirmed examples: an actual OOS/failing result, contamination or particulates observed \
+in product, a failed batch, a product mix-up, falsified or invalidated test data, a \
+failed media fill. \
+Significant systemic examples: environmental controls have been persistently failing; \
+cleaning validation was never performed for a product-contact surface; a sterility-critical \
+parameter was not monitored across multiple production runs. \
 Anchor examples: "particulate matter was observed in several lots"; \
-"test results were invalidated without quality unit approval".
+"test results were invalidated without quality unit approval"; \
+"no cleaning validation study has been performed for [active product-contact equipment]".
   * Moderate: the text documents a deficient procedure, system, or practice but NO \
 actual product defect or unreliable result: missing or failed validation, inadequate \
 or unfollowed procedures, incomplete investigations, environmental monitoring gaps, \
@@ -243,11 +251,20 @@ was released without required QA disposition or testing. Do NOT mark true for ge
 quality deviations where harm would require a chain of hypotheticals. "Could affect \
 quality" is NOT a harm pathway.
 
-- data_integrity_flag_llm: mark true ONLY for explicit unreliable data, falsification, \
-backdating, deleted/altered records, missing raw data, audit-trail problems, unreported \
-results, or records that cannot be trusted. Do NOT mark true for ordinary missing SOPs, \
-incomplete documentation, weak recordkeeping, inventory location/mix-up control, or storage \
-control unless data trustworthiness is directly at issue.
+- data_integrity_type: classify ONLY when explicit data integrity language is present. \
+Choose None unless a specific DI failure is clearly described. \
+  * Falsification = records altered, fabricated, backdated, or deleted; test results \
+overwritten or hidden; unreported OOS results. \
+  * AuditTrail = audit trail disabled, bypassed, or incomplete; unauthorized system access; \
+electronic records that can be modified without traceability. \
+  * RawData = original raw data missing, overwritten, or inaccessible; no backup; \
+system allows data deletion and original data cannot be recovered. \
+  * ContemporaneousRecording = entries not made at time of activity; logbook entries \
+reconstructed after the fact; times or dates inconsistent with activity. \
+  * NoIssue = no data integrity issue described. \
+Do NOT assign a non-NoIssue type for ordinary missing SOPs, incomplete documentation, \
+weak recordkeeping, inventory or storage control, or cases where data trustworthiness \
+is not directly at issue.
 
 - contamination_flag_llm: mark true for actual contamination OR clear contamination-control \
 risk, including sterility assurance failures, aseptic processing deficiencies, environmental \
@@ -280,8 +297,10 @@ OPENAI_JSON_SCHEMA = {
             "enum": sorted(VALID_SEVERITY_TIER),
             "description": (
                 "Tier = documented product impact. Critical: affected product was "
-                "released/distributed. Major: an actual defect, failing result, or "
-                "unreliable data was found on site (it happened, not could happen). "
+                "released/distributed. Major: an actual defect/failure found on site "
+                "(no release) OR a significant systemic failure where actual product "
+                "defect is near-certain without correction (e.g., persistent environmental "
+                "control failures, no cleaning validation on product-contact surface). "
                 "Moderate: deficient procedure/system only, no actual defect documented "
                 "(the default for most observations). Minor: paperwork/administrative "
                 "gaps. Assign the LOWEST tier that fits."
@@ -328,14 +347,17 @@ OPENAI_JSON_SCHEMA = {
                 "where harm requires a chain of hypotheticals."
             ),
         },
-        "data_integrity_flag_llm": {
-            "type": "boolean",
+        "data_integrity_type": {
+            "type": "string",
+            "enum": sorted(VALID_DATA_INTEGRITY_TYPE),
             "description": (
-                "True only for explicit unreliable data, falsification, backdating, "
-                "deleted or altered records, missing raw data, audit-trail problems, "
-                "unreported results, or records that cannot be trusted. False for "
-                "ordinary missing SOPs, incomplete documentation, weak recordkeeping, "
-                "inventory location/mix-up control, or storage control."
+                "Classify data integrity issue type. None = no DI issue. "
+                "Falsification = altered/fabricated/deleted records or hidden results. "
+                "AuditTrail = audit trail disabled/bypassed or unauthorized system access. "
+                "RawData = original raw data missing, overwritten, or inaccessible. "
+                "ContemporaneousRecording = entries not made at time of activity or reconstructed. "
+                "NoIssue = no data integrity issue present. "
+                "Do NOT assign non-NoIssue for missing SOPs or weak documentation alone."
             ),
         },
         "contamination_flag_llm": {
@@ -374,7 +396,7 @@ OPENAI_JSON_SCHEMA = {
         "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
         "repeat_flag_llm", "patient_risk_flag_llm",
-        "data_integrity_flag_llm", "contamination_flag_llm",
+        "data_integrity_type", "contamination_flag_llm",
         "investigation_flag_llm",
         "evidence_quote", "confidence",
     ],
@@ -441,6 +463,11 @@ def _validate(result: dict, obs_text_clean: str) -> dict:
     result["remediation_signal"] = _coerce_categorical(
         result.get("remediation_signal", ""), VALID_REMEDIATION, "None"
     )
+    result["data_integrity_type"] = _coerce_categorical(
+        result.get("data_integrity_type", "NoIssue"), VALID_DATA_INTEGRITY_TYPE, "NoIssue"
+    )
+    # derive binary flag for backward compatibility with downstream scripts
+    result["data_integrity_flag_llm"] = result["data_integrity_type"] != "NoIssue"
 
     for flag in LLM_FLAG_FIELDS:
         result[flag] = _coerce_bool(result.get(flag, False))
@@ -584,6 +611,7 @@ def _build_row(obs_row: pd.Series, llm: dict, status: str, error: str) -> dict:
     for field in [
         "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
+        "data_integrity_type", "data_integrity_flag_llm",
         *LLM_FLAG_FIELDS,
         "evidence_quote", "confidence",
     ]:
