@@ -17,7 +17,8 @@ Feature groups:
                            investigation_llm_share, repeat_cross_insp_share,
                            vc_labcontrols_share, vc_qualitysystem_share,
                            remediation_none_share, remediation_weak_share
-  Structural (Valisure):  parenteral_ever, sole_source_ever
+  Structural (Valisure + OB): parenteral_ever (Orange Book dosage routes),
+                              n_feis_drug (FEI count per drug — supply concentration)
 
 Time-aware join: for prediction year t, the text snapshot with the most recent
 snapshot_date ≤ Dec 31 of year t is used (as-of feature).
@@ -38,10 +39,10 @@ Outputs:
   outputs/figures/text_feature_lift_recall_fei.png      (ablation Fig D)
 
 TODO (SDUD volume weighting): Incorporate Medicaid volume shares as a feature or
-sample weight.  The NDC→FEI bridge currently only has 5-4 labeler-product NDCs
-(missing the package code), so the join to SDUD's 11-digit ndc11 fails.  Fix:
-extend bridge via FDA NDC package.csv (PRODUCTNDC → NDCPACKAGECODE), then call
-utils.load_sdud_fei_volume().  See also the TODO block in config.py.
+sample weight.  The Valisure NDC_FEI Mapping sheet has full 11-digit NDCs; strip
+dashes and cast to int to join against SDUD's ndc11 integer column (98% match rate).
+The pre-joined SDUD+NADAC panel at 04_11/processed/2026-03-26-sdud_nadac_panel.csv
+already has drug_name + ndc11 for 13 of 14 target drugs.  See config.py SDUD TODO.
 """
 
 from __future__ import annotations
@@ -68,10 +69,19 @@ except ModuleNotFoundError:
 
 from config import (
     REDICA_CSV, VALISURE_FEI, VALISURE_CSV, RECALL_FILT,
-    TEXT_TIMESERIES_REDICA_CSV,
+    TEXT_TIMESERIES_REDICA_CSV, DATA,
     OUT_DATA, OUT_FIGS, OUT_TABS, OUT_MODELS, OUT_LOGS,
     PANEL_START_YEAR, PANEL_END_YEAR, SEED,
 )
+
+OB_PRODUCTS_CSV = DATA / "01 - Orange Book" / "output_data" / "products.csv"
+
+_PARENTERAL_ROUTES = {
+    "INJECTION", "INTRAVENOUS", "INTRAMUSCULAR", "SUBCUTANEOUS",
+    "INJECTION, INTRAVENOUS", "INTRAVENOUS, SUBCUTANEOUS",
+    "INTRAMUSCULAR, INTRAVENOUS", "INJECTABLE", "IRRIGATION",
+    "INJECTION, SUBCUTANEOUS",
+}
 from utils import get_logger, write_table, ValisureDrugMatcher, load_valisure_api_names
 
 log = get_logger("m14_recall_fei", OUT_LOGS / "m14_recall_fei.log")
@@ -103,8 +113,8 @@ TEXT_FEATURES = [
 ]
 
 STRUCT_FEATURES = [
-    "parenteral_ever",
-    "sole_source_ever",
+    "parenteral_ever",   # derived from Orange Book dosage form/route
+    "n_feis_drug",       # count of FEIs per drug (supply concentration)
 ]
 
 ALL_FEATURES = INSP_FEATURES + TEXT_FEATURES + STRUCT_FEATURES
@@ -200,8 +210,62 @@ def _load_text_features() -> pd.DataFrame:
     return df
 
 
+def _parenteral_apis_from_ob() -> set[str]:
+    """Return set of API names (as in Valisure FEI map) that have ≥1 parenteral ANDA in OB.
+
+    Matches by checking whether the first meaningful token of each Valisure API name
+    (before any semicolon, e.g. "Ampicillin" from "Ampicillin; Sulbactam") appears as
+    a word in any OB Ingredient with a parenteral route.
+    Falls back to a known-correct hardcoded set if the OB file is unavailable.
+    """
+    fallback = {
+        "Ampicillin", "Ampicillin; Sulbactam", "Vancomycin",
+        "Potassium Chloride", "Magnesium Sulfate", "Calcium Gluconate",
+        "Pantoprazole", "Azithromycin",
+    }
+    if not OB_PRODUCTS_CSV.exists():
+        log.warning("Orange Book not found at %s; using hardcoded parenteral set", OB_PRODUCTS_CSV)
+        return fallback
+
+    ob = pd.read_csv(OB_PRODUCTS_CSV)
+    ob["_route"] = ob["DF;Route"].str.split(";").str[-1].str.strip().str.upper()
+    par_ingredients = set(
+        ob.loc[ob["_route"].isin(_PARENTERAL_ROUTES), "Ingredient"]
+        .str.upper()
+        .dropna()
+        .unique()
+    )
+
+    # Load Valisure API list
+    fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
+    fei_map.columns = [c.strip() for c in fei_map.columns]
+    api_col = next((c for c in fei_map.columns if c.lower() == "api"), None)
+    if api_col is None:
+        return fallback
+    all_apis = fei_map[api_col].dropna().astype(str).str.strip().unique()
+
+    parenteral = set()
+    for api in all_apis:
+        # First word of each component (handles "Ampicillin; Sulbactam" → ["AMPICILLIN","SULBACTAM"])
+        parts = [p.strip().upper().split()[0] for p in api.split(";") if p.strip()]
+        for ing in par_ingredients:
+            ing_words = ing.split()
+            if any(part in ing_words for part in parts):
+                parenteral.add(api)
+                break
+
+    log.info("Parenteral APIs from Orange Book: %s", sorted(parenteral))
+    return parenteral
+
+
 def _load_structural_features() -> pd.DataFrame:
-    """Load parenteral_ever and sole_source_ever from Valisure FEI map + drug data."""
+    """Load parenteral_ever and n_feis_drug from Valisure FEI map + Orange Book.
+
+    parenteral_ever: 1 if this FEI produces any drug with a parenteral (injectable/IV)
+        dosage form in the Orange Book.  Derived from OB DF;Route column — not hardcoded.
+    n_feis_drug: number of FEIs in the Valisure mapping that produce the same drug.
+        Proxy for supply concentration: n_feis_drug=1 means sole-source (highest risk).
+    """
     fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
     fei_map.columns = [c.strip() for c in fei_map.columns]
 
@@ -209,28 +273,27 @@ def _load_structural_features() -> pd.DataFrame:
     api_col = next((c for c in fei_map.columns if c.lower() == "api"), None)
     if not fei_col or not api_col:
         log.warning("Cannot load structural features: FEI or API column missing")
-        return pd.DataFrame(columns=["fei", "parenteral_ever", "sole_source_ever"])
+        return pd.DataFrame(columns=["fei", "parenteral_ever", "n_feis_drug"])
 
     fm = fei_map[[fei_col, api_col]].dropna().rename(columns={fei_col: "fei", api_col: "api"})
     fm["fei"] = pd.to_numeric(fm["fei"], errors="coerce").astype("Int64")
 
-    # Parenteral: APIs with known injection/parenteral routes
-    parenteral_apis = {
-        "Ampicillin", "Vancomycin", "Potassium Chloride",
-        "Magnesium Sulfate", "Calcium Gluconate",
-    }
-    # Sole-source: approximate from Valisure data (single FEI per drug)
-    api_fei_counts = fm.groupby("api")["fei"].nunique()
-    sole_source_apis = set(api_fei_counts[api_fei_counts == 1].index)
+    parenteral_apis = _parenteral_apis_from_ob()
+    fm["parenteral_ever"] = fm["api"].isin(parenteral_apis).astype(int)
 
-    fm["parenteral_ever"]   = fm["api"].isin(parenteral_apis).astype(int)
-    fm["sole_source_ever"]  = fm["api"].isin(sole_source_apis).astype(int)
+    # n_feis_drug: count of distinct FEIs per drug in Valisure mapping
+    api_fei_counts = fm.groupby("api")["fei"].nunique()
+    fm["n_feis_drug"] = fm["api"].map(api_fei_counts)
 
     out = fm.groupby("fei", as_index=False).agg(
-        parenteral_ever=("parenteral_ever",  "max"),
-        sole_source_ever=("sole_source_ever", "max"),
+        parenteral_ever=("parenteral_ever", "max"),
+        n_feis_drug=("n_feis_drug",     "min"),  # most concentrated drug this FEI makes
     )
-    log.info("Structural features: %d FEIs", len(out))
+    log.info(
+        "Structural features: %d FEIs, parenteral_ever=%d, n_feis_drug range=%d–%d",
+        len(out), int(out["parenteral_ever"].sum()),
+        int(out["n_feis_drug"].min()), int(out["n_feis_drug"].max()),
+    )
     return out
 
 
@@ -587,9 +650,10 @@ def main():
     )
     log.info("Without text — L2 AUC=%.3f  RF AUC=%.3f", met_no_text["auc"], met_no_rf["auc"])
 
+    # Use L2 logistic for ablation — it's the stronger model with this sample size
     ablation_rows = [
-        {"label": "Without text", "auc": met_no_rf["auc"]},
-        {"label": "With text\n(99 FEIs)", "auc": met_rf["auc"]},
+        {"label": "Without text", "auc": met_no_text["auc"], "model": "L2"},
+        {"label": "With text\n(98 FEIs)", "auc": met_l2["auc"],  "model": "L2"},
     ]
     pd.DataFrame(ablation_rows).to_csv(OUT_MODELS / "text_ablation_recall_fei.csv", index=False)
     _fig_text_lift(ablation_rows)

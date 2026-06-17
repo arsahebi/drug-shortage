@@ -60,7 +60,7 @@ TEXT_FEATS   = [
     "vc_labcontrols_share", "vc_qualitysystem_share",
     "remediation_none_share", "remediation_weak_share",
 ]
-STRUCT_FEATS = ["parenteral_ever", "sole_source_ever"]
+STRUCT_FEATS = ["parenteral_ever", "n_feis_drug"]
 ALL_FEATS    = INSP_FEATS + TEXT_FEATS + STRUCT_FEATS
 
 _GROUP_COLOR = {**{f: "#4A90D9" for f in INSP_FEATS},
@@ -84,8 +84,8 @@ _FEAT_LABEL = {
     "vc_qualitysystem_share":     "Quality system violations",
     "remediation_none_share":     "No remediation signal",
     "remediation_weak_share":     "Weak remediation",
-    "parenteral_ever":            "Parenteral drug",
-    "sole_source_ever":           "Sole-source drug",
+    "parenteral_ever":            "Parenteral drug (OB-derived)",
+    "n_feis_drug":                "# FEIs per drug (supply conc.)",
 }
 
 # ── Colour palette ──────────────────────────────────────────────────────────
@@ -505,7 +505,7 @@ def _fig_ablation(ablation: pd.DataFrame, metrics: pd.DataFrame) -> go.Figure:
     """AUC lift bar chart (ablation) + metrics table."""
     fig = make_subplots(
         rows=1, cols=2,
-        subplot_titles=["Text feature lift (Random Forest AUC)", "CV metrics summary"],
+        subplot_titles=["Text feature lift (Logistic Regression AUC)", "CV metrics summary"],
         column_widths=[0.55, 0.45],
         horizontal_spacing=0.08,
         specs=[[{"type": "xy"}, {"type": "table"}]],
@@ -792,7 +792,8 @@ def build_html(data: dict, preds_l2, preds_rf, y) -> str:
   <h1>Predicting Drug Recalls from 483 Inspection Text</h1>
   <p>LLM-extracted features from FDA 483 inspection observations significantly improve
      facility-level recall prediction beyond inspection counts alone.
-     Panel: {cov['n_feis_llm']} FEIs × 10 years (2015–2024), 20 recall events.</p>
+     Panel: {cov['n_feis_llm']} FEIs × 10 years (2015–2024), 20 recall events.
+     Parenteral drug flag derived from Orange Book dosage routes (not hardcoded).</p>
   <div class="kpi-row">
     <div class="kpi"><div class="val">{cov['n_feis_llm']}</div>
       <div class="lbl">FEIs with LLM text features</div></div>
@@ -801,9 +802,9 @@ def build_html(data: dict, preds_l2, preds_rf, y) -> str:
     <div class="kpi"><div class="val">{cov['n_obs_llm']:,}</div>
       <div class="lbl">Observations LLM-scored</div></div>
     <div class="kpi"><div class="val">+{lift_rel:.0f}%</div>
-      <div class="lbl">Relative AUC lift<br>from text features</div></div>
+      <div class="lbl">Relative AUC lift (L2)<br>from text features</div></div>
     <div class="kpi"><div class="val">{auc_yes:.3f}</div>
-      <div class="lbl">RF AUC with text<br>(vs {auc_no:.3f} without)</div></div>
+      <div class="lbl">L2 AUC with text<br>(vs {auc_no:.3f} without)</div></div>
   </div>
 </div>
 
