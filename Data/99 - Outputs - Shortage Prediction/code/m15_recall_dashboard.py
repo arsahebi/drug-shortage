@@ -400,96 +400,6 @@ def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFram
     return fig
 
 
-def _fig_risk_matrix(
-    supply: pd.DataFrame,
-    recalls_by_drug: pd.DataFrame,
-    shortages: pd.DataFrame,
-    quality: pd.DataFrame,
-) -> go.Figure:
-    """Bubble chart: supply concentration × quality risk, sized by recalls, colored by shortages."""
-    tot_recalls   = recalls_by_drug.groupby("drug")["n_recalls"].sum().reset_index(name="n_recalls")
-    tot_shortages = shortages.groupby("drug")["n"].sum().reset_index(name="n_shortages")
-
-    df = supply.merge(tot_recalls, on="drug", how="left")
-    df = df.merge(tot_shortages, on="drug", how="left")
-    df = df.merge(quality[["drug", "quality_risk"]], on="drug", how="left")
-    df["n_recalls"]   = df["n_recalls"].fillna(0).astype(int)
-    df["n_shortages"] = df["n_shortages"].fillna(0).astype(int)
-    df["quality_risk"] = df["quality_risk"].fillna(0)
-
-    size_scale = [max(8, r * 6) for r in df["n_recalls"]]
-    shortage_max = max(df["n_shortages"].max(), 1)
-
-    hover = [
-        f"<b>{row.drug}</b><br>"
-        f"FEIs: {row.n_feis}<br>"
-        f"Quality risk index: {row.quality_risk:.2f}<br>"
-        f"Recalls (2015–2024): {row.n_recalls}<br>"
-        f"Shortage events: {row.n_shortages}<br>"
-        f"{'Parenteral' if row.parenteral else 'Oral'}"
-        for _, row in df.iterrows()
-    ]
-
-    fig = go.Figure(go.Scatter(
-        x=df["n_feis"],
-        y=df["quality_risk"],
-        mode="markers",
-        marker=dict(
-            size=size_scale,
-            color=df["n_shortages"],
-            colorscale="Reds",
-            cmin=0, cmax=shortage_max,
-            colorbar=dict(title="Shortage<br>events", thickness=12, len=0.6),
-            line=dict(width=1.5, color="white"),
-            symbol=["diamond" if p else "circle" for p in df["parenteral"]],
-        ),
-        hovertext=hover, hoverinfo="text",
-        showlegend=False,
-    ))
-
-    # Labels only for the most extreme drugs (avoid clutter)
-    extremes = df[(df["n_feis"] <= df["n_feis"].quantile(0.35)) |
-                  (df["quality_risk"] >= df["quality_risk"].quantile(0.65)) |
-                  (df["n_shortages"] >= df["n_shortages"].quantile(0.75))]
-    for _, row in extremes.iterrows():
-        short_name = row["drug"].split(";")[0].strip()
-        fig.add_annotation(
-            x=row["n_feis"], y=row["quality_risk"],
-            text=short_name,
-            showarrow=False,
-            yshift=12 + row["n_recalls"] * 2,
-            font=dict(size=9.5, color="#333"),
-            xanchor="center",
-        )
-
-    # Quadrant lines
-    x_mid = df["n_feis"].median()
-    y_mid = df["quality_risk"].median()
-    for x_line in [x_mid]:
-        fig.add_vline(x=x_line, line_dash="dot", line_color="#CCC", line_width=1)
-    for y_line in [y_mid]:
-        fig.add_hline(y=y_line, line_dash="dot", line_color="#CCC", line_width=1)
-
-    # Quadrant labels
-    x_range = [df["n_feis"].min() - 1, df["n_feis"].max() + 2]
-    fig.add_annotation(x=x_range[0] + 1, y=df["quality_risk"].max() * 0.97,
-                       text="<b>HIGH RISK</b><br>Few producers,<br>high quality issues",
-                       showarrow=False, font=dict(color=C["red"], size=10),
-                       align="left", xanchor="left")
-    fig.add_annotation(x=x_range[1] - 1, y=df["quality_risk"].min() + 0.01,
-                       text="<b>LOW RISK</b><br>Many producers,<br>low quality issues",
-                       showarrow=False, font=dict(color=C["green"], size=10),
-                       align="right", xanchor="right")
-
-    fig.update_layout(
-        height=420, margin=dict(l=10, r=60, t=20, b=10),
-        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(title="Number of FEIs producing drug (supply concentration ↑ = safer)",
-                   gridcolor="#F0F0F0"),
-        yaxis=dict(title="Avg quality risk signal (LLM text features)",
-                   gridcolor="#F0F0F0"),
-    )
-    return fig
 
 
 def _fig_timeline(recalls_by_drug: pd.DataFrame, shortages: pd.DataFrame) -> go.Figure:
@@ -702,7 +612,7 @@ def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
 
 
 def _load_case_study(drug: str = "Metformin") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Load per-year quality signals, recalls, and shortage events for one drug."""
+    """Load monthly quality signals, recalls, and yearly shortage events for one drug."""
     fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
     fei_map.columns = [c.strip() for c in fei_map.columns]
     api_col = next(c for c in fei_map.columns if c.lower() == "api")
@@ -713,46 +623,44 @@ def _load_case_study(drug: str = "Metformin") -> tuple[pd.DataFrame, pd.DataFram
         ).dropna().astype(int)
     )
 
-    # Quality signals: average over all drug FEIs by snapshot year
+    # Quality signals: average over drug FEIs by snapshot month
     ts = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
     ts["fei"] = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
     ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
-    ts["year"] = ts["snapshot_date"].dt.year
-    drug_ts = ts[ts["fei"].isin(drug_feis)]
+    drug_ts = ts[ts["fei"].isin(drug_feis)].copy()
+    drug_ts["month_start"] = drug_ts["snapshot_date"].dt.to_period("M").dt.start_time
+
     SIGNAL_COLS = ["contamination_llm_share", "severity_critmajor_share",
                    "data_integrity_llm_share"]
-    quality_by_year = (
-        drug_ts[drug_ts["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
-        .groupby("year")[SIGNAL_COLS].mean()
-        .reset_index()
-    )
+    cols_present = [c for c in SIGNAL_COLS if c in drug_ts.columns]
+    quality_monthly = drug_ts.groupby("month_start")[cols_present].mean().reset_index()
 
-    # Recalls linked to drug FEIs
+    # Recalls: aggregate to month level
     recall = pd.read_csv(RECALL_FILT, low_memory=False)
     recall.columns = [c.strip() for c in recall.columns]
-    recall["fei"]  = pd.to_numeric(recall["FEI Number"], errors="coerce").astype("Int64")
-    recall["year"] = pd.to_datetime(recall["Recall_Date"], errors="coerce").dt.year.astype("Int64")
-    recalls_by_year = (
-        recall[recall["fei"].isin(drug_feis) &
-               recall["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
-        .groupby("year", as_index=False).size()
+    recall["fei"] = pd.to_numeric(recall["FEI Number"], errors="coerce").astype("Int64")
+    recall["recall_dt"] = pd.to_datetime(recall["Recall_Date"], errors="coerce")
+    r_drug = recall[recall["fei"].isin(drug_feis) & recall["recall_dt"].notna()].copy()
+    r_drug["month_start"] = r_drug["recall_dt"].dt.to_period("M").dt.start_time
+    recalls_monthly = (
+        r_drug.groupby("month_start", as_index=False).size()
         .rename(columns={"size": "n_recalls"})
     )
 
-    # Shortage events
+    # Shortages: year-level (UUtah is annual)
     sh = pd.read_excel(UUTAH_FILE, header=1)
     sh.columns = [c.strip() for c in sh.columns]
     sh = sh.rename(columns={"Drug Shortages": "drug_raw", "yr": "year"})
-    sh["year"]  = pd.to_numeric(sh["year"], errors="coerce").astype("Int64")
+    sh["year"] = pd.to_numeric(sh["year"], errors="coerce").astype("Int64")
     sh["drug_raw"] = sh["drug_raw"].astype(str).str.lower()
     sh_drug = sh[sh["drug_raw"].str.contains(drug.lower(), na=False)]
-    shortages_by_year = (
+    shortages_yearly = (
         sh_drug[sh_drug["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
         .groupby("year", as_index=False).size()
         .rename(columns={"size": "n_shortages"})
     )
 
-    return quality_by_year, recalls_by_year, shortages_by_year
+    return quality_monthly, recalls_monthly, shortages_yearly
 
 
 def _fig_case_study(
@@ -761,75 +669,88 @@ def _fig_case_study(
     shortages: pd.DataFrame,
     drug: str = "Metformin",
 ) -> go.Figure:
-    """End-to-end story: quality signal → recall → shortage for one drug."""
-    years = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
-
-    def _fill(df: pd.DataFrame, col: str) -> list:
-        s = df.set_index("year")[col].reindex(years, fill_value=0)
-        return s.tolist()
+    """Monthly-resolution story: quality signal → recall → shortage, showing the time lag."""
+    date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
+    date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
+    q = quality[quality["month_start"].between(date_start, date_end)].copy()
+    r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Bars: recall count (left Y)
+    # Bars: monthly recall count (left Y)
     fig.add_trace(go.Bar(
-        x=years,
-        y=_fill(recalls, "n_recalls"),
+        x=r["month_start"],
+        y=r["n_recalls"],
         name="Recall events",
         marker_color=C["red"],
         opacity=0.75,
-        hovertemplate="<b>Year %{x}</b><br>Recalls: %{y}<extra></extra>",
+        hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
     ), secondary_y=False)
 
-    # Lines: quality signals (right Y)
+    # Lines: quality signals (right Y) — points only where snapshots exist
     signal_cfg = [
-        ("severity_critmajor_share",  "Critical/Major severity share", C["orange"],  "solid"),
-        ("contamination_llm_share",   "Contamination flag share",       C["purple"],  "dash"),
-        ("data_integrity_llm_share",  "Data integrity flag share",      C["teal"],    "dot"),
+        ("severity_critmajor_share",  "Critical/Major severity share", C["orange"], "solid"),
+        ("contamination_llm_share",   "Contamination flag share",      C["purple"], "dash"),
+        ("data_integrity_llm_share",  "Data integrity flag share",     C["teal"],   "dot"),
     ]
     for col, label, col_color, dash in signal_cfg:
-        if col in quality.columns:
+        if col in q.columns:
             fig.add_trace(go.Scatter(
-                x=years,
-                y=quality.set_index("year")[col].reindex(years).tolist(),
+                x=q["month_start"],
+                y=q[col],
                 name=label,
                 mode="lines+markers",
                 line=dict(color=col_color, width=2, dash=dash),
-                marker=dict(size=5),
-                hovertemplate=f"<b>Year %{{x}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
+                marker=dict(size=7),
+                connectgaps=False,
+                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
             ), secondary_y=True)
 
-    # Shortage markers
+    # Shortage vertical markers (year-level UUtah — mark Jan 1 of each shortage year)
     for _, row in shortages.iterrows():
-        fig.add_vline(
-            x=int(row["year"]),
-            line_dash="dot", line_color=C["green"], line_width=1.5,
-        )
+        yr = int(row["year"])
+        x_str = f"{yr}-01-01"
+        fig.add_vline(x=x_str, line_dash="dot", line_color=C["green"], line_width=1.5)
         fig.add_annotation(
-            x=int(row["year"]),
-            y=1.08, yref="paper",
-            text=f"⚠ Shortage<br>({int(row['year'])})",
+            x=x_str, y=1.08, yref="paper",
+            text=f"⚠ Shortage ({yr})",
             showarrow=False,
-            font=dict(color=C["green"], size=9),
-            align="center",
+            font=dict(color=C["green"], size=9), align="center",
         )
 
-    # Key event annotation: 2020 NDMA
     if drug == "Metformin":
         fig.add_annotation(
-            x=2020, y=14,
-            text="<b>2020: 14 recalls</b><br>NDMA contamination<br>(CGMP deviations)",
+            x="2020-06-01", y=14,
+            text="<b>June 2020: 14 recalls</b><br>NDMA contamination<br>(CGMP deviations)",
             showarrow=True, arrowhead=2, arrowcolor=C["red"],
-            ax=60, ay=-50,
+            ax=80, ay=-60,
             font=dict(color=C["red"], size=10),
             bgcolor="rgba(255,255,255,0.85)", bordercolor=C["red"], borderwidth=1,
         )
+        # Annotate the Jan 2020 quality spike if data exists
+        jan2020 = q[q["month_start"] == pd.Timestamp("2020-01-01")]
+        if not jan2020.empty and "severity_critmajor_share" in jan2020.columns:
+            sev_val = float(jan2020["severity_critmajor_share"].iloc[0])
+            fig.add_annotation(
+                x="2020-01-01", y=sev_val, yref="y2",
+                text="<b>Jan 2020: quality spike</b><br>Severity=1.0, DI=0.43<br>→ ~5 month early warning",
+                showarrow=True, arrowhead=2, arrowcolor=C["orange"],
+                ax=-110, ay=-45,
+                font=dict(color=C["orange"], size=10),
+                bgcolor="rgba(255,255,255,0.85)", bordercolor=C["orange"], borderwidth=1,
+            )
 
     fig.update_layout(
-        height=420, margin=dict(l=10, r=10, t=30, b=10),
+        height=460,
+        margin=dict(l=10, r=10, t=30, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(title="Year", dtick=1, gridcolor="#F0F0F0"),
+        xaxis=dict(
+            title="Month", gridcolor="#F0F0F0",
+            tickformat="%b %Y", dtick="M6", tickangle=-30,
+        ),
         yaxis=dict(title="# Recall events", gridcolor="#F0F0F0"),
-        yaxis2=dict(title="Quality signal share (0–1)", range=[0, 1.1], gridcolor="rgba(0,0,0,0)"),
+        yaxis2=dict(title="Quality signal share (0–1)", range=[0, 1.2],
+                    gridcolor="rgba(0,0,0,0)"),
         legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.9)",
                     bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
         bargap=0.3,
@@ -851,7 +772,6 @@ def build_html(
     supply: pd.DataFrame,
     recalls_by_drug: pd.DataFrame,
     shortages: pd.DataFrame,
-    quality: pd.DataFrame,
     fi: pd.DataFrame,
     ablation: pd.DataFrame,
     cs_quality: pd.DataFrame | None = None,
@@ -875,13 +795,12 @@ def build_html(
         cs_div = _div(_fig_case_study(cs_quality, cs_recalls, cs_shortages), "fig_case")
 
     divs = {
-        "funnel":       _div(_fig_funnel(cov),                           "fig_funnel"),
-        "supply":       _div(_fig_supply_concentration(supply, recalls_by_drug), "fig_supply"),
-        "matrix":       _div(_fig_risk_matrix(supply, recalls_by_drug, shortages, quality), "fig_matrix"),
-        "timeline":     _div(_fig_timeline(recalls_by_drug, shortages),  "fig_timeline"),
-        "paths":        _div(_fig_path_breakdown(shortages),             "fig_paths"),
-        "case":         cs_div,
-        "model":        _div(_fig_model_evidence(fi, ablation),          "fig_model"),
+        "funnel":   _div(_fig_funnel(cov),                                "fig_funnel"),
+        "supply":   _div(_fig_supply_concentration(supply, recalls_by_drug), "fig_supply"),
+        "timeline": _div(_fig_timeline(recalls_by_drug, shortages),       "fig_timeline"),
+        "paths":    _div(_fig_path_breakdown(shortages),                  "fig_paths"),
+        "case":     cs_div,
+        "model":    _div(_fig_model_evidence(fi, ablation),               "fig_model"),
     }
 
     today = date.today().strftime("%B %d, %Y")
@@ -956,7 +875,7 @@ def build_html(
 <nav>
   <div class="nav-brand">Drug Shortage &nbsp;<span>·</span>&nbsp; Quality Risk & Causal Paths</div>
   <a href="#coverage">① Coverage</a>
-  <a href="#supply">② Supply Landscape</a>
+  <a href="#supply">② Supply</a>
   <a href="#timeline">③ Timeline</a>
   <a href="#paths">④ Causal Paths</a>
   <a href="#casestudy">⑤ Case Study</a>
@@ -1014,21 +933,18 @@ def build_html(
 <!-- ② Supply Landscape -->
 <section id="supply">
   <div class="section-head">
-    <div class="section-title">② Supply Concentration & Risk Profile</div>
+    <div class="section-title">② Supply Concentration</div>
     <div class="section-sub">
-      Left: how many FEIs produce each drug (March 2026 Valisure mapping) + recall events per drug.
-      Orange = drug has at least one injectable formulation approved in the Orange Book
-      ("has injectable form") — this does NOT mean the drug is exclusively injectable.
-      For example, Vancomycin is given IV for bloodstream infections but orally for C. diff;
-      Metoprolol is primarily oral but has an IV form for cardiac emergencies.
-      Right: bubble chart — fewer FEIs + higher quality risk = upper-left (highest shortage risk).
-      Bubble size = recalls; color = shortage events. Diamond = has injectable form.
+      Left panel: how many FEIs (manufacturing facilities) produce each drug, based on
+      the March 2026 Valisure mapping. Fewer producing FEIs = higher concentration risk.
+      Orange bars = drug has at least one injectable formulation approved in the Orange Book —
+      this does <i>not</i> mean the drug is exclusively injectable. For example, Vancomycin
+      is given IV for bloodstream infections but orally for C. diff; Metoprolol is primarily
+      oral but has an IV cardiac form.
+      Right panel: total recall events linked to these FEIs (2015–2024). Hover for drug details.
     </div>
   </div>
-  <div class="two-col">
-    <div class="card">{divs['supply']}</div>
-    <div class="card">{divs['matrix']}</div>
-  </div>
+  <div class="card">{divs['supply']}</div>
 </section>
 
 <!-- ③ Events Timeline -->
@@ -1050,11 +966,18 @@ def build_html(
   <div class="section-head">
     <div class="section-title">④ Causal Path Analysis</div>
     <div class="section-sub">
-      How many shortage events are explained by each causal path?
-      Path A (manufacturing/quality) includes all shortages where the reported reason was
-      a manufacturing problem, regulatory action, or quality issue. Path B (discontinuation/exit)
-      includes shortages attributed to business decisions or product discontinuation.
-      Unknown/demand shortages are tracked separately.
+      <b>How paths are classified:</b> The University of Utah drug shortage database
+      includes a free-text <i>Reason</i> field for each shortage event. We classify
+      events by keyword matching on that field — "manufacturing / CGMP / quality / recall"
+      → Path A; "discontinued / business decision / market exit" → Path B.
+      This is observational labeling from a self-reported field; it does not establish causation.
+      <b>Key limitation: ~50% of events in our 13-drug subset are reported as "Unknown" reason</b>,
+      so the true split between paths is uncertain. The breakdown below reflects only events
+      where a reason was recorded.
+      <br><br>
+      Path B evidence in this panel: Lisinopril 2020 (Business Decision), Vancomycin 2002
+      (Business Decision — outside panel window), Potassium chloride 2019 (combo product discontinuation).
+      These are the clearest examples of potential silent exits in the data.
     </div>
   </div>
   <div class="card">{divs['paths']}</div>
@@ -1063,19 +986,22 @@ def build_html(
 <!-- ⑤ Case Study: Metformin NDMA 2020 -->
 <section id="casestudy">
   <div class="section-head">
-    <div class="section-title">⑤ Case Study: Metformin — Path A from 483 to Shortage</div>
+    <div class="section-title">⑤ Case Study: Metformin — Path A at Monthly Resolution</div>
     <div class="section-sub">
-      A real end-to-end example of Path A across 26 Metformin FEIs (of 34 total).
+      Monthly-resolution view showing the real time lag between quality signals and recalls.
       <b>The chain:</b>
-      (1) 483 inspections in 2019 show rising Critical/Major severity (0.35) and contamination signals;
-      (2) In 2020, severity spikes to 0.57 and data integrity flags jump to 0.43 as FDA inspectors
-      document NDMA impurity findings across multiple manufacturers;
-      (3) 14 recalls in 2020 — all citing "CGMP Deviations: NDMA impurity above acceptable intake level";
-      (4) A shortage of Metformin appears in the UUtah database for 2021 and again in 2024
-      as supply disruption follows the recall wave.
+      (1) FDA 483 inspection snapshots for Metformin FEIs in <b>January 2020</b> show
+      Critical/Major severity = 1.0 and data integrity = 0.43 — the highest values in the panel;
+      (2) In <b>June 2020</b> — approximately 5 months later — 14 recalls are issued, all citing
+      "CGMP Deviations: NDMA impurity above acceptable intake level";
+      (3) UUtah records a Metformin shortage in <b>2021 and 2024</b> as downstream supply disruption follows.
       <br><br>
-      Bars = recall events (left axis). Lines = LLM-extracted 483 quality signals averaged across
-      Metformin FEIs by year (right axis). Green dotted lines = shortage events per UUtah database.
+      <b>Note on quality signal lines:</b> LLM text features come from Redica inspection snapshots,
+      recorded at irregular dates (not monthly). Points on the quality lines represent actual
+      snapshot dates aggregated to their calendar month — gaps mean no snapshot in that month.
+      Bars = recall events (left axis, monthly). Lines = LLM quality signals averaged across
+      Metformin FEIs per snapshot month (right axis, 0–1 share).
+      Green dotted lines = shortage events (UUtah, year-level — placed at Jan 1 of the shortage year).
     </div>
   </div>
   <div class="card">{divs['case']}</div>
@@ -1086,10 +1012,17 @@ def build_html(
   <div class="section-head">
     <div class="section-title">⑥ Model Evidence: 483 Text Improves Recall Prediction</div>
     <div class="section-sub">
-      L2 logistic regression, GroupKFold CV by FEI (facility never in both train and test).
+      <b>What this model predicts:</b> whether a FEI will have a <i>recall event</i> in year t+1,
+      given features measured in year t. This is the intermediate step in Path A
+      (quality failure → recall) — not a direct shortage prediction. Recall prediction is
+      the tractable modeling target; the path from recall to shortage depends on supply
+      concentration (Section ②) and market structure.
+      <br><br>
+      L2 logistic regression, GroupKFold CV by FEI (a facility never appears in both train and test).
       Adding LLM-extracted 483 text features improves AUC from {auc_no:.3f} to {auc_yes:.3f}
-      (+{lift_abs:.3f}, +{lift_rel:.0f}% relative). Feature importance from full-panel Random Forest.
-      Contamination and cultural root-cause are the strongest text signals.
+      (+{lift_abs:.3f}, +{lift_rel:.0f}% relative lift), showing that inspection text carries
+      predictive signal beyond structured inspection counts alone.
+      Right panel: feature importance from a full-panel Random Forest (top 12 features by group).
     </div>
   </div>
   <div class="card">{divs['model']}</div>
@@ -1117,15 +1050,14 @@ def main():
     supply   = _load_supply_concentration(fdmap)
     recalls  = _load_recall_by_drug(fdmap)
     shortage = _load_shortage_by_drug()
-    quality  = _load_drug_quality_profile(fdmap)
     cov      = _load_coverage()
     fi, abl  = _load_model_outputs()
     cs_q, cs_r, cs_s = _load_case_study("Metformin")
-    log.info("Case study: Metformin — %d quality years, %d recall years, %d shortage years",
+    log.info("Case study: Metformin — %d quality months, %d recall months, %d shortage years",
              len(cs_q), len(cs_r), len(cs_s))
 
     log.info("Building HTML…")
-    html = build_html(cov, supply, recalls, shortage, quality, fi, abl,
+    html = build_html(cov, supply, recalls, shortage, fi, abl,
                       cs_quality=cs_q, cs_recalls=cs_r, cs_shortages=cs_s)
 
     OUT_HTML.write_text(html, encoding="utf-8")
