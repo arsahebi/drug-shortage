@@ -84,6 +84,8 @@ OUT_STATIC  = HERE / "483_fei_context_features.csv"           # static / legacy
 # Combined (PDF + Redica) paths — used when --source combined
 COMBINED_CSV     = HERE / "483_combined_obs_universe.csv"
 OUT_COMBINED_CSV = HERE / "483_fei_text_features_timeseries_combined.csv"
+# Redica-only paths — used when --source redica (preferred for modeling)
+OUT_REDICA_CSV   = HERE / "483_fei_text_features_timeseries_redica.csv"
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
@@ -477,9 +479,13 @@ def _run_aggregation(df: pd.DataFrame, out_csv: Path, out_static: Path | None, l
 def main() -> None:
     parser = argparse.ArgumentParser(description="Aggregate FEI text features into time-series snapshots.")
     parser.add_argument(
-        "--source", choices=["pdf", "combined"], default="pdf",
-        help="'pdf' uses 483_observation_context_signals.csv (38 FEIs); "
-             "'combined' uses 483_combined_obs_universe.csv (99 FEIs)."
+        "--source", choices=["pdf", "combined", "redica"], default="pdf",
+        help=(
+            "'pdf'      — 483_observation_context_signals.csv (38 FEIs, PDF pipeline).\n"
+            "'combined' — 483_combined_obs_universe.csv (all sources, 99 FEIs).\n"
+            "'redica'   — 483_combined_obs_universe.csv filtered to source==redica "
+            "(98 FEIs, current LLM pipeline; use this for modeling)."
+        ),
     )
     args = parser.parse_args()
 
@@ -488,11 +494,24 @@ def main() -> None:
             sys.exit(f"\n[ERROR] Combined obs universe not found:\n  {COMBINED_CSV}\n"
                      "Run 04_build_combined_obs_universe.py first.\n")
         df = pd.read_csv(COMBINED_CSV)
-        # Mark all redica/combined rows as scored (they all have LLM labels)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
         _run_aggregation(df, OUT_COMBINED_CSV, out_static=None,
                          label="Combined (PDF + Redica) — 99 FEIs")
+        return
+
+    if args.source == "redica":
+        if not COMBINED_CSV.exists():
+            sys.exit(f"\n[ERROR] Combined obs universe not found:\n  {COMBINED_CSV}\n"
+                     "Run 04_build_combined_obs_universe.py first.\n")
+        df = pd.read_csv(COMBINED_CSV)
+        df = df[df["source"] == "redica"].copy()
+        if "extraction_status" not in df.columns:
+            df["extraction_status"] = "ok"
+        print(f"  Filtered to source=redica: {len(df):,} observations, "
+              f"{df['fei'].nunique()} FEIs")
+        _run_aggregation(df, OUT_REDICA_CSV, out_static=None,
+                         label="Redica-only (current LLM pipeline) — 98 FEIs")
         return
 
     # Default: PDF-only pipeline

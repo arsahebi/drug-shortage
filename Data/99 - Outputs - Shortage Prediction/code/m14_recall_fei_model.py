@@ -37,8 +37,11 @@ Outputs:
   outputs/tables/fei_risk_ranking.csv
   outputs/figures/text_feature_lift_recall_fei.png      (ablation Fig D)
 
-Note: SDUD volume weights available via utils.load_sdud_fei_volume — incorporate
-when extending to shortage prediction.
+TODO (SDUD volume weighting): Incorporate Medicaid volume shares as a feature or
+sample weight.  The NDC→FEI bridge currently only has 5-4 labeler-product NDCs
+(missing the package code), so the join to SDUD's 11-digit ndc11 fails.  Fix:
+extend bridge via FDA NDC package.csv (PRODUCTNDC → NDCPACKAGECODE), then call
+utils.load_sdud_fei_volume().  See also the TODO block in config.py.
 """
 
 from __future__ import annotations
@@ -65,7 +68,7 @@ except ModuleNotFoundError:
 
 from config import (
     REDICA_CSV, VALISURE_FEI, VALISURE_CSV, RECALL_FILT,
-    TEXT_TIMESERIES_COMBINED_CSV,
+    TEXT_TIMESERIES_REDICA_CSV,
     OUT_DATA, OUT_FIGS, OUT_TABS, OUT_MODELS, OUT_LOGS,
     PANEL_START_YEAR, PANEL_END_YEAR, SEED,
 )
@@ -181,15 +184,15 @@ def _add_cumulative_oai(fei_year: pd.DataFrame) -> pd.DataFrame:
 
 def _load_text_features() -> pd.DataFrame:
     """Load combined timeseries; if not present, fall back gracefully."""
-    if not TEXT_TIMESERIES_COMBINED_CSV.exists():
+    if not TEXT_TIMESERIES_REDICA_CSV.exists():
         log.warning(
-            "Combined text timeseries not found at %s. "
-            "Run: python 02_aggregate_fei_features.py --source combined",
-            TEXT_TIMESERIES_COMBINED_CSV,
+            "Redica text timeseries not found at %s. "
+            "Run: python 02_aggregate_fei_features.py --source redica",
+            TEXT_TIMESERIES_REDICA_CSV,
         )
         return pd.DataFrame(columns=["fei", "snapshot_date"] + TEXT_FEATURES)
 
-    df = pd.read_csv(TEXT_TIMESERIES_COMBINED_CSV)
+    df = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
     df["fei"]           = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
     df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
     df = df.dropna(subset=["fei", "snapshot_date"])
