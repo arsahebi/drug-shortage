@@ -403,75 +403,63 @@ def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFram
 
 
 def _fig_timeline(recalls_by_drug: pd.DataFrame, shortages: pd.DataFrame) -> go.Figure:
-    """Two time series: recalls (top) and shortages (bottom) by drug × year."""
+    """Per-drug dropdown: recall events (top) and shortage events (bottom) by year."""
     years = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
     drugs = sorted(set(recalls_by_drug["drug"]) | set(shortages["drug"]))
 
-    palette = [
-        "#4A90D9", "#E07B39", "#3DAA6E", "#D94A4A", "#7B5EA7",
-        "#2E8B8B", "#C6833A", "#5588BB", "#8E4B9E", "#357A38",
-        "#C0392B", "#1A7A4A", "#845EC2", "#FF9671",
-    ]
-    drug_color = {d: palette[i % len(palette)] for i, d in enumerate(sorted(drugs))}
-
     fig = make_subplots(
         rows=2, cols=1,
-        subplot_titles=["Recall events by drug × year (Path A)",
-                        "Shortage events by drug × year (Path A + B + other)"],
-        vertical_spacing=0.14,
+        subplot_titles=["Recall events", "Shortage events"],
+        vertical_spacing=0.12,
         shared_xaxes=True,
     )
 
-    def _to_yearly(df_sub: pd.DataFrame, val_col: str) -> list[int]:
-        s = df_sub.set_index("year")[val_col].reindex(years, fill_value=0)
-        return s.tolist()
+    for i, drug in enumerate(drugs):
+        visible = (i == 0)
 
-    # Recalls
-    for drug in sorted(drugs):
-        sub = recalls_by_drug[recalls_by_drug["drug"] == drug][["year", "n_recalls"]].copy()
-        sub["year"] = sub["year"].astype(int)
-        if sub.empty:
-            continue
+        # Recalls
+        sub_r = recalls_by_drug[recalls_by_drug["drug"] == drug][["year", "n_recalls"]].copy()
+        sub_r["year"] = sub_r["year"].astype(int)
+        y_r = sub_r.set_index("year")["n_recalls"].reindex(years, fill_value=0).tolist()
         fig.add_trace(go.Bar(
-            x=years, y=_to_yearly(sub, "n_recalls"),
-            name=drug, marker_color=drug_color[drug],
-            showlegend=True, legendgroup=drug,
-            hovertemplate=f"<b>{drug}</b><br>Year: %{{x}}<br>Recalls: %{{y}}<extra></extra>",
+            x=years, y=y_r, name="Recalls",
+            marker_color=C["red"], visible=visible, showlegend=False,
+            hovertemplate="<b>Year %{x}</b><br>Recalls: %{y}<extra></extra>",
         ), row=1, col=1)
 
-    # Shortages — stack by path
-    path_colors = {
-        "Path A — Quality/Manufacturing": C["red"],
-        "Path B — Discontinuation/Exit":  C["purple"],
-        "Demand surge":                    C["orange"],
-        "Raw material":                    C["teal"],
-        "Unknown":                         C["gray"],
-    }
-    path_seen: set[str] = set()
-    for drug in sorted(drugs):
-        sub_d = shortages[shortages["drug"] == drug]
-        if sub_d.empty:
-            continue
-        for path, pcolor in path_colors.items():
-            sub_p = sub_d[sub_d["path"] == path][["year", "n"]].copy()
-            sub_p["year"] = sub_p["year"].astype(int)
-            if sub_p.empty:
-                continue
-            fig.add_trace(go.Bar(
-                x=years, y=_to_yearly(sub_p, "n"),
-                name=path, marker_color=pcolor,
-                showlegend=(path not in path_seen),
-                legendgroup=f"path_{path}",
-                hovertemplate=f"<b>{drug}</b> | {path}<br>Year: %{{x}}<br>Shortages: %{{y}}<extra></extra>",
-            ), row=2, col=1)
-            path_seen.add(path)
+        # Shortages (total, no path split)
+        tot_s = shortages[shortages["drug"] == drug].groupby("year")["n"].sum().reset_index()
+        tot_s["year"] = tot_s["year"].astype(int)
+        y_s = tot_s.set_index("year")["n"].reindex(years, fill_value=0).tolist()
+        fig.add_trace(go.Bar(
+            x=years, y=y_s, name="Shortages",
+            marker_color=C["purple"], visible=visible, showlegend=False,
+            hovertemplate="<b>Year %{x}</b><br>Shortage events: %{y}<extra></extra>",
+        ), row=2, col=1)
+
+    # Dropdown — 2 traces per drug
+    n = 2
+    buttons = []
+    for i, drug in enumerate(drugs):
+        vis = [False] * (len(drugs) * n)
+        vis[i * n]     = True
+        vis[i * n + 1] = True
+        buttons.append(dict(label=drug, method="update", args=[{"visible": vis}]))
 
     fig.update_layout(
-        height=560, margin=dict(l=10, r=10, t=50, b=10),
+        height=440,
+        margin=dict(l=10, r=10, t=80, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
-        barmode="stack",
-        legend=dict(x=1.01, y=1, font=dict(size=10)),
-        xaxis2=dict(title="Year"),
+        updatemenus=[dict(
+            buttons=buttons,
+            direction="down",
+            x=0.0, y=1.22,
+            xanchor="left", yanchor="top",
+            showactive=True,
+            bgcolor="white", bordercolor="#DDD",
+            font=dict(size=12),
+        )],
+        xaxis2=dict(title="Year", dtick=1, gridcolor="#F0F0F0"),
         yaxis=dict(title="# Recall events", gridcolor="#F0F0F0"),
         yaxis2=dict(title="# Shortage events", gridcolor="#F0F0F0"),
     )
@@ -669,91 +657,198 @@ def _fig_case_study(
     shortages: pd.DataFrame,
     drug: str = "Metformin",
 ) -> go.Figure:
-    """Monthly-resolution story: quality signal → recall → shortage, showing the time lag."""
+    """Two-row monthly case study: quality signals (top), recall bars (bottom)."""
     date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
     date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
     q = quality[quality["month_start"].between(date_start, date_end)].copy()
     r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=["LLM-extracted 483 quality signals (monthly snapshots)",
+                        "Recall events (monthly count)"],
+        vertical_spacing=0.10,
+        shared_xaxes=True,
+        row_heights=[0.55, 0.45],
+    )
 
-    # Bars: monthly recall count (left Y)
-    fig.add_trace(go.Bar(
-        x=r["month_start"],
-        y=r["n_recalls"],
-        name="Recall events",
-        marker_color=C["red"],
-        opacity=0.75,
-        hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
-    ), secondary_y=False)
-
-    # Lines: quality signals (right Y) — points only where snapshots exist
+    # Row 1: Quality signal lines (only where snapshots exist — no gap-fill)
     signal_cfg = [
-        ("severity_critmajor_share",  "Critical/Major severity share", C["orange"], "solid"),
-        ("contamination_llm_share",   "Contamination flag share",      C["purple"], "dash"),
-        ("data_integrity_llm_share",  "Data integrity flag share",     C["teal"],   "dot"),
+        ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
+        ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
+        ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
     ]
     for col, label, col_color, dash in signal_cfg:
         if col in q.columns:
             fig.add_trace(go.Scatter(
-                x=q["month_start"],
-                y=q[col],
+                x=q["month_start"], y=q[col],
                 name=label,
                 mode="lines+markers",
-                line=dict(color=col_color, width=2, dash=dash),
-                marker=dict(size=7),
+                line=dict(color=col_color, width=2.5, dash=dash),
+                marker=dict(size=6),
                 connectgaps=False,
                 hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
-            ), secondary_y=True)
+            ), row=1, col=1)
 
-    # Shortage vertical markers (year-level UUtah — mark Jan 1 of each shortage year)
-    for _, row in shortages.iterrows():
-        yr = int(row["year"])
-        x_str = f"{yr}-01-01"
-        fig.add_vline(x=x_str, line_dash="dot", line_color=C["green"], line_width=1.5)
+    # Row 2: Monthly recall bars
+    if not r.empty:
+        fig.add_trace(go.Bar(
+            x=r["month_start"], y=r["n_recalls"],
+            name="Recalls", marker_color=C["red"], opacity=0.85,
+            showlegend=False,
+            hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
+        ), row=2, col=1)
+
+    # Shortage vlines on both rows + top annotation
+    for _, sh_row in shortages.iterrows():
+        yr = int(sh_row["year"])
+        for rn in [1, 2]:
+            fig.add_vline(x=f"{yr}-01-01", line_dash="dot",
+                         line_color=C["green"], line_width=1.5, row=rn, col=1)
         fig.add_annotation(
-            x=x_str, y=1.08, yref="paper",
-            text=f"⚠ Shortage ({yr})",
-            showarrow=False,
-            font=dict(color=C["green"], size=9), align="center",
+            x=f"{yr}-01-01", y=1.06, yref="paper",
+            text=f"⚠ Shortage {yr}",
+            showarrow=False, font=dict(color=C["green"], size=9), align="center",
         )
 
     if drug == "Metformin":
+        # June 2020 recall spike annotation (row 2)
         fig.add_annotation(
-            x="2020-06-01", y=14,
-            text="<b>June 2020: 14 recalls</b><br>NDMA contamination<br>(CGMP deviations)",
+            x="2020-06-01", y=14, yref="y2",
+            text="<b>June 2020</b><br>14 NDMA recalls",
             showarrow=True, arrowhead=2, arrowcolor=C["red"],
-            ax=80, ay=-60,
+            ax=65, ay=-35,
             font=dict(color=C["red"], size=10),
-            bgcolor="rgba(255,255,255,0.85)", bordercolor=C["red"], borderwidth=1,
+            bgcolor="rgba(255,255,255,0.92)", bordercolor=C["red"], borderwidth=1,
         )
-        # Annotate the Jan 2020 quality spike if data exists
+        # Jan 2020 quality spike annotation (row 1)
         jan2020 = q[q["month_start"] == pd.Timestamp("2020-01-01")]
         if not jan2020.empty and "severity_critmajor_share" in jan2020.columns:
-            sev_val = float(jan2020["severity_critmajor_share"].iloc[0])
+            sev = float(jan2020["severity_critmajor_share"].iloc[0])
             fig.add_annotation(
-                x="2020-01-01", y=sev_val, yref="y2",
-                text="<b>Jan 2020: quality spike</b><br>Severity=1.0, DI=0.43<br>→ ~5 month early warning",
+                x="2020-01-01", y=sev, yref="y",
+                text="<b>Jan 2020</b><br>Quality spike<br>~5 months before recalls",
                 showarrow=True, arrowhead=2, arrowcolor=C["orange"],
-                ax=-110, ay=-45,
+                ax=-105, ay=-40,
                 font=dict(color=C["orange"], size=10),
-                bgcolor="rgba(255,255,255,0.85)", bordercolor=C["orange"], borderwidth=1,
+                bgcolor="rgba(255,255,255,0.92)", bordercolor=C["orange"], borderwidth=1,
             )
 
     fig.update_layout(
-        height=460,
-        margin=dict(l=10, r=10, t=30, b=10),
+        height=500,
+        margin=dict(l=10, r=10, t=50, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(
+        xaxis2=dict(
             title="Month", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
-        yaxis=dict(title="# Recall events", gridcolor="#F0F0F0"),
-        yaxis2=dict(title="Quality signal share (0–1)", range=[0, 1.2],
-                    gridcolor="rgba(0,0,0,0)"),
-        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.9)",
+        yaxis=dict(title="Signal share (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
+        yaxis2=dict(title="# Recalls", gridcolor="#F0F0F0"),
+        legend=dict(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.92)",
                     bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
-        bargap=0.3,
+    )
+    return fig
+
+
+def _fig_case_study_path_b(
+    quality: pd.DataFrame,
+    recalls: pd.DataFrame,
+    shortages: pd.DataFrame,
+    drug: str = "Lisinopril",
+) -> go.Figure:
+    """Path B case study: quality signals + absent recalls + business-decision shortage."""
+    date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
+    date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
+    q = quality[quality["month_start"].between(date_start, date_end)].copy()
+    r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
+    no_recalls = r.empty or int(r["n_recalls"].sum()) == 0
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=[
+            "LLM-extracted 483 quality signals (monthly snapshots)",
+            "Recall events — Path B: none issued (silent exit)",
+        ],
+        vertical_spacing=0.10,
+        shared_xaxes=True,
+        row_heights=[0.55, 0.45],
+    )
+
+    # Row 1: Quality signals
+    signal_cfg = [
+        ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
+        ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
+        ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
+    ]
+    has_quality = False
+    for col, label, col_color, dash in signal_cfg:
+        if col in q.columns and not q[col].isna().all():
+            has_quality = True
+            fig.add_trace(go.Scatter(
+                x=q["month_start"], y=q[col],
+                name=label,
+                mode="lines+markers",
+                line=dict(color=col_color, width=2.5, dash=dash),
+                marker=dict(size=6),
+                connectgaps=False,
+                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
+            ), row=1, col=1)
+
+    if not has_quality:
+        fig.add_annotation(
+            x=0.5, y=0.75, xref="paper", yref="paper",
+            text=(f"<i>No LLM text features available<br>"
+                  f"for {drug} FEIs in the current pipeline.<br>"
+                  f"483 text extraction covers 98/129 Valisure FEIs.</i>"),
+            showarrow=False, font=dict(color="#888", size=12), align="center",
+        )
+
+    # Row 2: Recall bars (empty bars visible to show the absence)
+    if not r.empty:
+        fig.add_trace(go.Bar(
+            x=r["month_start"], y=r["n_recalls"],
+            name="Recalls", marker_color=C["red"], opacity=0.85,
+            showlegend=False,
+            hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
+        ), row=2, col=1)
+
+    # "No recalls" label
+    if no_recalls:
+        fig.add_annotation(
+            x=0.5, y=0.18, xref="paper", yref="paper",
+            text=("<b>No recalls issued for this drug</b><br>"
+                  "Path B: firm quietly discontinued — no FDA recall action required"),
+            showarrow=False,
+            font=dict(color=C["purple"], size=11),
+            bgcolor="rgba(123,94,167,0.08)",
+            bordercolor=C["purple"], borderwidth=1, borderpad=8,
+            align="center",
+        )
+
+    # Shortage / Business Decision vlines (purple = Path B colour)
+    for _, sh_row in shortages.iterrows():
+        yr = int(sh_row["year"])
+        for rn in [1, 2]:
+            fig.add_vline(x=f"{yr}-01-01", line_dash="dot",
+                         line_color=C["purple"], line_width=2.0, row=rn, col=1)
+        fig.add_annotation(
+            x=f"{yr}-01-01", y=1.07, yref="paper",
+            text=f"⚠ Shortage {yr}<br>Business Decision",
+            showarrow=False, font=dict(color=C["purple"], size=9), align="center",
+        )
+
+    fig.update_layout(
+        height=500,
+        margin=dict(l=10, r=10, t=50, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        xaxis2=dict(
+            title="Month", gridcolor="#F0F0F0",
+            tickformat="%b %Y", dtick="M6", tickangle=-30,
+        ),
+        yaxis=dict(title="Signal share (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
+        yaxis2=dict(title="# Recalls", range=[0, 5], gridcolor="#F0F0F0"),
+        legend=dict(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.92)",
+                    bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
     )
     return fig
 
@@ -777,9 +872,12 @@ def build_html(
     cs_quality: pd.DataFrame | None = None,
     cs_recalls: pd.DataFrame | None = None,
     cs_shortages: pd.DataFrame | None = None,
+    cs_b_quality: pd.DataFrame | None = None,
+    cs_b_recalls: pd.DataFrame | None = None,
+    cs_b_shortages: pd.DataFrame | None = None,
 ) -> str:
-    auc_no  = ablation.iloc[0]["auc"]
-    auc_yes = ablation.iloc[1]["auc"]
+    auc_no   = ablation.iloc[0]["auc"]
+    auc_yes  = ablation.iloc[1]["auc"]
     lift_abs = auc_yes - auc_no
     lift_rel = lift_abs / max(auc_no, 0.001) * 100
 
@@ -792,15 +890,23 @@ def build_html(
 
     cs_div = ""
     if cs_quality is not None and cs_recalls is not None and cs_shortages is not None:
-        cs_div = _div(_fig_case_study(cs_quality, cs_recalls, cs_shortages), "fig_case")
+        cs_div = _div(_fig_case_study(cs_quality, cs_recalls, cs_shortages), "fig_case_a")
+
+    cs_b_div = ""
+    if cs_b_quality is not None and cs_b_recalls is not None and cs_b_shortages is not None:
+        cs_b_div = _div(
+            _fig_case_study_path_b(cs_b_quality, cs_b_recalls, cs_b_shortages, "Lisinopril"),
+            "fig_case_b",
+        )
 
     divs = {
-        "funnel":   _div(_fig_funnel(cov),                                "fig_funnel"),
-        "supply":   _div(_fig_supply_concentration(supply, recalls_by_drug), "fig_supply"),
-        "timeline": _div(_fig_timeline(recalls_by_drug, shortages),       "fig_timeline"),
-        "paths":    _div(_fig_path_breakdown(shortages),                  "fig_paths"),
-        "case":     cs_div,
-        "model":    _div(_fig_model_evidence(fi, ablation),               "fig_model"),
+        "funnel":   _div(_fig_funnel(cov),                                   "fig_funnel"),
+        "supply":   _div(_fig_supply_concentration(supply, recalls_by_drug),  "fig_supply"),
+        "paths":    _div(_fig_path_breakdown(shortages),                      "fig_paths"),
+        "timeline": _div(_fig_timeline(recalls_by_drug, shortages),           "fig_timeline"),
+        "case_a":   cs_div,
+        "case_b":   cs_b_div,
+        "model":    _div(_fig_model_evidence(fi, ablation),                   "fig_model"),
     }
 
     today = date.today().strftime("%B %d, %Y")
@@ -830,17 +936,31 @@ def build_html(
   .hero {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             color: white; padding: 40px 40px 32px; border-bottom: 3px solid #68D391; }}
   .hero h1 {{ font-size: 23px; font-weight: 700; margin-bottom: 8px; }}
-  .hero p  {{ color: #A0AEC0; font-size: 13.5px; line-height: 1.65; max-width: 800px; margin-bottom: 18px; }}
+  .hero p   {{ color: #A0AEC0; font-size: 13.5px; line-height: 1.65; max-width: 800px; margin-bottom: 24px; }}
 
-  .paths-row {{ display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 24px; }}
-  .path-card {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
-                 border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 220px; }}
-  .path-card .path-label {{ font-size: 11px; color: #A0AEC0; text-transform: uppercase;
-                              letter-spacing: 0.5px; margin-bottom: 6px; }}
-  .path-card .path-title {{ font-size: 14px; font-weight: 600; margin-bottom: 6px; }}
-  .path-card .path-desc  {{ font-size: 12px; color: #A0AEC0; line-height: 1.5; }}
-  .path-a {{ border-left: 3px solid #D94A4A; }}
-  .path-b {{ border-left: 3px solid #7B5EA7; }}
+  /* ── Causal path flowchart ── */
+  .flow-diagram {{ display: flex; flex-direction: column; align-items: center;
+                   gap: 0; margin-bottom: 28px; }}
+  .flow-row {{ display: flex; justify-content: center; align-items: center; width: 100%; }}
+  .flow-split {{ gap: 60px; align-items: flex-start; margin: 0; }}
+  .flow-side {{ display: flex; flex-direction: column; align-items: center; gap: 0; }}
+  .flow-box {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.18);
+                border-radius: 10px; padding: 12px 26px; text-align: center;
+                min-width: 180px; max-width: 230px; }}
+  .flow-box.flow-start {{ border-color: #4A90D9; border-width: 2px; }}
+  .flow-box.flow-a     {{ border-color: #D94A4A; border-width: 2px; }}
+  .flow-box.flow-b     {{ border-color: #7B5EA7; border-width: 2px; }}
+  .flow-box.flow-end   {{ border-color: #3DAA6E; border-width: 2px;
+                           background: rgba(61,170,110,0.10); }}
+  .flow-title {{ color: #F0F0F0; font-size: 13px; font-weight: 600; display: block; }}
+  .flow-sub   {{ color: #A0AEC0; font-size: 11px; display: block; margin-top: 3px; }}
+  .flow-arrow-v {{ color: #A0AEC0; font-size: 20px; line-height: 1; padding: 3px 0;
+                    text-align: center; }}
+  .flow-path-badge {{ font-size: 11px; font-weight: 600; letter-spacing: 0.6px;
+                       text-transform: uppercase; margin-bottom: 6px; padding: 3px 10px;
+                       border-radius: 4px; }}
+  .badge-a {{ color: #D94A4A; background: rgba(217,74,74,0.12); }}
+  .badge-b {{ color: #7B5EA7; background: rgba(123,94,167,0.12); }}
 
   .kpi-row {{ display: flex; flex-wrap: wrap; gap: 12px; }}
   .kpi {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
@@ -858,13 +978,12 @@ def build_html(
   .card {{ background: white; border-radius: 12px;
             box-shadow: 0 1px 5px rgba(0,0,0,0.07); padding: 18px 18px 10px;
             margin-bottom: 16px; }}
-  .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
 
   footer {{ text-align: center; color: #9AA5B1; font-size: 12px;
              padding: 22px 0 30px; border-top: 1px solid #DEE2E6; margin-top: 20px; }}
 
-  @media (max-width: 900px) {{
-    .two-col {{ grid-template-columns: 1fr; }}
+  @media (max-width: 860px) {{
+    .flow-split {{ flex-direction: column; align-items: center; gap: 20px; }}
     .page {{ padding: 0 12px 28px; }}
     nav a {{ display: none; }}
   }}
@@ -876,32 +995,72 @@ def build_html(
   <div class="nav-brand">Drug Shortage &nbsp;<span>·</span>&nbsp; Quality Risk & Causal Paths</div>
   <a href="#coverage">① Coverage</a>
   <a href="#supply">② Supply</a>
-  <a href="#timeline">③ Timeline</a>
-  <a href="#paths">④ Causal Paths</a>
-  <a href="#casestudy">⑤ Case Study</a>
-  <a href="#model">⑥ Model Evidence</a>
+  <a href="#shortage-analysis">③ Shortage Analysis</a>
+  <a href="#timeline">④ Timeline</a>
+  <a href="#case-a">⑤ Path A Case Study</a>
+  <a href="#case-b">⑥ Path B Case Study</a>
+  <a href="#model">⑦ Model Evidence</a>
 </nav>
 
 <div class="hero">
   <h1>Manufacturing Quality Failures → Drug Shortages</h1>
-  <p>Quality failures at generic drug manufacturing facilities (FEIs) can cause shortages through
-     two distinct causal paths. This dashboard tracks both paths using FDA 483 inspection data,
-     recall records, and UUtah shortage data across 14 Valisure-validated APIs (2015–2024).</p>
+  <p>Quality failures at generic drug manufacturing facilities (FEIs) can trigger shortages
+     through two distinct causal paths. This dashboard follows both paths using FDA 483
+     inspection text, recall records, and UUtah shortage data across 14 Valisure-validated
+     APIs (2015–2024).</p>
 
-  <div class="paths-row">
-    <div class="path-card path-a">
-      <div class="path-label">Path A — Recall</div>
-      <div class="path-title" style="color:#D94A4A;">Quality failure → Recall → Supply gap</div>
-      <div class="path-desc">483 observations (contamination, lab controls, data integrity) trigger
-        a recall event. Product is pulled from market. If too few alternative suppliers exist,
-        a shortage follows.</div>
+  <!-- Causal path flowchart -->
+  <div class="flow-diagram">
+    <div class="flow-row">
+      <div class="flow-box flow-start">
+        <span class="flow-title">FDA 483 Inspection</span>
+        <span class="flow-sub">Contamination · Lab controls · Data integrity</span>
+      </div>
     </div>
-    <div class="path-card path-b">
-      <div class="path-label">Path B — Silent Exit</div>
-      <div class="path-title" style="color:#7B5EA7;">Quality failure → Facility exit → Shortage</div>
-      <div class="path-desc">A major 483 citing expensive remediation forces a business decision:
-        the firm discontinues the product rather than invest in compliance. No recall is ever issued,
-        but supply shrinks. Harder to detect — SDUD volume drop is the best signal.</div>
+    <div class="flow-row"><div class="flow-arrow-v">↓</div></div>
+    <div class="flow-row"><div class="flow-box" style="border-color:rgba(255,255,255,0.3);">
+      <span class="flow-title">Quality Failure Documented</span>
+      <span class="flow-sub">LLM extracts severity, scope, root cause</span>
+    </div></div>
+    <div class="flow-row" style="gap:120px; margin:2px 0;">
+      <span class="flow-arrow-v" style="font-size:16px; color:#D94A4A;">↙</span>
+      <span class="flow-arrow-v" style="font-size:16px; color:#7B5EA7;">↘</span>
+    </div>
+    <div class="flow-row flow-split">
+      <div class="flow-side">
+        <div class="flow-path-badge badge-a">Path A — Recall</div>
+        <div class="flow-box flow-a">
+          <span class="flow-title">Recall Issued</span>
+          <span class="flow-sub">FDA enforcement action</span>
+        </div>
+        <div class="flow-arrow-v">↓</div>
+        <div class="flow-box flow-a">
+          <span class="flow-title">Supply Gap</span>
+          <span class="flow-sub">Product pulled from market</span>
+        </div>
+      </div>
+      <div class="flow-side">
+        <div class="flow-path-badge badge-b">Path B — Silent Exit</div>
+        <div class="flow-box flow-b">
+          <span class="flow-title">Business Decision</span>
+          <span class="flow-sub">Remediation cost &gt; profit margin</span>
+        </div>
+        <div class="flow-arrow-v">↓</div>
+        <div class="flow-box flow-b">
+          <span class="flow-title">Market Exit</span>
+          <span class="flow-sub">No recall — silent supply drop</span>
+        </div>
+      </div>
+    </div>
+    <div class="flow-row" style="gap:120px; margin:2px 0;">
+      <span class="flow-arrow-v" style="font-size:16px; color:#3DAA6E;">↘</span>
+      <span class="flow-arrow-v" style="font-size:16px; color:#3DAA6E;">↙</span>
+    </div>
+    <div class="flow-row">
+      <div class="flow-box flow-end">
+        <span class="flow-title">Drug Shortage</span>
+        <span class="flow-sub">Patients cannot access medication</span>
+      </div>
     </div>
   </div>
 
@@ -910,7 +1069,7 @@ def build_html(
     <div class="kpi"><div class="val">{cov['n_feis_llm']}</div><div class="lbl">FEIs with<br>LLM text features</div></div>
     <div class="kpi"><div class="val">{total_recalls}</div><div class="lbl">Recall events<br>linked to FEIs</div></div>
     <div class="kpi"><div class="val">{total_shortages}</div><div class="lbl">Shortage events<br>(UUtah, 2015–2024)</div></div>
-    <div class="kpi"><div class="val">{path_b_share}%</div><div class="lbl">Shortages from<br>discontinuation (Path B)</div></div>
+    <div class="kpi"><div class="val">{path_b_share}%</div><div class="lbl">Shortages labeled<br>discontinuation (Path B)</div></div>
     <div class="kpi"><div class="val">+{lift_rel:.0f}%</div><div class="lbl">AUC lift from<br>483 text features</div></div>
   </div>
 </div>
@@ -922,107 +1081,116 @@ def build_html(
   <div class="section-head">
     <div class="section-title">① Data Coverage</div>
     <div class="section-sub">
-      Starting from 129 Valisure FEIs: 127 in Redica inspection database,
+      Starting from 129 Valisure FEIs: 127 matched in Redica inspection database,
       {cov['n_sites_with_483']} with ≥1 483 issued, {cov['n_feis_llm']} with
-      {cov['n_obs_llm']:,} observations scored by the current LLM pipeline.
+      {cov['n_obs_llm']:,} observations scored by the LLM pipeline.
     </div>
   </div>
   <div class="card">{divs['funnel']}</div>
 </section>
 
-<!-- ② Supply Landscape -->
+<!-- ② Supply Concentration -->
 <section id="supply">
   <div class="section-head">
     <div class="section-title">② Supply Concentration</div>
     <div class="section-sub">
-      Left panel: how many FEIs (manufacturing facilities) produce each drug, based on
-      the March 2026 Valisure mapping. Fewer producing FEIs = higher concentration risk.
-      Orange bars = drug has at least one injectable formulation approved in the Orange Book —
-      this does <i>not</i> mean the drug is exclusively injectable. For example, Vancomycin
-      is given IV for bloodstream infections but orally for C. diff; Metoprolol is primarily
-      oral but has an IV cardiac form.
-      Right panel: total recall events linked to these FEIs (2015–2024). Hover for drug details.
+      Left: how many FEIs produce each drug (March 2026 Valisure mapping) — fewer producers = higher
+      concentration risk. Orange = drug has at least one injectable formulation in the Orange Book;
+      this is not exclusive (Vancomycin is given IV for bloodstream infections but orally for C. diff;
+      Metoprolol is primarily oral but has an IV cardiac form).
+      Right: total recall events linked to these FEIs (2015–2024).
     </div>
   </div>
   <div class="card">{divs['supply']}</div>
 </section>
 
-<!-- ③ Events Timeline -->
-<section id="timeline">
+<!-- ③ Shortage Analysis -->
+<section id="shortage-analysis">
   <div class="section-head">
-    <div class="section-title">③ Recall & Shortage Events Over Time</div>
+    <div class="section-title">③ Shortage Analysis</div>
     <div class="section-sub">
-      Top panel: recall events per drug per year (Path A signal — a facility had a quality failure
-      serious enough to trigger a product recall).
-      Bottom panel: shortage events by drug per year, color-coded by reason.
-      Notable spikes: Metformin 2020 (NDMA contamination crisis), Potassium Chloride 2020 (COVID supply chain).
-    </div>
-  </div>
-  <div class="card">{divs['timeline']}</div>
-</section>
-
-<!-- ④ Causal Paths -->
-<section id="paths">
-  <div class="section-head">
-    <div class="section-title">④ Causal Path Analysis</div>
-    <div class="section-sub">
-      <b>How paths are classified:</b> The University of Utah drug shortage database
-      includes a free-text <i>Reason</i> field for each shortage event. We classify
-      events by keyword matching on that field — "manufacturing / CGMP / quality / recall"
-      → Path A; "discontinued / business decision / market exit" → Path B.
-      This is observational labeling from a self-reported field; it does not establish causation.
-      <b>Key limitation: ~50% of events in our 13-drug subset are reported as "Unknown" reason</b>,
-      so the true split between paths is uncertain. The breakdown below reflects only events
-      where a reason was recorded.
+      How many shortage events fall under each causal path?
+      <b>Classification method:</b> The UUtah shortage database includes a free-text
+      <i>Reason</i> field. We classify events by keyword matching — "manufacturing / CGMP /
+      quality / recall" → Path A; "discontinued / business decision / market exit" → Path B.
+      This is observational labeling from a self-reported field and does not establish causation.
+      <b>~50% of events in our 13-drug subset are reported as "Unknown"</b> — the true
+      path split is uncertain and the chart below reflects only events with a recorded reason.
       <br><br>
-      Path B evidence in this panel: Lisinopril 2020 (Business Decision), Vancomycin 2002
-      (Business Decision — outside panel window), Potassium chloride 2019 (combo product discontinuation).
-      These are the clearest examples of potential silent exits in the data.
+      Path B evidence in this panel: Lisinopril 2020 (Business Decision), Potassium chloride 2019
+      (combo product discontinued), Vancomycin 2002 (Business Decision, outside panel window).
     </div>
   </div>
   <div class="card">{divs['paths']}</div>
 </section>
 
-<!-- ⑤ Case Study: Metformin NDMA 2020 -->
-<section id="casestudy">
+<!-- ④ Recall & Shortage Timeline (per-drug) -->
+<section id="timeline">
   <div class="section-head">
-    <div class="section-title">⑤ Case Study: Metformin — Path A at Monthly Resolution</div>
+    <div class="section-title">④ Recall &amp; Shortage Timeline — Per Drug</div>
     <div class="section-sub">
-      Monthly-resolution view showing the real time lag between quality signals and recalls.
-      <b>The chain:</b>
-      (1) FDA 483 inspection snapshots for Metformin FEIs in <b>January 2020</b> show
-      Critical/Major severity = 1.0 and data integrity = 0.43 — the highest values in the panel;
-      (2) In <b>June 2020</b> — approximately 5 months later — 14 recalls are issued, all citing
-      "CGMP Deviations: NDMA impurity above acceptable intake level";
-      (3) UUtah records a Metformin shortage in <b>2021 and 2024</b> as downstream supply disruption follows.
-      <br><br>
-      <b>Note on quality signal lines:</b> LLM text features come from Redica inspection snapshots,
-      recorded at irregular dates (not monthly). Points on the quality lines represent actual
-      snapshot dates aggregated to their calendar month — gaps mean no snapshot in that month.
-      Bars = recall events (left axis, monthly). Lines = LLM quality signals averaged across
-      Metformin FEIs per snapshot month (right axis, 0–1 share).
-      Green dotted lines = shortage events (UUtah, year-level — placed at Jan 1 of the shortage year).
+      Use the dropdown to select a drug and see its recall events (top) and shortage events
+      (bottom) by year. No path coloring here — just the raw counts to show when events occurred.
+      Note whether recalls precede shortages (Path A pattern) or shortages appear with no
+      preceding recall spike (Path B pattern).
     </div>
   </div>
-  <div class="card">{divs['case']}</div>
+  <div class="card">{divs['timeline']}</div>
 </section>
 
-<!-- ⑥ Model Evidence -->
+<!-- ⑤ Case Study A: Metformin — Path A -->
+<section id="case-a">
+  <div class="section-head">
+    <div class="section-title">⑤ Case Study — Path A: Metformin NDMA 2020</div>
+    <div class="section-sub">
+      Monthly-resolution view of the full Path A chain for Metformin.
+      <b>Sequence of events:</b>
+      (1) <b>Jan 2020</b>: Redica snapshots for Metformin FEIs show Critical/Major severity = 1.0
+      and data integrity flag = 0.43 — peak values in the panel;
+      (2) <b>June 2020</b> (~5 months later): 14 recalls issued, all citing
+      "CGMP Deviations: NDMA impurity above acceptable intake level";
+      (3) <b>2021 &amp; 2024</b>: UUtah records Metformin shortage events as downstream
+      supply disruption propagates.
+      <br><br>
+      <i>Top panel</i>: LLM quality signals (0–1 share) from Redica snapshots — points exist only
+      where a snapshot was taken, so gaps are expected.
+      <i>Bottom panel</i>: monthly recall count. Green lines = shortage years from UUtah.
+    </div>
+  </div>
+  <div class="card">{divs['case_a']}</div>
+</section>
+
+<!-- ⑥ Case Study B: Lisinopril — Path B -->
+<section id="case-b">
+  <div class="section-head">
+    <div class="section-title">⑥ Case Study — Path B: Lisinopril 2020 (Business Decision)</div>
+    <div class="section-sub">
+      Path B contrast: UUtah records a Lisinopril shortage in 2020 attributed to a
+      "Business Decision" — not a manufacturing recall. If quality signals rose before
+      the discontinuation, it supports the hypothesis that 483 findings drove the exit
+      decision even when no recall was issued.
+      <br><br>
+      <i>Top panel</i>: LLM quality signals for Lisinopril FEIs (if available in the pipeline).
+      <i>Bottom panel</i>: recall count — expected to be low or zero for a genuine Path B event.
+      Purple line = shortage / Business Decision year (2020). This is the
+      "silent" path: supply drops without an FDA recall event appearing in the public record.
+    </div>
+  </div>
+  <div class="card">{divs['case_b']}</div>
+</section>
+
+<!-- ⑦ Model Evidence -->
 <section id="model">
   <div class="section-head">
-    <div class="section-title">⑥ Model Evidence: 483 Text Improves Recall Prediction</div>
+    <div class="section-title">⑦ Model Evidence: 483 Text Improves Recall Prediction</div>
     <div class="section-sub">
       <b>What this model predicts:</b> whether a FEI will have a <i>recall event</i> in year t+1,
-      given features measured in year t. This is the intermediate step in Path A
-      (quality failure → recall) — not a direct shortage prediction. Recall prediction is
-      the tractable modeling target; the path from recall to shortage depends on supply
-      concentration (Section ②) and market structure.
+      given features measured in year t — the intermediate step in Path A. This is not a direct
+      shortage prediction; the link from recall to shortage depends on supply concentration (Section ②).
       <br><br>
       L2 logistic regression, GroupKFold CV by FEI (a facility never appears in both train and test).
       Adding LLM-extracted 483 text features improves AUC from {auc_no:.3f} to {auc_yes:.3f}
-      (+{lift_abs:.3f}, +{lift_rel:.0f}% relative lift), showing that inspection text carries
-      predictive signal beyond structured inspection counts alone.
-      Right panel: feature importance from a full-panel Random Forest (top 12 features by group).
+      (+{lift_abs:.3f}, +{lift_rel:.0f}% relative lift). Right panel: RF feature importance (top 12).
     </div>
   </div>
   <div class="card">{divs['model']}</div>
@@ -1033,7 +1201,7 @@ def build_html(
 <footer>
   Generated {today} &nbsp;·&nbsp; Drug Shortage Project &nbsp;·&nbsp; NC State University<br>
   <span style="font-size:11px; color:#BEC8D0;">
-    483 text features from Redica database (2018–2026), LLM pipeline.
+    483 text features: Redica database (2018–2026), LLM pipeline.
     Recall data: FDA CDER. Shortage data: University of Utah. Supply concentration: Valisure (March 2026).
   </span>
 </footer>
@@ -1052,13 +1220,21 @@ def main():
     shortage = _load_shortage_by_drug()
     cov      = _load_coverage()
     fi, abl  = _load_model_outputs()
+
     cs_q, cs_r, cs_s = _load_case_study("Metformin")
-    log.info("Case study: Metformin — %d quality months, %d recall months, %d shortage years",
+    log.info("Case study A (Metformin): %d quality months, %d recall months, %d shortage years",
              len(cs_q), len(cs_r), len(cs_s))
 
+    cs_b_q, cs_b_r, cs_b_s = _load_case_study("Lisinopril")
+    log.info("Case study B (Lisinopril): %d quality months, %d recall months, %d shortage years",
+             len(cs_b_q), len(cs_b_r), len(cs_b_s))
+
     log.info("Building HTML…")
-    html = build_html(cov, supply, recalls, shortage, fi, abl,
-                      cs_quality=cs_q, cs_recalls=cs_r, cs_shortages=cs_s)
+    html = build_html(
+        cov, supply, recalls, shortage, fi, abl,
+        cs_quality=cs_q, cs_recalls=cs_r, cs_shortages=cs_s,
+        cs_b_quality=cs_b_q, cs_b_recalls=cs_b_r, cs_b_shortages=cs_b_s,
+    )
 
     OUT_HTML.write_text(html, encoding="utf-8")
     log.info("Dashboard saved → %s", OUT_HTML)
