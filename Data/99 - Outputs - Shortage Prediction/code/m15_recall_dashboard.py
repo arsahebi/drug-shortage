@@ -1,12 +1,17 @@
 """
-Module 15 — Interactive recall prediction dashboard.
+Module 15 — Interactive shortage story dashboard.
 
-Produces a self-contained HTML dashboard showing:
-  1. Data coverage / provenance (facility funnel + 483 document coverage)
-  2. Text feature distributions (aggregate 4-panel + per-FEI heatmap)
-  3. Model performance (ROC curve + ablation bar chart)
-  4. Feature importance (Random Forest, top 12)
-  5. FEI risk ranking (top 20, interactive table)
+Tells the full causal chain: manufacturing quality failures → two paths → drug shortage.
+
+  Path A: Quality failure → Recall → Supply disruption → Shortage
+  Path B: Quality failure → Market exit (firm discontinues) → Shortage
+
+Sections:
+  1. Data coverage — facility funnel
+  2. Supply landscape — FEIs per drug (concentration risk) + risk bubble matrix
+  3. Events timeline — recalls & shortages by drug × year
+  4. Causal paths — shortage reason breakdown + quality signal vs outcome scatter
+  5. Model evidence — text feature AUC lift + feature importance
 
 Output:
   outputs/figures/recall_fei_dashboard.html
@@ -16,8 +21,8 @@ Run:
 """
 
 from __future__ import annotations
+import re
 import warnings
-import sys
 from datetime import date
 from pathlib import Path
 
@@ -32,7 +37,7 @@ warnings.filterwarnings("ignore")
 try:
     from sklearn.linear_model import LogisticRegression
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.metrics import roc_curve, roc_auc_score
+    from sklearn.metrics import roc_auc_score
     from sklearn.model_selection import GroupKFold
     from sklearn.preprocessing import StandardScaler
     _SKLEARN = True
@@ -41,16 +46,19 @@ except ModuleNotFoundError:
 
 from config import (
     DATA, OUT_FIGS, OUT_DATA, OUT_MODELS, OUT_TABS, OUT_LOGS,
-    TEXT_TIMESERIES_REDICA_CSV, SEED,
+    TEXT_TIMESERIES_REDICA_CSV, RECALL_FILT, VALISURE_FEI,
+    PANEL_START_YEAR, PANEL_END_YEAR, SEED,
 )
 from utils import get_logger
 
 log = get_logger("m15_dashboard", OUT_LOGS / "m15_dashboard.log")
 
-REDICA_RAW = DATA / "07 - Redica" / "raw"
-OUT_HTML   = OUT_FIGS / "recall_fei_dashboard.html"
+REDICA_RAW    = DATA / "07 - Redica" / "raw"
+UUTAH_FILE    = DATA / "24 - UUtah - Drug Shortage" / "raw" / "efox shortages small file through 2025 final.xlsx"
+OB_PRODUCTS   = DATA / "01 - Orange Book" / "output_data" / "products.csv"
+OUT_HTML      = OUT_FIGS / "recall_fei_dashboard.html"
 
-# ── Feature groups (must match m14) ────────────────────────────────────────
+# Feature groups — must match m14
 INSP_FEATS   = ["n_oai_cumul", "n_vai_t", "n_inspections_t", "n_warning_letters_t"]
 TEXT_FEATS   = [
     "severity_critmajor_share", "scope_facilitywide_share",
@@ -63,10 +71,6 @@ TEXT_FEATS   = [
 STRUCT_FEATS = ["parenteral_ever", "n_feis_drug"]
 ALL_FEATS    = INSP_FEATS + TEXT_FEATS + STRUCT_FEATS
 
-_GROUP_COLOR = {**{f: "#4A90D9" for f in INSP_FEATS},
-                **{f: "#E07B39" for f in TEXT_FEATS},
-                **{f: "#3DAA6E" for f in STRUCT_FEATS}}
-
 _FEAT_LABEL = {
     "n_oai_cumul":                "OAI (cumulative)",
     "n_vai_t":                    "VAI inspections",
@@ -74,7 +78,7 @@ _FEAT_LABEL = {
     "n_warning_letters_t":        "Warning letters",
     "severity_critmajor_share":   "Critical/Major severity",
     "scope_facilitywide_share":   "Facility-wide scope",
-    "scope_multipleproducts_share":"Multi-product scope",
+    "scope_multipleproducts_share": "Multi-product scope",
     "cultural_root_cause_share":  "Cultural root cause",
     "contamination_llm_share":    "Contamination (LLM)",
     "data_integrity_llm_share":   "Data integrity (LLM)",
@@ -85,10 +89,15 @@ _FEAT_LABEL = {
     "remediation_none_share":     "No remediation signal",
     "remediation_weak_share":     "Weak remediation",
     "parenteral_ever":            "Parenteral drug (OB-derived)",
-    "n_feis_drug":                "# FEIs per drug (supply conc.)",
+    "n_feis_drug":                "# FEIs per drug",
 }
 
-# ── Colour palette ──────────────────────────────────────────────────────────
+_GROUP_COLOR = {
+    **{f: "#4A90D9" for f in INSP_FEATS},
+    **{f: "#E07B39" for f in TEXT_FEATS},
+    **{f: "#3DAA6E" for f in STRUCT_FEATS},
+}
+
 C = {
     "blue":   "#4A90D9",
     "orange": "#E07B39",
@@ -97,89 +106,182 @@ C = {
     "purple": "#7B5EA7",
     "gray":   "#9AA5B1",
     "dark":   "#1a1a2e",
-    "bg":     "#F8F9FA",
+    "teal":   "#2E8B8B",
+}
+
+_PLOTLY_FONT   = dict(family="'Segoe UI', Helvetica, Arial, sans-serif", size=12)
+_PLOTLY_MARGIN = dict(l=10, r=10, t=40, b=10)
+
+_PARENTERAL_ROUTES = {
+    "INJECTION", "INTRAVENOUS", "INTRAMUSCULAR", "SUBCUTANEOUS",
+    "INJECTION, INTRAVENOUS", "INTRAVENOUS, SUBCUTANEOUS",
+    "INTRAMUSCULAR, INTRAVENOUS", "INJECTABLE", "IRRIGATION",
+    "INJECTION, SUBCUTANEOUS",
+}
+
+# Shortage reason → causal path
+_PATH_A = re.compile(
+    r"manufactur|regulatory|cgmp|quality|recall|contamina|potency|ingredient",
+    re.IGNORECASE,
+)
+_PATH_B = re.compile(
+    r"discontinu|business decision|market exit|exit|withdrew",
+    re.IGNORECASE,
+)
+_DEMAND = re.compile(r"demand|supply", re.IGNORECASE)
+_RAW    = re.compile(r"raw material|ingredient shortage|api shortage", re.IGNORECASE)
+
+TARGET_DRUGS = {
+    "metformin": "Metformin",
+    "atorvastatin": "Atorvastatin",
+    "bupropion": "Bupropion",
+    "pantoprazole": "Pantoprazole",
+    "vancomycin": "Vancomycin",
+    "ampicillin; sulbactam": "Ampicillin; Sulbactam",
+    "ampicillin": "Ampicillin",
+    "calcium gluconate": "Calcium Gluconate",
+    "magnesium sulfate": "Magnesium sulfate",
+    "potassium chloride": "Potassium chloride",
+    "lisinopril": "Lisinopril",
+    "metoprolol": "Metoprolol",
+    "metronidazole": "Metronidazole",
+    "tacrolimus": "Tacrolimus",
 }
 
 
 # ── Data loading ────────────────────────────────────────────────────────────
 
-def _load_panel() -> pd.DataFrame:
-    p = OUT_DATA / "recall_fei_panel.csv"
-    if not p.exists():
-        log.error("recall_fei_panel.csv not found — run m14 first")
-        sys.exit(1)
-    return pd.read_csv(p, low_memory=False)
+def _fei_drug_map() -> pd.DataFrame:
+    """Valisure API Only_FEI Mapping → fei × drug, parenteral flag."""
+    fm = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
+    fm.columns = [c.strip() for c in fm.columns]
+    fei_col = next(c for c in fm.columns if "fei" in c.lower())
+    api_col = next(c for c in fm.columns if c.lower() == "api")
+    df = fm[[fei_col, api_col]].dropna().rename(columns={fei_col: "fei", api_col: "drug"})
+    df["fei"] = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
 
+    # Parenteral from OB
+    parenteral_drugs: set[str] = set()
+    if OB_PRODUCTS.exists():
+        ob = pd.read_csv(OB_PRODUCTS)
+        ob["_route"] = ob["DF;Route"].str.split(";").str[-1].str.strip().str.upper()
+        par_ing = set(
+            ob.loc[ob["_route"].isin(_PARENTERAL_ROUTES), "Ingredient"]
+            .str.upper().dropna().unique()
+        )
+        for drug in df["drug"].unique():
+            parts = [p.strip().upper().split()[0] for p in drug.split(";") if p.strip()]
+            for ing in par_ing:
+                if any(p in ing.split() for p in parts):
+                    parenteral_drugs.add(drug)
+                    break
 
-def _load_facility_names() -> pd.DataFrame:
-    p = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
-    if not p.exists():
-        return pd.DataFrame(columns=["fei", "facility_name"])
-    try:
-        df = pd.read_excel(p, usecols=["FEI Number", "Legal Name"])
-        df.columns = ["fei", "facility_name"]
-        df["fei"] = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
-        return df.dropna(subset=["fei"]).drop_duplicates("fei")
-    except Exception as exc:
-        log.warning("Could not load facility names: %s", exc)
-        return pd.DataFrame(columns=["fei", "facility_name"])
-
-
-def _load_redica_site_names() -> pd.DataFrame:
-    """Fallback facility names from Redica data availability file."""
-    p = REDICA_RAW / "Valisure_Sites_Data_Availability.xlsx"
-    if not p.exists():
-        return pd.DataFrame(columns=["site_redica_id", "facility_name", "n_483s_issued"])
-    df = pd.read_excel(p, usecols=["Site Redica Id", "Site Display Name", "483s Issued"])
-    df.columns = ["site_redica_id", "facility_name", "n_483s_issued"]
+    df["parenteral"] = df["drug"].isin(parenteral_drugs)
     return df
 
 
-def _load_all_data() -> dict:
-    panel      = _load_panel()
-    fi         = pd.read_csv(OUT_MODELS / "rf_importance_recall_fei.csv")
-    metrics    = pd.read_csv(OUT_MODELS / "metrics_recall_fei.csv")
-    ablation   = pd.read_csv(OUT_MODELS / "text_ablation_recall_fei.csv")
-    risk       = pd.read_csv(OUT_TABS   / "fei_risk_ranking.csv")
-    ts         = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
-    names      = _load_facility_names()
-    site_names = _load_redica_site_names()
+def _load_supply_concentration(fdmap: pd.DataFrame) -> pd.DataFrame:
+    """Count FEIs per drug and recall rate."""
+    supply = (
+        fdmap.groupby("drug", as_index=False)
+        .agg(n_feis=("fei", "nunique"), parenteral=("parenteral", "max"))
+        .sort_values("n_feis")
+    )
+    return supply
 
-    # Latest text snapshot per FEI
+
+def _load_recall_by_drug(fdmap: pd.DataFrame) -> pd.DataFrame:
+    """Join recall events to drugs via Valisure FEI mapping."""
+    recall = pd.read_csv(RECALL_FILT, low_memory=False)
+    recall.columns = [c.strip() for c in recall.columns]
+    recall["fei"]  = pd.to_numeric(recall["FEI Number"], errors="coerce").astype("Int64")
+    recall["year"] = pd.to_datetime(recall["Recall_Date"], errors="coerce").dt.year.astype("Int64")
+    cls_col = next((c for c in recall.columns if "event" in c.lower() and "class" in c.lower()), None)
+    if cls_col is None:
+        cls_col = next((c for c in recall.columns if "class" in c.lower()), "")
+    if cls_col:
+        recall["class_i"] = recall[cls_col].astype(str).str.contains("Class I|Class-I", regex=True).astype(int)
+    else:
+        recall["class_i"] = 0
+
+    df = recall.merge(fdmap[["fei", "drug"]].drop_duplicates(), on="fei", how="inner")
+    df = df[(df["year"] >= PANEL_START_YEAR) & (df["year"] <= PANEL_END_YEAR)]
+    agg = df.groupby(["drug", "year"], as_index=False).agg(
+        n_recalls=("fei", "count"),
+        n_class_i=("class_i", "sum"),
+    )
+    log.info("Recall-drug events: %d rows, %d drugs", len(agg), agg["drug"].nunique())
+    return agg
+
+
+def _load_shortage_by_drug() -> pd.DataFrame:
+    """UUtah shortage data → drug × year × causal path category."""
+    sh = pd.read_excel(UUTAH_FILE, header=1)
+    sh.columns = [c.strip() for c in sh.columns]
+    sh = sh.rename(columns={
+        "Drug Shortages": "drug_raw",
+        "yr": "year",
+        "Reason": "reason",
+    })
+    sh["drug_raw"] = sh["drug_raw"].astype(str).str.lower()
+    sh["reason"]   = sh["reason"].fillna("").astype(str)
+
+    def _match(name: str) -> str | None:
+        for k, v in sorted(TARGET_DRUGS.items(), key=lambda x: -len(x[0])):
+            if k in name:
+                return v
+        return None
+
+    def _path(reason: str) -> str:
+        if _PATH_B.search(reason):
+            return "Path B — Discontinuation/Exit"
+        if _PATH_A.search(reason):
+            return "Path A — Quality/Manufacturing"
+        if _DEMAND.search(reason):
+            return "Demand surge"
+        if _RAW.search(reason):
+            return "Raw material"
+        return "Unknown"
+
+    sh["drug"] = sh["drug_raw"].map(_match)
+    sh["path"] = sh["reason"].map(_path)
+    sh = sh.dropna(subset=["drug"])
+    sh["year"] = pd.to_numeric(sh["year"], errors="coerce").astype("Int64")
+    sh = sh.dropna(subset=["year"])
+    sh = sh[(sh["year"] >= PANEL_START_YEAR) & (sh["year"] <= PANEL_END_YEAR)]
+
+    agg = sh.groupby(["drug", "year", "path"], as_index=False).size().rename(columns={"size": "n"})
+    log.info("Shortage-drug events: %d rows, %d drugs", len(agg), agg["drug"].nunique())
+    return agg
+
+
+def _load_drug_quality_profile(fdmap: pd.DataFrame) -> pd.DataFrame:
+    """Average text risk signals per drug (latest FEI snapshot → join → drug mean)."""
+    QUALITY_COLS = [
+        "contamination_llm_share", "severity_critmajor_share",
+        "data_integrity_llm_share", "cultural_root_cause_share",
+        "investigation_llm_share",
+    ]
+    if not TEXT_TIMESERIES_REDICA_CSV.exists():
+        return pd.DataFrame(columns=["drug"] + QUALITY_COLS)
+
+    ts = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
     ts["fei"]           = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
     ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
     latest = ts.sort_values("snapshot_date").groupby("fei").last().reset_index()
 
-    # Merge facility name into latest
-    latest = latest.merge(names, on="fei", how="left")
-    # Fallback: use site_redica_id label from combined universe
-    combined_p = DATA / "99 - Outputs - Text Analysis" / "483_combined_obs_universe.csv"
-    if combined_p.exists():
-        combined = pd.read_csv(combined_p, usecols=["fei", "site_redica_id"],
-                               low_memory=False)
-        combined["fei"] = pd.to_numeric(combined["fei"], errors="coerce").astype("Int64")
-        combined = combined.dropna().drop_duplicates("fei")
-        latest = latest.merge(combined, on="fei", how="left")
-        latest = latest.merge(
-            site_names[["site_redica_id", "facility_name"]].rename(
-                columns={"facility_name": "redica_name"}
-            ), on="site_redica_id", how="left"
-        )
-        mask = latest["facility_name"].isna()
-        latest.loc[mask, "facility_name"] = latest.loc[mask, "redica_name"]
+    drug_fei = fdmap[["fei", "drug"]].drop_duplicates()
+    merged = latest.merge(drug_fei, on="fei", how="inner")
+    cols_present = [c for c in QUALITY_COLS if c in merged.columns]
+    profile = merged.groupby("drug", as_index=False)[cols_present].mean()
 
-    latest["facility_name"] = latest["facility_name"].fillna(
-        latest["fei"].astype(str)
-    )
+    # Composite quality risk (simple average)
+    profile["quality_risk"] = profile[cols_present].mean(axis=1)
+    log.info("Drug quality profiles: %d drugs", len(profile))
+    return profile
 
-    # Ablation label cleanup
-    ablation["label"] = ablation["label"].str.replace(r"\n.*", "", regex=True)
-    ablation["label"] = ablation["label"].map(
-        lambda s: "Inspection only" if "without" in s.lower()
-                  else "Inspection + LLM text\n(98 FEIs)"
-    )
 
-    # Coverage stats from Redica raw
+def _load_coverage() -> dict:
     cov = {}
     da_p = REDICA_RAW / "Valisure_Sites_Data_Availability.xlsx"
     obs_p = REDICA_RAW / "FDA-483s Observations + WL Deficiencies_OSU.xlsx"
@@ -198,518 +300,426 @@ def _load_all_data() -> dict:
     else:
         cov["n_docs_obtained"] = 246
         cov["n_sites_obtained"] = 98
-    cov["n_obs_llm"] = 1115
+    cov["n_obs_llm"]  = 1115
     cov["n_feis_llm"] = 98
-
-    return dict(panel=panel, fi=fi, metrics=metrics, ablation=ablation,
-                risk=risk, latest=latest, site_names=site_names, cov=cov)
+    return cov
 
 
-# ── CV for ROC predictions ──────────────────────────────────────────────────
-
-def _get_roc_preds(panel: pd.DataFrame):
-    if not _SKLEARN:
-        return None, None, None
-    feats_in = [f for f in ALL_FEATS if f in panel.columns]
-    df = panel.dropna(subset=["y_recall_next"]).copy()
-    X  = df[feats_in].fillna(0).astype(float)
-    y  = df["y_recall_next"].astype(int)
-    g  = df["fei"].astype(str)
-
-    if y.sum() < 3:
-        return None, None, None
-
-    n_splits = min(5, max(2, g.nunique() - 1))
-    gkf = GroupKFold(n_splits=n_splits)
-
-    preds_l2 = np.zeros(len(y))
-    preds_rf = np.zeros(len(y))
-    Xz = pd.DataFrame(StandardScaler().fit_transform(X), columns=X.columns)
-
-    for tr, te in gkf.split(X, y, g):
-        if y.iloc[tr].nunique() < 2:
-            preds_l2[te] = y.iloc[tr].mean()
-            preds_rf[te] = y.iloc[tr].mean()
-            continue
-        lr = LogisticRegression(penalty="l2", C=1.0, max_iter=500,
-                                class_weight="balanced", random_state=SEED)
-        lr.fit(Xz.iloc[tr], y.iloc[tr])
-        preds_l2[te] = lr.predict_proba(Xz.iloc[te])[:, 1]
-
-        rf = RandomForestClassifier(n_estimators=300, min_samples_leaf=3,
-                                    class_weight="balanced", random_state=SEED,
-                                    n_jobs=-1)
-        rf.fit(X.iloc[tr], y.iloc[tr])
-        preds_rf[te] = rf.predict_proba(X.iloc[te])[:, 1]
-
-    return preds_l2, preds_rf, y
+def _load_model_outputs() -> tuple[pd.DataFrame, pd.DataFrame]:
+    fi  = pd.read_csv(OUT_MODELS / "rf_importance_recall_fei.csv")
+    abl = pd.read_csv(OUT_MODELS / "text_ablation_recall_fei.csv")
+    abl["label"] = abl["label"].str.replace(r"\n.*", "", regex=True).map(
+        lambda s: "Inspection only" if "without" in s.lower()
+                  else "Inspection + LLM text (98 FEIs)"
+    )
+    return fi, abl
 
 
 # ── Figure builders ─────────────────────────────────────────────────────────
 
-_PLOTLY_FONT = dict(family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif", size=12)
-_PLOTLY_MARGIN = dict(l=10, r=10, t=40, b=10)
-
-
 def _fig_funnel(cov: dict) -> go.Figure:
-    """Facility funnel + 483 document coverage side-by-side."""
-    fig = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=["Facility coverage funnel", "483 document coverage"],
-        horizontal_spacing=0.12,
-    )
+    labels = ["Valisure universe", "In Redica data", "With ≥1 483 issued", "With LLM text features"]
+    vals   = [129, cov["n_feis_redica"], cov["n_sites_with_483"], cov["n_feis_llm"]]
+    colors = ["#4A90D9", "#5AA8E0", "#6BBCE8", "#3DAA6E"]
 
-    # Left: facility funnel
-    funnel_labels = [
-        "Valisure universe",
-        "In Redica data",
-        "With ≥1 483 issued",
-        "With LLM text features",
-    ]
-    funnel_vals = [
-        129,
-        cov["n_feis_redica"],
-        cov["n_sites_with_483"],
-        cov["n_feis_llm"],
-    ]
-    colors_f = ["#4A90D9", "#5AA8E0", "#6BBCE8", "#3DAA6E"]
-    for i, (lbl, val, col) in enumerate(zip(funnel_labels, funnel_vals, colors_f)):
+    fig = go.Figure()
+    for lbl, val, col in zip(labels, vals, colors):
         fig.add_trace(go.Bar(
-            x=[val], y=[lbl],
-            orientation="h",
+            x=[val], y=[lbl], orientation="h",
             marker_color=col,
-            text=f"  {val}",
-            textposition="outside",
+            text=f"  {val}", textposition="outside",
             showlegend=False,
-            hovertemplate=f"<b>{lbl}</b><br>{val} FEIs<extra></extra>",
-        ), row=1, col=1)
-
-    # Right: 483 coverage bars
-    doc_labels = ["483s issued\n(all 127 sites)", "Documents obtained\n(Redica file)",
-                  "Observations\nLLM-scored"]
-    doc_vals   = [cov["n_483s_issued"], cov["n_docs_obtained"], cov["n_obs_llm"]]
-    doc_colors = ["#D1D5DB", "#4A90D9", "#E07B39"]
-    for lbl, val, col in zip(doc_labels, doc_vals, doc_colors):
-        fig.add_trace(go.Bar(
-            x=[lbl], y=[val],
-            marker_color=col,
-            text=f"{val:,}",
-            textposition="outside",
-            showlegend=False,
-            hovertemplate=f"<b>{lbl.replace(chr(10),' ')}</b><br>{val:,}<extra></extra>",
-        ), row=1, col=2)
-
-    pct = cov["n_docs_obtained"] / cov["n_483s_issued"] * 100
-    fig.add_annotation(
-        x=doc_labels[1], y=cov["n_docs_obtained"],
-        text=f"<b>{pct:.0f}% coverage</b>",
-        showarrow=False, yshift=38, font=dict(color="#E07B39", size=12),
-        row=1, col=2,
-    )
-
+            hovertemplate=f"<b>{lbl}</b>: {val} FEIs<extra></extra>",
+        ))
     fig.update_layout(
-        height=340, margin=_PLOTLY_MARGIN,
-        font=_PLOTLY_FONT,
-        plot_bgcolor="white", paper_bgcolor="white",
-        yaxis=dict(autorange="reversed", gridcolor="#F0F0F0"),
-        xaxis=dict(range=[0, 160], showticklabels=False),
-        xaxis2=dict(showticklabels=False),
-        yaxis2=dict(range=[0, max(doc_vals) * 1.25], gridcolor="#F0F0F0"),
+        height=220, margin=dict(l=10, r=60, t=10, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(range=[0, 170], showticklabels=False),
+        yaxis=dict(autorange="reversed"),
+        title=dict(text="Facility coverage funnel", font=dict(size=13)),
     )
     return fig
 
 
-def _fig_dist_agg(latest: pd.DataFrame) -> go.Figure:
-    """Four small aggregate distribution charts in a 2×2 grid."""
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=[
-            "Observation severity (mean share across 98 FEIs)",
-            "Violation category",
-            "Root cause type",
-            "Observation scope",
-        ],
-        vertical_spacing=0.20,
-        horizontal_spacing=0.12,
-    )
+def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFrame) -> go.Figure:
+    """Horizontal bars: FEIs per drug, colored by parenteral, annotated with recall count."""
+    sup = supply.copy().sort_values("n_feis")
 
-    def _hbar(labels, vals, colors, row, col, pct=True):
-        suffix = "%" if pct else ""
-        display_vals = [v * 100 for v in vals] if pct else vals
-        fig.add_trace(go.Bar(
-            x=display_vals, y=labels,
-            orientation="h",
-            marker_color=colors,
-            text=[f"{v:.0f}{suffix}" for v in display_vals],
-            textposition="auto",
-            showlegend=False,
-            hovertemplate="%{y}: %{x:.1f}" + suffix + "<extra></extra>",
-        ), row=row, col=col)
+    # Total recalls per drug
+    tot_recalls = recalls_by_drug.groupby("drug")["n_recalls"].sum().to_dict()
+    sup["n_recalls_total"] = sup["drug"].map(tot_recalls).fillna(0).astype(int)
 
-    # Severity
-    _hbar(
-        ["Critical", "Major", "Moderate", "Minor"],
-        [latest["severity_critical_share"].mean(),
-         latest["severity_major_share"].mean(),
-         latest["severity_moderate_share"].mean(),
-         latest["severity_minor_share"].mean()],
-        ["#D94A4A", "#E07B39", "#F4C542", "#3DAA6E"],
-        1, 1,
-    )
-
-    # Violation category
-    vc_cols = ["vc_labcontrols_share", "vc_productioncontrols_share",
-               "vc_buildingsequipment_share", "vc_qualitysystem_share",
-               "vc_recordsreports_share", "vc_orgpersonnel_share"]
-    vc_labels = ["Lab Controls", "Production Controls", "Buildings/Equipment",
-                 "Quality System", "Records/Reports", "Org/Personnel"]
-    vc_vals   = [latest[c].mean() for c in vc_cols]
-    order = sorted(range(len(vc_vals)), key=lambda i: vc_vals[i])
-    _hbar([vc_labels[i] for i in order], [vc_vals[i] for i in order],
-          "#4A90D9", 1, 2)
-
-    # Root cause
-    _hbar(
-        ["Cultural", "Mixed", "Capital"],
-        [latest["cultural_root_cause_share"].mean(),
-         latest["mixed_root_cause_share"].mean(),
-         latest["capital_root_cause_share"].mean()],
-        ["#7B5EA7", "#9B7EBF", "#BBA8D4"],
-        2, 1,
-    )
-
-    # Scope
-    _hbar(
-        ["Multiple products", "Facility-wide", "Single batch"],
-        [latest["scope_multipleproducts_share"].mean(),
-         latest["scope_facilitywide_share"].mean(),
-         latest["scope_singlebatch_share"].mean()],
-        ["#3DAA6E", "#5BC88A", "#89DEBA"],
-        2, 2,
-    )
-
-    fig.update_layout(
-        height=500, margin=dict(l=10, r=10, t=60, b=10),
-        font=_PLOTLY_FONT,
-        plot_bgcolor="white", paper_bgcolor="white",
-    )
-    for axis in ["xaxis", "xaxis2", "xaxis3", "xaxis4"]:
-        fig.update_layout({axis: dict(gridcolor="#F0F0F0", ticksuffix="%")})
-    for axis in ["yaxis", "yaxis2", "yaxis3", "yaxis4"]:
-        fig.update_layout({axis: dict(gridcolor="white")})
-    return fig
-
-
-def _fig_heatmap(latest: pd.DataFrame) -> go.Figure:
-    """Per-FEI heatmap: 98 FEIs × 12 text features (latest snapshot)."""
-    heat_cols = [
-        "severity_critmajor_share", "scope_facilitywide_share",
-        "contamination_llm_share", "data_integrity_llm_share",
-        "investigation_llm_share", "cultural_root_cause_share",
-        "repeat_cross_insp_share", "vc_labcontrols_share",
-        "vc_qualitysystem_share", "remediation_none_share",
-        "remediation_weak_share", "scope_multipleproducts_share",
+    colors = [C["orange"] if p else C["blue"] for p in sup["parenteral"]]
+    hover = [
+        f"<b>{row.drug}</b><br>FEIs: {row.n_feis}<br>"
+        f"Recalls (2015–2024): {row.n_recalls_total}<br>"
+        f"{'Parenteral (injectable)' if row.parenteral else 'Oral'}"
+        for _, row in sup.iterrows()
     ]
-    col_labels = [_FEAT_LABEL.get(c, c) for c in heat_cols]
 
-    # Sort FEIs by mean text-feature risk (high severity + contamination)
-    latest = latest.copy()
-    latest["_sort"] = (
-        latest["severity_critmajor_share"].fillna(0) * 0.4 +
-        latest["contamination_llm_share"].fillna(0) * 0.3 +
-        latest["cultural_root_cause_share"].fillna(0) * 0.3
-    )
-    latest = latest.sort_values("_sort", ascending=True)
-
-    z     = latest[heat_cols].fillna(np.nan).values
-    y_lbl = latest["facility_name"].tolist()
-    # Shorten long names
-    y_lbl = [n[:35] + "…" if len(str(n)) > 36 else str(n) for n in y_lbl]
-
-    hover = []
-    for _, row in latest.iterrows():
-        row_hover = []
-        for c, cl in zip(heat_cols, col_labels):
-            v = row.get(c, np.nan)
-            row_hover.append(f"{cl}: {v:.2f}" if pd.notna(v) else f"{cl}: n/a")
-        hover.append("<br>".join(row_hover))
-
-    fig = go.Figure(go.Heatmap(
-        z=z,
-        x=col_labels,
-        y=y_lbl,
-        colorscale="Oranges",
-        zmin=0, zmax=1,
-        hovertext=hover,
-        hovertemplate="<b>%{y}</b><br>%{customdata}<extra></extra>",
-        customdata=hover,
-        colorbar=dict(title="Share", thickness=14, len=0.7),
+    fig = go.Figure(go.Bar(
+        x=sup["n_feis"], y=sup["drug"],
+        orientation="h",
+        marker_color=colors,
+        text=sup["n_feis"].astype(str) + " FEIs",
+        textposition="outside",
+        hovertext=hover, hoverinfo="text",
+        showlegend=False,
     ))
 
-    fig.update_layout(
-        height=max(500, 14 * len(latest)),
-        margin=dict(l=200, r=20, t=20, b=120),
-        font=_PLOTLY_FONT,
-        plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(side="bottom", tickangle=-35, tickfont=dict(size=11)),
-        yaxis=dict(tickfont=dict(size=10)),
-    )
-    return fig
-
-
-def _fig_roc(preds_l2, preds_rf, y, metrics: pd.DataFrame) -> go.Figure:
-    """ROC curves for both models."""
-    fig = go.Figure()
-
-    if preds_l2 is not None and y.sum() > 0:
-        auc_l2 = roc_auc_score(y, preds_l2)
-        fpr, tpr, _ = roc_curve(y, preds_l2)
-        fig.add_trace(go.Scatter(
-            x=fpr, y=tpr, mode="lines", name=f"Logistic Regression (AUC={auc_l2:.3f})",
-            line=dict(color=C["blue"], width=2),
-        ))
-        auc_rf = roc_auc_score(y, preds_rf)
-        fpr_rf, tpr_rf, _ = roc_curve(y, preds_rf)
-        fig.add_trace(go.Scatter(
-            x=fpr_rf, y=tpr_rf, mode="lines", name=f"Random Forest (AUC={auc_rf:.3f})",
-            line=dict(color=C["orange"], width=2.5),
-        ))
-    else:
-        # Fall back to saved metrics
-        for _, row in metrics.iterrows():
+    # Recall count annotations on right
+    for _, row in sup.iterrows():
+        if row["n_recalls_total"] > 0:
             fig.add_annotation(
-                x=0.5, y=0.5,
-                text=f"{row['model']}: AUC={row['auc']:.3f}",
+                x=row["n_feis"] + 1.5, y=row["drug"],
+                text=f"▶ {row.n_recalls_total} recalls",
                 showarrow=False,
+                font=dict(size=10, color=C["red"]),
+                xanchor="left",
             )
 
-    fig.add_trace(go.Scatter(
-        x=[0, 1], y=[0, 1], mode="lines",
-        name="Random", line=dict(color=C["gray"], width=1.2, dash="dash"),
-    ))
+    fig.add_trace(go.Bar(x=[None], y=[None], marker_color=C["orange"],
+                         name="Parenteral (injectable)", showlegend=True))
+    fig.add_trace(go.Bar(x=[None], y=[None], marker_color=C["blue"],
+                         name="Oral", showlegend=True))
+
     fig.update_layout(
-        height=380,
-        margin=dict(l=10, r=10, t=50, b=10),
-        font=_PLOTLY_FONT,
-        plot_bgcolor="white", paper_bgcolor="white",
-        title=dict(text="ROC — Predict FEI recall at year t+1", font=dict(size=13)),
-        xaxis=dict(title="False Positive Rate", gridcolor="#F0F0F0", range=[-0.02, 1.02]),
-        yaxis=dict(title="True Positive Rate", gridcolor="#F0F0F0", range=[-0.02, 1.02]),
-        legend=dict(x=0.55, y=0.08, bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#E0E0E0", borderwidth=1),
+        height=420, margin=dict(l=10, r=160, t=10, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(title="Number of FEIs producing drug", range=[0, 45]),
+        yaxis=dict(gridcolor="white"),
+        legend=dict(x=0.72, y=0.02),
+        barmode="overlay",
     )
     return fig
 
 
-def _fig_ablation(ablation: pd.DataFrame, metrics: pd.DataFrame) -> go.Figure:
-    """AUC lift bar chart (ablation) + metrics table."""
+def _fig_risk_matrix(
+    supply: pd.DataFrame,
+    recalls_by_drug: pd.DataFrame,
+    shortages: pd.DataFrame,
+    quality: pd.DataFrame,
+) -> go.Figure:
+    """Bubble chart: supply concentration × quality risk, sized by recalls, colored by shortages."""
+    tot_recalls   = recalls_by_drug.groupby("drug")["n_recalls"].sum().reset_index(name="n_recalls")
+    tot_shortages = shortages.groupby("drug")["n"].sum().reset_index(name="n_shortages")
+
+    df = supply.merge(tot_recalls, on="drug", how="left")
+    df = df.merge(tot_shortages, on="drug", how="left")
+    df = df.merge(quality[["drug", "quality_risk"]], on="drug", how="left")
+    df["n_recalls"]   = df["n_recalls"].fillna(0).astype(int)
+    df["n_shortages"] = df["n_shortages"].fillna(0).astype(int)
+    df["quality_risk"] = df["quality_risk"].fillna(0)
+
+    size_scale = [max(8, r * 6) for r in df["n_recalls"]]
+    shortage_max = max(df["n_shortages"].max(), 1)
+
+    hover = [
+        f"<b>{row.drug}</b><br>"
+        f"FEIs: {row.n_feis}<br>"
+        f"Quality risk index: {row.quality_risk:.2f}<br>"
+        f"Recalls (2015–2024): {row.n_recalls}<br>"
+        f"Shortage events: {row.n_shortages}<br>"
+        f"{'Parenteral' if row.parenteral else 'Oral'}"
+        for _, row in df.iterrows()
+    ]
+
+    fig = go.Figure(go.Scatter(
+        x=df["n_feis"],
+        y=df["quality_risk"],
+        mode="markers+text",
+        marker=dict(
+            size=size_scale,
+            color=df["n_shortages"],
+            colorscale="Reds",
+            cmin=0, cmax=shortage_max,
+            colorbar=dict(title="Shortage<br>events", thickness=12, len=0.6),
+            line=dict(width=1.5, color="white"),
+            symbol=["diamond" if p else "circle" for p in df["parenteral"]],
+        ),
+        text=df["drug"].str.split(";").str[0].str.strip(),
+        textposition="top center",
+        textfont=dict(size=10),
+        hovertext=hover, hoverinfo="text",
+        showlegend=False,
+    ))
+
+    # Quadrant lines
+    x_mid = df["n_feis"].median()
+    y_mid = df["quality_risk"].median()
+    for x_line in [x_mid]:
+        fig.add_vline(x=x_line, line_dash="dot", line_color="#CCC", line_width=1)
+    for y_line in [y_mid]:
+        fig.add_hline(y=y_line, line_dash="dot", line_color="#CCC", line_width=1)
+
+    # Quadrant labels
+    x_range = [df["n_feis"].min() - 1, df["n_feis"].max() + 2]
+    fig.add_annotation(x=x_range[0] + 1, y=df["quality_risk"].max() * 0.97,
+                       text="<b>HIGH RISK</b><br>Few producers,<br>high quality issues",
+                       showarrow=False, font=dict(color=C["red"], size=10),
+                       align="left", xanchor="left")
+    fig.add_annotation(x=x_range[1] - 1, y=df["quality_risk"].min() + 0.01,
+                       text="<b>LOW RISK</b><br>Many producers,<br>low quality issues",
+                       showarrow=False, font=dict(color=C["green"], size=10),
+                       align="right", xanchor="right")
+
+    fig.update_layout(
+        height=420, margin=dict(l=10, r=60, t=20, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(title="Number of FEIs producing drug (supply concentration ↑ = safer)",
+                   gridcolor="#F0F0F0"),
+        yaxis=dict(title="Avg quality risk signal (LLM text features)",
+                   gridcolor="#F0F0F0"),
+    )
+    return fig
+
+
+def _fig_timeline(recalls_by_drug: pd.DataFrame, shortages: pd.DataFrame) -> go.Figure:
+    """Two time series: recalls (top) and shortages (bottom) by drug × year."""
+    years = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
+    drugs = sorted(set(recalls_by_drug["drug"]) | set(shortages["drug"]))
+
+    palette = [
+        "#4A90D9", "#E07B39", "#3DAA6E", "#D94A4A", "#7B5EA7",
+        "#2E8B8B", "#C6833A", "#5588BB", "#8E4B9E", "#357A38",
+        "#C0392B", "#1A7A4A", "#845EC2", "#FF9671",
+    ]
+    drug_color = {d: palette[i % len(palette)] for i, d in enumerate(sorted(drugs))}
+
     fig = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=["Text feature lift (Logistic Regression AUC)", "CV metrics summary"],
-        column_widths=[0.55, 0.45],
-        horizontal_spacing=0.08,
-        specs=[[{"type": "xy"}, {"type": "table"}]],
+        rows=2, cols=1,
+        subplot_titles=["Recall events by drug × year (Path A)",
+                        "Shortage events by drug × year (Path A + B + other)"],
+        vertical_spacing=0.14,
+        shared_xaxes=True,
     )
 
+    def _to_yearly(df_sub: pd.DataFrame, val_col: str) -> list[int]:
+        s = df_sub.set_index("year")[val_col].reindex(years, fill_value=0)
+        return s.tolist()
+
+    # Recalls
+    for drug in sorted(drugs):
+        sub = recalls_by_drug[recalls_by_drug["drug"] == drug][["year", "n_recalls"]].copy()
+        sub["year"] = sub["year"].astype(int)
+        if sub.empty:
+            continue
+        fig.add_trace(go.Bar(
+            x=years, y=_to_yearly(sub, "n_recalls"),
+            name=drug, marker_color=drug_color[drug],
+            showlegend=True, legendgroup=drug,
+            hovertemplate=f"<b>{drug}</b><br>Year: %{{x}}<br>Recalls: %{{y}}<extra></extra>",
+        ), row=1, col=1)
+
+    # Shortages — stack by path
+    path_colors = {
+        "Path A — Quality/Manufacturing": C["red"],
+        "Path B — Discontinuation/Exit":  C["purple"],
+        "Demand surge":                    C["orange"],
+        "Raw material":                    C["teal"],
+        "Unknown":                         C["gray"],
+    }
+    path_seen: set[str] = set()
+    for drug in sorted(drugs):
+        sub_d = shortages[shortages["drug"] == drug]
+        if sub_d.empty:
+            continue
+        for path, pcolor in path_colors.items():
+            sub_p = sub_d[sub_d["path"] == path][["year", "n"]].copy()
+            sub_p["year"] = sub_p["year"].astype(int)
+            if sub_p.empty:
+                continue
+            fig.add_trace(go.Bar(
+                x=years, y=_to_yearly(sub_p, "n"),
+                name=path, marker_color=pcolor,
+                showlegend=(path not in path_seen),
+                legendgroup=f"path_{path}",
+                hovertemplate=f"<b>{drug}</b> | {path}<br>Year: %{{x}}<br>Shortages: %{{y}}<extra></extra>",
+            ), row=2, col=1)
+            path_seen.add(path)
+
+    fig.update_layout(
+        height=560, margin=dict(l=10, r=10, t=50, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        barmode="stack",
+        legend=dict(x=1.01, y=1, font=dict(size=10)),
+        xaxis2=dict(title="Year"),
+        yaxis=dict(title="# Recall events", gridcolor="#F0F0F0"),
+        yaxis2=dict(title="# Shortage events", gridcolor="#F0F0F0"),
+    )
+    return fig
+
+
+def _fig_path_breakdown(shortages: pd.DataFrame) -> go.Figure:
+    """Shortage reason breakdown and drug-level path composition."""
+    path_totals = shortages.groupby("path")["n"].sum().sort_values(ascending=False)
+
+    path_colors = {
+        "Path A — Quality/Manufacturing": C["red"],
+        "Path B — Discontinuation/Exit":  C["purple"],
+        "Demand surge":                    C["orange"],
+        "Raw material":                    C["teal"],
+        "Unknown":                         C["gray"],
+    }
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["Shortage events by causal path (2015–2024)",
+                        "Path composition by drug"],
+        horizontal_spacing=0.1,
+        specs=[[{"type": "domain"}, {"type": "xy"}]],
+    )
+
+    # Left: overall path breakdown (donut)
+    fig.add_trace(go.Pie(
+        labels=path_totals.index.tolist(),
+        values=path_totals.values.tolist(),
+        hole=0.45,
+        marker_colors=[path_colors.get(p, C["gray"]) for p in path_totals.index],
+        textinfo="label+percent",
+        textfont=dict(size=11),
+        showlegend=False,
+        hovertemplate="<b>%{label}</b><br>Events: %{value}<br>%{percent}<extra></extra>",
+    ), row=1, col=1)
+
+    # Right: stacked bar by drug (Path A vs B vs other)
+    drugs = sorted(shortages["drug"].unique())
+    path_seen: set[str] = set()
+    for path, pcolor in path_colors.items():
+        vals = []
+        for drug in drugs:
+            sub = shortages[(shortages["drug"] == drug) & (shortages["path"] == path)]
+            vals.append(int(sub["n"].sum()))
+        fig.add_trace(go.Bar(
+            x=drugs, y=vals,
+            name=path, marker_color=pcolor,
+            showlegend=(path not in path_seen),
+            legendgroup=f"path_{path}",
+            hovertemplate="<b>%{x}</b><br>" + path + "<br>Events: %{y}<extra></extra>",
+        ), row=1, col=2)
+        path_seen.add(path)
+
+    fig.update_layout(
+        height=380, margin=dict(l=10, r=10, t=50, b=80),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        barmode="stack",
+        xaxis2=dict(tickangle=-35),
+        yaxis2=dict(title="# Shortage events", gridcolor="#F0F0F0"),
+        legend=dict(x=1.01, y=1, font=dict(size=10)),
+    )
+    return fig
+
+
+def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
+    """Left: L2 text feature lift (ablation bar). Right: feature importance (top 12)."""
+    fi_top = fi.sort_values("importance", ascending=False).head(12).copy()
+    fi_top["label"] = fi_top["feature"].map(lambda f: _FEAT_LABEL.get(f, f))
+    fi_top["color"] = fi_top["feature"].map(lambda f: _GROUP_COLOR.get(f, C["gray"]))
+    fi_top["group"] = fi_top["feature"].map(
+        lambda f: "Inspection" if f in INSP_FEATS
+                  else "Text / LLM" if f in TEXT_FEATS
+                  else "Structural"
+    )
+    fi_top = fi_top.sort_values("importance")
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["AUC lift from 483 text (L2 logistic regression, GroupKFold CV)",
+                        "Feature importance (Random Forest, top 12)"],
+        horizontal_spacing=0.1,
+        column_widths=[0.35, 0.65],
+    )
+
+    # Ablation bars
     bar_colors = [C["gray"], C["orange"]]
     for i, row in ablation.iterrows():
         fig.add_trace(go.Bar(
             x=[row["label"]], y=[row["auc"]],
             marker_color=bar_colors[i % 2],
-            text=f"{row['auc']:.3f}",
-            textposition="outside",
-            textfont=dict(size=13, color="#212529"),
-            showlegend=False,
-            width=0.4,
+            text=f"{row['auc']:.3f}", textposition="outside",
+            textfont=dict(size=13),
+            showlegend=False, width=0.4,
             hovertemplate=f"<b>{row['label']}</b><br>AUC: {row['auc']:.3f}<extra></extra>",
         ), row=1, col=1)
 
-    # Delta annotation (no row/col — annotates the whole figure)
     if len(ablation) == 2:
         delta = ablation.iloc[1]["auc"] - ablation.iloc[0]["auc"]
-        rel   = delta / ablation.iloc[0]["auc"] * 100
+        rel   = delta / max(ablation.iloc[0]["auc"], 0.001) * 100
         fig.add_annotation(
             xref="x", yref="y",
             x=ablation.iloc[1]["label"], y=ablation.iloc[1]["auc"],
             text=f"<b>+{delta:.3f}<br>(+{rel:.0f}%)</b>",
             showarrow=True, arrowhead=2, arrowcolor=C["orange"],
-            ax=50, ay=-40, font=dict(color=C["orange"], size=12),
+            ax=55, ay=-40, font=dict(color=C["orange"], size=12),
         )
 
-    # Metrics table
-    tbl_headers = ["Model", "AUC", "Avg. Precision", "Brier"]
-    tbl_vals = [
-        metrics["model"].str.replace("_", " ").tolist(),
-        metrics["auc"].map("{:.3f}".format).tolist(),
-        metrics["ap"].map("{:.3f}".format).tolist(),
-        metrics["brier"].map("{:.3f}".format).tolist(),
-    ]
-    fig.add_trace(go.Table(
-        header=dict(
-            values=[f"<b>{h}</b>" for h in tbl_headers],
-            fill_color=C["dark"], font=dict(color="white", size=12),
-            align="left", height=30,
-        ),
-        cells=dict(
-            values=tbl_vals,
-            fill_color=[["white", "#F8F9FA"] * 4],
-            align="left", height=28, font=dict(size=12),
-        ),
-    ), row=1, col=2)
-
-    fig.update_layout(
-        height=380,
-        margin=dict(l=10, r=10, t=50, b=10),
-        font=_PLOTLY_FONT,
-        plot_bgcolor="white", paper_bgcolor="white",
-        yaxis=dict(range=[0, max(ablation["auc"]) * 1.2],
-                   title="AUC-ROC", gridcolor="#F0F0F0"),
-        xaxis=dict(gridcolor="white"),
-    )
-    return fig
-
-
-def _fig_importance(fi: pd.DataFrame, top_n: int = 12) -> go.Figure:
-    fi = fi.sort_values("importance", ascending=False).head(top_n).copy()
-    fi["label"]  = fi["feature"].map(lambda f: _FEAT_LABEL.get(f, f))
-    fi["color"]  = fi["feature"].map(lambda f: _GROUP_COLOR.get(f, C["gray"]))
-    fi["group"]  = fi["feature"].map(
-        lambda f: "Inspection" if f in INSP_FEATS
-                  else "Text / LLM" if f in TEXT_FEATS
-                  else "Structural"
-    )
-    fi = fi.sort_values("importance")
-
-    fig = go.Figure()
+    # Feature importance
     for grp, col in [("Inspection", C["blue"]), ("Text / LLM", C["orange"]),
                      ("Structural", C["green"])]:
-        sub = fi[fi["group"] == grp]
+        sub = fi_top[fi_top["group"] == grp]
         if sub.empty:
             continue
         fig.add_trace(go.Bar(
             x=sub["importance"], y=sub["label"],
-            orientation="h",
-            name=grp,
-            marker_color=col,
+            orientation="h", name=grp, marker_color=col,
             text=sub["importance"].map("{:.3f}".format),
             textposition="outside",
             hovertemplate="<b>%{y}</b><br>Importance: %{x:.4f}<extra></extra>",
-        ))
+        ), row=1, col=2)
 
     fig.update_layout(
-        height=440,
-        margin=dict(l=10, r=60, t=20, b=10),
-        font=_PLOTLY_FONT,
-        plot_bgcolor="white", paper_bgcolor="white",
+        height=440, margin=dict(l=10, r=80, t=50, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         barmode="overlay",
-        xaxis=dict(title="RF Feature Importance", gridcolor="#F0F0F0"),
-        yaxis=dict(gridcolor="white"),
-        legend=dict(x=0.72, y=0.05, bgcolor="rgba(255,255,255,0.9)",
+        yaxis=dict(range=[0, max(ablation["auc"]) * 1.25], title="AUC-ROC",
+                   gridcolor="#F0F0F0"),
+        xaxis=dict(gridcolor="white"),
+        xaxis2=dict(title="RF Feature Importance", gridcolor="#F0F0F0"),
+        yaxis2=dict(gridcolor="white"),
+        legend=dict(x=0.73, y=0.05, font=dict(size=11),
+                    bgcolor="rgba(255,255,255,0.9)",
                     bordercolor="#E0E0E0", borderwidth=1),
-    )
-    return fig
-
-
-def _fig_risk_table(risk: pd.DataFrame, latest: pd.DataFrame) -> go.Figure:
-    """Interactive top-20 FEI risk ranking table."""
-    risk = risk.copy()
-
-    # Merge in text features if available
-    latest_sub = latest[["fei", "severity_critmajor_share",
-                          "contamination_llm_share", "cultural_root_cause_share",
-                          "n_obs_total"]].copy()
-    latest_sub["fei"] = pd.to_numeric(latest_sub["fei"], errors="coerce").astype("Int64")
-    risk["fei"] = pd.to_numeric(risk["fei"], errors="coerce").astype("Int64")
-    risk = risk.merge(latest_sub, on="fei", how="left",
-                      suffixes=("", "_ts"))
-
-    # Prefer timeseries columns over model output (more complete)
-    for col in ["severity_critmajor_share", "contamination_llm_share"]:
-        if col + "_ts" in risk.columns:
-            mask = risk[col].isna()
-            risk.loc[mask, col] = risk.loc[mask, col + "_ts"]
-
-    def _fmt(v, pct=True):
-        if pd.isna(v):
-            return "—"
-        return f"{v*100:.0f}%" if pct else f"{v:.2f}"
-
-    def _fmt_int(v):
-        if pd.isna(v):
-            return "—"
-        return str(int(v))
-
-    col_defs = [
-        ("Rank",                "rank",                      lambda v: str(int(v)) if pd.notna(v) else "—"),
-        ("Facility",            "facility_name",             lambda v: str(v)[:40] if pd.notna(v) else "—"),
-        ("P(recall) RF",        "p_recall",                  lambda v: f"{v:.3f}" if pd.notna(v) else "—"),
-        ("Crit/Major severity", "severity_critmajor_share",  lambda v: _fmt(v)),
-        ("Contamination (LLM)", "contamination_llm_share",   lambda v: _fmt(v)),
-        ("OAI (cumul.)",        "n_oai_cumul",               lambda v: _fmt_int(v)),
-        ("483 obs (text)",      "n_obs_total",               lambda v: _fmt_int(v)),
-    ]
-
-    headers = [c[0] for c in col_defs]
-    cells   = []
-    for _, fn in [(c[1], c[2]) for c in col_defs]:
-        col_data = risk[_].map(fn) if _ in risk.columns else ["—"] * len(risk)
-        cells.append(col_data.tolist())
-
-    # Color rows by p_recall
-    p_vals = risk["p_recall"].fillna(0).tolist()
-    max_p  = max(p_vals) if p_vals else 1
-    row_colors = []
-    for p in p_vals:
-        alpha = 0.15 + 0.45 * (p / max(max_p, 0.01))
-        row_colors.append(f"rgba(224, 123, 57, {alpha:.2f})")
-
-    fig = go.Figure(go.Table(
-        header=dict(
-            values=[f"<b>{h}</b>" for h in headers],
-            fill_color=C["dark"], font=dict(color="white", size=12),
-            align=["center", "left", "center", "center", "center", "center", "center"],
-            height=34,
-        ),
-        cells=dict(
-            values=cells,
-            fill_color=[row_colors] * len(cells),
-            align=["center", "left", "center", "center", "center", "center", "center"],
-            height=30,
-            font=dict(size=12),
-        ),
-    ))
-    fig.update_layout(
-        height=max(420, 32 * len(risk) + 60),
-        margin=dict(l=10, r=10, t=10, b=10),
-        font=_PLOTLY_FONT,
-        paper_bgcolor="white",
     )
     return fig
 
 
 # ── HTML assembly ────────────────────────────────────────────────────────────
 
-def _to_div(fig: go.Figure, fig_id: str) -> str:
+def _div(fig: go.Figure, fig_id: str) -> str:
     return pio.to_html(fig, full_html=False, include_plotlyjs=False,
-                       div_id=fig_id, config={"displayModeBar": True,
-                                               "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
+                       div_id=fig_id,
+                       config={"displayModeBar": True,
+                               "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
 
 
-def build_html(data: dict, preds_l2, preds_rf, y) -> str:
-    cov   = data["cov"]
-    pct   = cov["n_docs_obtained"] / cov["n_483s_issued"] * 100
-    auc_no  = data["ablation"].iloc[0]["auc"]
-    auc_yes = data["ablation"].iloc[1]["auc"]
-    lift_rel = (auc_yes - auc_no) / auc_no * 100
+def build_html(
+    cov: dict,
+    supply: pd.DataFrame,
+    recalls_by_drug: pd.DataFrame,
+    shortages: pd.DataFrame,
+    quality: pd.DataFrame,
+    fi: pd.DataFrame,
+    ablation: pd.DataFrame,
+) -> str:
+    auc_no  = ablation.iloc[0]["auc"]
+    auc_yes = ablation.iloc[1]["auc"]
+    lift_abs = auc_yes - auc_no
+    lift_rel = lift_abs / max(auc_no, 0.001) * 100
+
+    total_recalls   = int(recalls_by_drug["n_recalls"].sum())
+    total_shortages = int(shortages["n"].sum())
+    path_b_share    = int(
+        shortages[shortages["path"] == "Path B — Discontinuation/Exit"]["n"].sum()
+        / max(total_shortages, 1) * 100
+    )
 
     divs = {
-        "funnel":      _to_div(_fig_funnel(cov), "fig_funnel"),
-        "dist_agg":    _to_div(_fig_dist_agg(data["latest"]), "fig_dist_agg"),
-        "heatmap":     _to_div(_fig_heatmap(data["latest"]), "fig_heatmap"),
-        "roc":         _to_div(_fig_roc(preds_l2, preds_rf, y, data["metrics"]), "fig_roc"),
-        "ablation":    _to_div(_fig_ablation(data["ablation"], data["metrics"]), "fig_ablation"),
-        "importance":  _to_div(_fig_importance(data["fi"]), "fig_importance"),
-        "risk":        _to_div(_fig_risk_table(data["risk"], data["latest"]), "fig_risk"),
+        "funnel":       _div(_fig_funnel(cov),                           "fig_funnel"),
+        "supply":       _div(_fig_supply_concentration(supply, recalls_by_drug), "fig_supply"),
+        "matrix":       _div(_fig_risk_matrix(supply, recalls_by_drug, shortages, quality), "fig_matrix"),
+        "timeline":     _div(_fig_timeline(recalls_by_drug, shortages),  "fig_timeline"),
+        "paths":        _div(_fig_path_breakdown(shortages),             "fig_paths"),
+        "model":        _div(_fig_model_evidence(fi, ablation),          "fig_model"),
     }
 
     today = date.today().strftime("%B %d, %Y")
@@ -719,60 +729,62 @@ def build_html(data: dict, preds_l2, preds_rf, y) -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FEI Recall Prediction — Text Feature Dashboard</title>
+<title>Drug Shortage — Quality Risk & Causal Paths</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
           background: #F0F2F5; color: #212529; font-size: 14px; }}
 
-  /* ── Nav ── */
   nav {{ position: sticky; top: 0; z-index: 200; background: #1a1a2e;
-         display: flex; align-items: center; padding: 0 32px; height: 52px;
-         box-shadow: 0 2px 10px rgba(0,0,0,0.3); gap: 4px; }}
-  .nav-brand {{ font-size: 14px; font-weight: 700; color: #F8F9FA;
-                 letter-spacing: 0.3px; margin-right: auto; white-space: nowrap; }}
+         display: flex; align-items: center; padding: 0 28px; height: 52px;
+         box-shadow: 0 2px 10px rgba(0,0,0,0.3); gap: 2px; }}
+  .nav-brand {{ font-size: 13.5px; font-weight: 700; color: #F8F9FA;
+                 margin-right: auto; white-space: nowrap; }}
   .nav-brand span {{ color: #68D391; }}
-  nav a {{ color: #A0AEC0; text-decoration: none; font-size: 12.5px; font-weight: 500;
-            padding: 6px 14px; border-radius: 6px; transition: all 0.18s; white-space: nowrap; }}
+  nav a {{ color: #A0AEC0; text-decoration: none; font-size: 12px; font-weight: 500;
+            padding: 6px 12px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }}
   nav a:hover {{ color: #F8F9FA; background: rgba(255,255,255,0.1); }}
 
-  /* ── Hero ── */
   .hero {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: white; padding: 44px 40px 36px; border-bottom: 3px solid #68D391; }}
-  .hero h1 {{ font-size: 24px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 6px; }}
-  .hero p  {{ color: #A0AEC0; font-size: 13.5px; line-height: 1.6; max-width: 720px; }}
-  .kpi-row {{ display: flex; flex-wrap: wrap; gap: 14px; margin-top: 28px; }}
-  .kpi {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-           border-radius: 10px; padding: 14px 22px; min-width: 130px; }}
-  .kpi .val {{ font-size: 30px; font-weight: 800; color: #68D391; line-height: 1; }}
-  .kpi .lbl {{ font-size: 11.5px; color: #A0AEC0; margin-top: 5px; line-height: 1.3; }}
+            color: white; padding: 40px 40px 32px; border-bottom: 3px solid #68D391; }}
+  .hero h1 {{ font-size: 23px; font-weight: 700; margin-bottom: 8px; }}
+  .hero p  {{ color: #A0AEC0; font-size: 13.5px; line-height: 1.65; max-width: 800px; margin-bottom: 18px; }}
 
-  /* ── Layout ── */
+  .paths-row {{ display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 24px; }}
+  .path-card {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+                 border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 220px; }}
+  .path-card .path-label {{ font-size: 11px; color: #A0AEC0; text-transform: uppercase;
+                              letter-spacing: 0.5px; margin-bottom: 6px; }}
+  .path-card .path-title {{ font-size: 14px; font-weight: 600; margin-bottom: 6px; }}
+  .path-card .path-desc  {{ font-size: 12px; color: #A0AEC0; line-height: 1.5; }}
+  .path-a {{ border-left: 3px solid #D94A4A; }}
+  .path-b {{ border-left: 3px solid #7B5EA7; }}
+
+  .kpi-row {{ display: flex; flex-wrap: wrap; gap: 12px; }}
+  .kpi {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+           border-radius: 10px; padding: 12px 18px; min-width: 120px; }}
+  .kpi .val {{ font-size: 28px; font-weight: 800; color: #68D391; line-height: 1; }}
+  .kpi .lbl {{ font-size: 11px; color: #A0AEC0; margin-top: 4px; line-height: 1.3; }}
+
   .page {{ max-width: 1380px; margin: 0 auto; padding: 0 28px 40px; }}
-  section {{ padding-top: 40px; }}
-  .section-head {{ margin-bottom: 18px; }}
-  .section-title {{ font-size: 17px; font-weight: 700; color: #1a1a2e;
+  section {{ padding-top: 36px; }}
+  .section-head {{ margin-bottom: 16px; }}
+  .section-title {{ font-size: 16px; font-weight: 700; color: #1a1a2e;
                      border-left: 4px solid #68D391; padding-left: 12px; }}
   .section-sub {{ font-size: 12.5px; color: #6C757D; margin-top: 5px;
-                   padding-left: 16px; line-height: 1.5; }}
+                   padding-left: 16px; line-height: 1.5; max-width: 900px; }}
   .card {{ background: white; border-radius: 12px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.07); padding: 20px 20px 12px;
-            margin-bottom: 18px; }}
-  .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
-  .legend-row {{ display: flex; gap: 20px; padding: 10px 4px 2px;
-                  flex-wrap: wrap; }}
-  .legend-item {{ display: flex; align-items: center; gap: 7px;
-                   font-size: 12px; color: #495057; }}
-  .legend-dot {{ width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }}
+            box-shadow: 0 1px 5px rgba(0,0,0,0.07); padding: 18px 18px 10px;
+            margin-bottom: 16px; }}
+  .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
 
-  /* ── Footer ── */
   footer {{ text-align: center; color: #9AA5B1; font-size: 12px;
-             padding: 24px 0 32px; border-top: 1px solid #DEE2E6; margin-top: 20px; }}
+             padding: 22px 0 30px; border-top: 1px solid #DEE2E6; margin-top: 20px; }}
 
   @media (max-width: 900px) {{
     .two-col {{ grid-template-columns: 1fr; }}
-    .page {{ padding: 0 14px 32px; }}
+    .page {{ padding: 0 12px 28px; }}
     nav a {{ display: none; }}
   }}
 </style>
@@ -780,130 +792,131 @@ def build_html(data: dict, preds_l2, preds_rf, y) -> str:
 <body>
 
 <nav>
-  <div class="nav-brand">FEI Recall Prediction &nbsp;<span>·</span>&nbsp; Drug Shortage Project</div>
-  <a href="#provenance">① Data Coverage</a>
-  <a href="#distributions">② Feature Distributions</a>
-  <a href="#model">③ Model Performance</a>
-  <a href="#importance">④ Feature Importance</a>
-  <a href="#ranking">⑤ Risk Ranking</a>
+  <div class="nav-brand">Drug Shortage &nbsp;<span>·</span>&nbsp; Quality Risk & Causal Paths</div>
+  <a href="#coverage">① Coverage</a>
+  <a href="#supply">② Supply Landscape</a>
+  <a href="#timeline">③ Events Timeline</a>
+  <a href="#paths">④ Causal Paths</a>
+  <a href="#model">⑤ Model Evidence</a>
 </nav>
 
 <div class="hero">
-  <h1>Predicting Drug Recalls from 483 Inspection Text</h1>
-  <p>LLM-extracted features from FDA 483 inspection observations significantly improve
-     facility-level recall prediction beyond inspection counts alone.
-     Panel: {cov['n_feis_llm']} FEIs × 10 years (2015–2024), 20 recall events.
-     Parenteral drug flag derived from Orange Book dosage routes (not hardcoded).</p>
+  <h1>Manufacturing Quality Failures → Drug Shortages</h1>
+  <p>Quality failures at generic drug manufacturing facilities (FEIs) can cause shortages through
+     two distinct causal paths. This dashboard tracks both paths using FDA 483 inspection data,
+     recall records, and UUtah shortage data across 14 Valisure-validated APIs (2015–2024).</p>
+
+  <div class="paths-row">
+    <div class="path-card path-a">
+      <div class="path-label">Path A — Recall</div>
+      <div class="path-title" style="color:#D94A4A;">Quality failure → Recall → Supply gap</div>
+      <div class="path-desc">483 observations (contamination, lab controls, data integrity) trigger
+        a recall event. Product is pulled from market. If too few alternative suppliers exist,
+        a shortage follows.</div>
+    </div>
+    <div class="path-card path-b">
+      <div class="path-label">Path B — Silent Exit</div>
+      <div class="path-title" style="color:#7B5EA7;">Quality failure → Facility exit → Shortage</div>
+      <div class="path-desc">A major 483 citing expensive remediation forces a business decision:
+        the firm discontinues the product rather than invest in compliance. No recall is ever issued,
+        but supply shrinks. Harder to detect — SDUD volume drop is the best signal.</div>
+    </div>
+  </div>
+
   <div class="kpi-row">
-    <div class="kpi"><div class="val">{cov['n_feis_llm']}</div>
-      <div class="lbl">FEIs with LLM text features</div></div>
-    <div class="kpi"><div class="val">{pct:.0f}%</div>
-      <div class="lbl">483 document coverage<br>({cov['n_docs_obtained']}/{cov['n_483s_issued']} docs)</div></div>
-    <div class="kpi"><div class="val">{cov['n_obs_llm']:,}</div>
-      <div class="lbl">Observations LLM-scored</div></div>
-    <div class="kpi"><div class="val">+{lift_rel:.0f}%</div>
-      <div class="lbl">Relative AUC lift (L2)<br>from text features</div></div>
-    <div class="kpi"><div class="val">{auc_yes:.3f}</div>
-      <div class="lbl">L2 AUC with text<br>(vs {auc_no:.3f} without)</div></div>
+    <div class="kpi"><div class="val">14</div><div class="lbl">APIs tracked<br>(Valisure-tested)</div></div>
+    <div class="kpi"><div class="val">{cov['n_feis_llm']}</div><div class="lbl">FEIs with<br>LLM text features</div></div>
+    <div class="kpi"><div class="val">{total_recalls}</div><div class="lbl">Recall events<br>linked to FEIs</div></div>
+    <div class="kpi"><div class="val">{total_shortages}</div><div class="lbl">Shortage events<br>(UUtah, 2015–2024)</div></div>
+    <div class="kpi"><div class="val">{path_b_share}%</div><div class="lbl">Shortages from<br>discontinuation (Path B)</div></div>
+    <div class="kpi"><div class="val">+{lift_rel:.0f}%</div><div class="lbl">AUC lift from<br>483 text features</div></div>
   </div>
 </div>
 
 <div class="page">
 
 <!-- ① Data Coverage -->
-<section id="provenance">
+<section id="coverage">
   <div class="section-head">
     <div class="section-title">① Data Coverage</div>
     <div class="section-sub">
-      From 129 Valisure FEIs → 127 in Redica → 98 with 483 text (2018–2026).
-      Redica provided {cov['n_docs_obtained']} of the {cov['n_483s_issued']} total 483s issued ({pct:.0f}% coverage),
-      yielding {cov['n_obs_llm']:,} LLM-scored observations.
+      Starting from 129 Valisure FEIs: 127 in Redica inspection database,
+      {cov['n_sites_with_483']} with ≥1 483 issued, {cov['n_feis_llm']} with
+      {cov['n_obs_llm']:,} observations scored by the current LLM pipeline.
     </div>
   </div>
-  <div class="card">
-    {divs['funnel']}
-  </div>
+  <div class="card">{divs['funnel']}</div>
 </section>
 
-<!-- ② Feature Distributions -->
-<section id="distributions">
+<!-- ② Supply Landscape -->
+<section id="supply">
   <div class="section-head">
-    <div class="section-title">② Text Feature Distributions</div>
+    <div class="section-title">② Supply Concentration & Risk Profile</div>
     <div class="section-sub">
-      <b>Top:</b> Mean shares across 98 FEIs (latest snapshot per facility).
-      <b>Bottom:</b> Per-FEI heatmap — each row is one facility, sorted by composite risk
-      (severity × contamination × cultural root cause). Orange = higher share.
-    </div>
-  </div>
-  <div class="card">
-    {divs['dist_agg']}
-  </div>
-  <div class="card">
-    {divs['heatmap']}
-  </div>
-</section>
-
-<!-- ③ Model Performance -->
-<section id="model">
-  <div class="section-head">
-    <div class="section-title">③ Model Performance</div>
-    <div class="section-sub">
-      GroupKFold cross-validation grouped by FEI (no facility appears in both train and test).
-      Panel: 1,250 FEI-years, 20 recall events (1.6% prevalence). Features at year t predict recall at year t+1.
+      Left: how many FEIs produce each drug (March 2026 Valisure mapping). Orange = parenteral
+      (injectable) drugs, which face stricter manufacturing requirements. Recall counts for
+      2015–2024 shown in red.
+      Right: bubble chart — fewer FEIs + higher quality risk signal = upper-left quadrant (highest shortage risk).
+      Bubble size = number of recalls; color intensity = number of shortage events.
+      Diamond shape = parenteral.
     </div>
   </div>
   <div class="two-col">
-    <div class="card">{divs['roc']}</div>
-    <div class="card">{divs['ablation']}</div>
+    <div class="card">{divs['supply']}</div>
+    <div class="card">{divs['matrix']}</div>
   </div>
 </section>
 
-<!-- ④ Feature Importance -->
-<section id="importance">
+<!-- ③ Events Timeline -->
+<section id="timeline">
   <div class="section-head">
-    <div class="section-title">④ Feature Importance</div>
+    <div class="section-title">③ Recall & Shortage Events Over Time</div>
     <div class="section-sub">
-      Random Forest impurity-based importance, top 12 features, fit on the full panel.
+      Top panel: recall events per drug per year (Path A signal — a facility had a quality failure
+      serious enough to trigger a product recall).
+      Bottom panel: shortage events by drug per year, color-coded by reason.
+      Notable spikes: Metformin 2020 (NDMA contamination crisis), Potassium Chloride 2020 (COVID supply chain).
     </div>
   </div>
-  <div class="card">
-    <div class="legend-row">
-      <div class="legend-item">
-        <div class="legend-dot" style="background:#4A90D9"></div> Inspection
-      </div>
-      <div class="legend-item">
-        <div class="legend-dot" style="background:#E07B39"></div> Text / LLM
-      </div>
-      <div class="legend-item">
-        <div class="legend-dot" style="background:#3DAA6E"></div> Structural
-      </div>
-    </div>
-    {divs['importance']}
-  </div>
+  <div class="card">{divs['timeline']}</div>
 </section>
 
-<!-- ⑤ FEI Risk Ranking -->
-<section id="ranking">
+<!-- ④ Causal Paths -->
+<section id="paths">
   <div class="section-head">
-    <div class="section-title">⑤ FEI Risk Ranking</div>
+    <div class="section-title">④ Causal Path Analysis</div>
     <div class="section-sub">
-      Top 20 facilities ranked by Random Forest predicted recall probability,
-      using year 2024 features (latest available). Row color intensity ∝ predicted risk.
-      Facilities without 483 text coverage have text columns shown as "—".
+      How many shortage events are explained by each causal path?
+      Path A (manufacturing/quality) includes all shortages where the reported reason was
+      a manufacturing problem, regulatory action, or quality issue. Path B (discontinuation/exit)
+      includes shortages attributed to business decisions or product discontinuation.
+      Unknown/demand shortages are tracked separately.
     </div>
   </div>
-  <div class="card">
-    {divs['risk']}
-  </div>
+  <div class="card">{divs['paths']}</div>
 </section>
 
-</div><!-- /page -->
+<!-- ⑤ Model Evidence -->
+<section id="model">
+  <div class="section-head">
+    <div class="section-title">⑤ Model Evidence: 483 Text Improves Recall Prediction</div>
+    <div class="section-sub">
+      L2 logistic regression, GroupKFold CV by FEI (facility never in both train and test).
+      Adding LLM-extracted 483 text features improves AUC from {auc_no:.3f} to {auc_yes:.3f}
+      (+{lift_abs:.3f}, +{lift_rel:.0f}% relative). Feature importance from full-panel Random Forest.
+      Contamination and cultural root-cause are the strongest text signals.
+    </div>
+  </div>
+  <div class="card">{divs['model']}</div>
+</section>
+
+</div>
 
 <footer>
   Generated {today} &nbsp;·&nbsp; Drug Shortage Project &nbsp;·&nbsp; NC State University<br>
   <span style="font-size:11px; color:#BEC8D0;">
-    Text features from Redica 483 database (2018–2026), LLM-scored with current pipeline.
-    Model: Random Forest, GroupKFold CV, 2015–2024.
+    483 text features from Redica database (2018–2026), LLM pipeline.
+    Recall data: FDA CDER. Shortage data: University of Utah. Supply concentration: Valisure (March 2026).
   </span>
 </footer>
 
@@ -915,23 +928,20 @@ def build_html(data: dict, preds_l2, preds_rf, y) -> str:
 
 def main():
     log.info("Loading data…")
-    data = _load_all_data()
-
-    log.info("Running CV for ROC predictions…")
-    preds_l2, preds_rf, y = _get_roc_predictions(data["panel"]) \
-        if _SKLEARN else (None, None, None)
+    fdmap    = _fei_drug_map()
+    supply   = _load_supply_concentration(fdmap)
+    recalls  = _load_recall_by_drug(fdmap)
+    shortage = _load_shortage_by_drug()
+    quality  = _load_drug_quality_profile(fdmap)
+    cov      = _load_coverage()
+    fi, abl  = _load_model_outputs()
 
     log.info("Building HTML…")
-    html = build_html(data, preds_l2, preds_rf,
-                      y if y is not None else pd.Series(dtype=int))
+    html = build_html(cov, supply, recalls, shortage, quality, fi, abl)
 
     OUT_HTML.write_text(html, encoding="utf-8")
     log.info("Dashboard saved → %s", OUT_HTML)
     print(f"\nDone → {OUT_HTML}")
-
-
-def _get_roc_predictions(panel):
-    return _get_roc_preds(panel)
 
 
 if __name__ == "__main__":
