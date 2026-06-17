@@ -196,3 +196,102 @@ def to_year(s: pd.Series) -> pd.Series:
         return s.astype("Int64")
     dt = pd.to_datetime(s, errors="coerce")
     return dt.dt.year.astype("Int64")
+
+
+# ---- SDUD volume helper ------------------------------------------------------
+
+def load_sdud_fei_volume(
+    fei_list: list[int],
+    drug_list: list[str],
+    year_range: tuple[int, int],
+) -> pd.DataFrame:
+    """Estimate Medicaid (SDUD) unit volume share per FEI × drug × year.
+
+    Joins SDUD monthly data (NDC11 level) to the NDC→FEI crosswalk, aggregates
+    to FEI × drug_norm × year, and computes each FEI's share of total units for
+    that drug × year across all FEIs in fei_list.
+
+    Parameters
+    ----------
+    fei_list   : FEI numbers to include (filters the NDC→FEI mapping)
+    drug_list  : Normalized drug names (drug_norm) to include
+    year_range : (start_year, end_year) inclusive
+
+    Returns
+    -------
+    DataFrame with columns: fei, drug_norm, year, sdud_units, sdud_volume_share
+    sdud_volume_share = FEI's units / total units for that drug × year.
+    FEIs with no matching NDCs or no SDUD volume will have NaN share.
+    """
+    from config import SDUD_MONTHLY_CSV, NDC_FEI_MAP_CSV
+
+    # Load NDC→FEI bridge
+    bridge = pd.read_csv(NDC_FEI_MAP_CSV, low_memory=False)
+    bridge.columns = [c.strip() for c in bridge.columns]
+    ndc_col = next((c for c in bridge.columns if "ndc" in c.lower() and "manufacture" in c.lower()),
+                   next((c for c in bridge.columns if "ndc" in c.lower()), None))
+    fei_col = next((c for c in bridge.columns if "fei" in c.lower()), None)
+
+    if ndc_col is None or fei_col is None:
+        raise ValueError(f"Cannot find NDC/FEI columns in {NDC_FEI_MAP_CSV}")
+
+    bridge = bridge[[ndc_col, fei_col]].dropna().rename(columns={ndc_col: "ndc", fei_col: "fei"})
+    bridge["fei"] = pd.to_numeric(bridge["fei"], errors="coerce").astype("Int64")
+    bridge["ndc"] = bridge["ndc"].astype(str).str.strip()
+    bridge = bridge[bridge["fei"].isin(fei_list)].drop_duplicates()
+
+    if bridge.empty:
+        return pd.DataFrame(columns=["fei", "drug_norm", "year", "sdud_units", "sdud_volume_share"])
+
+    # Build NDC11 lookup: strip dashes/dots, zero-pad to 11 digits
+    def _ndc_to_11(s: str) -> str:
+        digits = re.sub(r"[^0-9]", "", s)
+        return digits.zfill(11)[-11:]
+
+    bridge["ndc11"] = bridge["ndc"].map(_ndc_to_11)
+
+    # Load SDUD monthly
+    sdud = pd.read_csv(SDUD_MONTHLY_CSV, low_memory=False)
+    sdud.columns = [c.strip() for c in sdud.columns]
+    sdud["ndc11"] = sdud["ndc11"].astype(str).str.strip().map(_ndc_to_11)
+    sdud["year"]  = pd.to_numeric(sdud["year"], errors="coerce").astype("Int64")
+    sdud = sdud[
+        (sdud["year"] >= year_range[0]) & (sdud["year"] <= year_range[1])
+    ]
+
+    # Join SDUD → bridge to get FEI
+    merged = sdud.merge(bridge[["ndc11", "fei"]], on="ndc11", how="inner")
+
+    # Normalize drug names using Valisure matcher if drug_list provided
+    # (SDUD has no drug name column — the FEI bridge tells us which drug a FEI makes)
+    # So we join drug_norm through the FEI→drug mapping from Valisure
+    from config import VALISURE_FEI, VALISURE_CSV
+    try:
+        fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
+        fei_map.columns = [c.strip() for c in fei_map.columns]
+        fei_col_v = next((c for c in fei_map.columns if "fei" in c.lower()), None)
+        api_col_v = next((c for c in fei_map.columns if c.lower() == "api"), None)
+        if fei_col_v and api_col_v:
+            fm = fei_map[[fei_col_v, api_col_v]].dropna().rename(
+                columns={fei_col_v: "fei", api_col_v: "api"}
+            )
+            fm["fei"] = pd.to_numeric(fm["fei"], errors="coerce").astype("Int64")
+            matcher = ValisureDrugMatcher(load_valisure_api_names(VALISURE_CSV))
+            fm["drug_norm"] = fm["api"].astype(str).map(matcher.match)
+            fm = fm.dropna(subset=["drug_norm"])
+            merged = merged.merge(fm[["fei", "drug_norm"]], on="fei", how="inner")
+            if drug_list:
+                merged = merged[merged["drug_norm"].isin(drug_list)]
+    except Exception:
+        merged["drug_norm"] = "unknown"
+
+    # Aggregate to FEI × drug_norm × year
+    agg = merged.groupby(["fei", "drug_norm", "year"], as_index=False).agg(
+        sdud_units=("units_reimbursed", "sum")
+    )
+
+    # Compute volume share within each drug × year
+    total = agg.groupby(["drug_norm", "year"])["sdud_units"].transform("sum")
+    agg["sdud_volume_share"] = agg["sdud_units"] / total.replace(0, float("nan"))
+
+    return agg[["fei", "drug_norm", "year", "sdud_units", "sdud_volume_share"]]

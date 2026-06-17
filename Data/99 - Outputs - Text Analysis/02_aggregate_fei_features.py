@@ -68,6 +68,7 @@ DENOMINATOR RULES
   Failed rows      : excluded from LLM features; never become false/zero labels
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -79,6 +80,10 @@ HERE        = Path(__file__).parent
 SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
 OUT_CSV     = HERE / "483_fei_text_features_timeseries.csv"   # time-aware (primary)
 OUT_STATIC  = HERE / "483_fei_context_features.csv"           # static / legacy
+
+# Combined (PDF + Redica) paths — used when --source combined
+COMBINED_CSV     = HERE / "483_combined_obs_universe.csv"
+OUT_COMBINED_CSV = HERE / "483_fei_text_features_timeseries_combined.csv"
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
@@ -135,13 +140,14 @@ def _template_tokens(text: str) -> frozenset:
 
 def _flag_cross_inspection_repeats(df: pd.DataFrame) -> pd.Series:
     flags = pd.Series(False, index=df.index)
-    if "obs_text_clean" not in df.columns:
+    text_col = "obs_text_clean" if "obs_text_clean" in df.columns else "obs_text" if "obs_text" in df.columns else None
+    if text_col is None:
         return flags
     for _, grp in df.groupby("fei"):
         if grp["insp_date"].nunique() < 2:
             continue
         grp = grp.sort_values("insp_date")
-        toks = {idx: _template_tokens(t) for idx, t in grp["obs_text_clean"].items()}
+        toks = {idx: _template_tokens(t) for idx, t in grp[text_col].items()}
         idxs = list(grp.index)
         for i, idx in enumerate(idxs):
             a = toks[idx]
@@ -176,6 +182,14 @@ def _layer1_quality(grp: pd.DataFrame, ns: int) -> dict:
     mean_conf = round(float(scored["confidence"].mean()), 4) \
         if ns > 0 and "confidence" in scored.columns else float("nan")
 
+    # Use filename if available; fall back to document_id for combined obs universe
+    if "filename" in grp.columns:
+        n_files = int(grp["filename"].nunique())
+    elif "document_id" in grp.columns:
+        n_files = int(grp["document_id"].dropna().nunique())
+    else:
+        n_files = int(grp["insp_date"].nunique())
+
     return {
         "n_obs_total":             n,
         "n_obs_scored":            ns,
@@ -183,7 +197,7 @@ def _layer1_quality(grp: pd.DataFrame, ns: int) -> dict:
         "n_obs_low_confidence":    n_low_conf,
         "mean_confidence":         mean_conf,
         "n_blank_evidence_quotes": n_blank_eq,
-        "n_files_483":             int(grp["filename"].nunique()),
+        "n_files_483":             n_files,
     }
 
 
@@ -387,45 +401,33 @@ _COL_ORDER = [
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def _run_aggregation(df: pd.DataFrame, out_csv: Path, out_static: Path | None, label: str) -> pd.DataFrame:
+    """Core aggregation logic shared by both PDF-only and combined modes."""
     sep = "=" * 70
     print(sep)
-    print("02_aggregate_fei_features.py — Time-series FEI snapshot aggregation")
+    print(f"02_aggregate_fei_features.py — {label}")
     print(sep)
 
-    if not SIGNALS_CSV.exists():
-        sys.exit(
-            f"\n[ERROR] Observation signals file not found:\n  {SIGNALS_CSV}\n"
-            "Run 01_extract_observation_signals.py first.\n"
-        )
-
-    df = pd.read_csv(SIGNALS_CSV)
-
-    # ── Input QA ────────────────────────────────────────────────────────────
     print(f"\n-- Input QA --")
     print(f"  Rows loaded      : {len(df):,}")
     print(f"  Unique FEIs      : {df['fei'].nunique()}")
-    print(f"  Unique filenames : {df['filename'].nunique()}")
+    if "filename" in df.columns:
+        print(f"  Unique filenames : {df['filename'].nunique()}")
     status_counts = df["extraction_status"].value_counts(dropna=False)
     for status, cnt in status_counts.items():
         print(f"  status={status!s:<20}: {cnt}")
 
-    # Coerce types
     df["fei"]        = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
     df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
     df["insp_date"]  = pd.to_datetime(df["insp_date"], errors="coerce")
-
     df = df.dropna(subset=["fei", "insp_date"])
     print(f"  Rows with valid fei + date: {len(df):,}")
 
-    # ── Cross-inspection repeat flags ────────────────────────────────────────
     df["repeat_cross_insp"] = _flag_cross_inspection_repeats(df)
     n_cross = int(df["repeat_cross_insp"].sum())
     print(f"  Cross-inspection repeats  : {n_cross} observations "
           f"(template overlap >= {CROSS_REPEAT_OVERLAP} vs an earlier inspection of same FEI)")
 
-    # ── Build snapshots ──────────────────────────────────────────────────────
-    # One snapshot per (fei, insp_date): cumulative features up to that date.
     snapshots_index = (
         df.groupby(["fei", "insp_date"])
         .size()
@@ -439,10 +441,7 @@ def main() -> None:
     for _, snap in snapshots_index.iterrows():
         fei  = snap["fei"]
         date = snap["insp_date"]
-
-        # cumulative: all observations of this FEI up to and including this date
         subset = df[(df["fei"] == fei) & (df["insp_date"] <= date)].copy()
-
         agg = _aggregate_snapshot(subset)
         agg["fei"]           = int(fei)
         agg["snapshot_date"] = date.date().isoformat()
@@ -450,34 +449,61 @@ def main() -> None:
         rows.append(agg)
 
     out_df = pd.DataFrame(rows)
-
     ordered = [c for c in _COL_ORDER if c in out_df.columns]
     extras  = [c for c in out_df.columns if c not in set(_COL_ORDER)]
     out_df  = out_df[ordered + extras]
     out_df  = out_df.sort_values(["fei", "snapshot_date"]).reset_index(drop=True)
+    out_df.to_csv(out_csv, index=False)
 
-    out_df.to_csv(OUT_CSV, index=False)
+    if out_static is not None:
+        static_df = _build_static(df)
+        static_df.to_csv(out_static, index=False)
+        print(f"Static output: {out_static.name}  ({len(static_df)} FEIs, {len(static_df.columns)} columns)")
 
-    # ── Static (non-time) output ─────────────────────────────────────────────
-    static_df = _build_static(df)
-    static_df.to_csv(OUT_STATIC, index=False)
-    print(f"Static output: {OUT_STATIC.name}  ({len(static_df)} FEIs, {len(static_df.columns)} columns)")
-    print("  [WARNING] Static file pools all observations with no time dimension.")
-    print("  [WARNING] Use for MQRI only. Do NOT use for shortage prediction.\n")
-
-    # ── Summary ──────────────────────────────────────────────────────────────
     print(sep)
     print(f"DONE -- {len(out_df)} snapshots across {out_df['fei'].nunique()} FEIs")
-    print(f"Output: {OUT_CSV.name}  ({len(out_df.columns)} columns)")
+    print(f"Output: {out_csv.name}  ({len(out_df.columns)} columns)")
     print(sep)
 
     print("\n-- Snapshots per FEI --")
     snap_counts = out_df.groupby("fei").size().describe()
     print(f"  mean={snap_counts['mean']:.1f}  min={snap_counts['min']:.0f}  max={snap_counts['max']:.0f}")
-
     print("\n-- Date range --")
     print(f"  Earliest: {out_df['snapshot_date'].min()}")
     print(f"  Latest  : {out_df['snapshot_date'].max()}")
+    return out_df
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Aggregate FEI text features into time-series snapshots.")
+    parser.add_argument(
+        "--source", choices=["pdf", "combined"], default="pdf",
+        help="'pdf' uses 483_observation_context_signals.csv (38 FEIs); "
+             "'combined' uses 483_combined_obs_universe.csv (99 FEIs)."
+    )
+    args = parser.parse_args()
+
+    if args.source == "combined":
+        if not COMBINED_CSV.exists():
+            sys.exit(f"\n[ERROR] Combined obs universe not found:\n  {COMBINED_CSV}\n"
+                     "Run 04_build_combined_obs_universe.py first.\n")
+        df = pd.read_csv(COMBINED_CSV)
+        # Mark all redica/combined rows as scored (they all have LLM labels)
+        if "extraction_status" not in df.columns:
+            df["extraction_status"] = "ok"
+        _run_aggregation(df, OUT_COMBINED_CSV, out_static=None,
+                         label="Combined (PDF + Redica) — 99 FEIs")
+        return
+
+    # Default: PDF-only pipeline
+    if not SIGNALS_CSV.exists():
+        sys.exit(
+            f"\n[ERROR] Observation signals file not found:\n  {SIGNALS_CSV}\n"
+            "Run 01_extract_observation_signals.py first.\n"
+        )
+
+    df = pd.read_csv(SIGNALS_CSV)
+    out_df = _run_aggregation(df, OUT_CSV, OUT_STATIC, label="PDF pipeline — 38 FEIs")
 
     print("\n-- LLM lift at latest snapshot per FEI (mean across facilities) --")
     latest = out_df.sort_values("snapshot_date").groupby("fei").last().reset_index()
