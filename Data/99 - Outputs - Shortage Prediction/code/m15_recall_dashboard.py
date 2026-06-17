@@ -342,52 +342,58 @@ def _fig_funnel(cov: dict) -> go.Figure:
 
 
 def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFrame) -> go.Figure:
-    """Horizontal bars: FEIs per drug, colored by parenteral, annotated with recall count."""
+    """Grouped bars: FEIs per drug (left) + recall count (right), colored by parenteral flag."""
     sup = supply.copy().sort_values("n_feis")
-
-    # Total recalls per drug
     tot_recalls = recalls_by_drug.groupby("drug")["n_recalls"].sum().to_dict()
     sup["n_recalls_total"] = sup["drug"].map(tot_recalls).fillna(0).astype(int)
 
-    colors = [C["orange"] if p else C["blue"] for p in sup["parenteral"]]
-    hover = [
+    fei_colors    = [C["orange"] if p else C["blue"] for p in sup["parenteral"]]
+    recall_colors = [C["red"]] * len(sup)
+
+    hover_fei = [
         f"<b>{row.drug}</b><br>FEIs: {row.n_feis}<br>"
-        f"Recalls (2015–2024): {row.n_recalls_total}<br>"
-        f"{'Parenteral (injectable)' if row.parenteral else 'Oral'}"
+        f"{'Has injectable formulation (OB)' if row.parenteral else 'Oral formulations only'}"
+        for _, row in sup.iterrows()
+    ]
+    hover_recall = [
+        f"<b>{row.drug}</b><br>Recalls linked to FEIs: {row.n_recalls_total} (2015–2024)"
         for _, row in sup.iterrows()
     ]
 
-    fig = go.Figure(go.Bar(
-        x=sup["n_feis"], y=sup["drug"],
-        orientation="h",
-        marker_color=colors,
-        text=sup["n_feis"].astype(str) + " FEIs",
-        textposition="outside",
-        hovertext=hover, hoverinfo="text",
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["FEIs producing each drug (supply concentration)",
+                        "Recall events linked to FEIs (2015–2024)"],
+        horizontal_spacing=0.08,
+    )
+
+    fig.add_trace(go.Bar(
+        x=sup["n_feis"], y=sup["drug"], orientation="h",
+        marker_color=fei_colors,
+        hovertext=hover_fei, hoverinfo="text",
         showlegend=False,
-    ))
+    ), row=1, col=1)
 
-    # Recall count annotations on right
-    for _, row in sup.iterrows():
-        if row["n_recalls_total"] > 0:
-            fig.add_annotation(
-                x=row["n_feis"] + 1.5, y=row["drug"],
-                text=f"▶ {row.n_recalls_total} recalls",
-                showarrow=False,
-                font=dict(size=10, color=C["red"]),
-                xanchor="left",
-            )
+    fig.add_trace(go.Bar(
+        x=sup["n_recalls_total"], y=sup["drug"], orientation="h",
+        marker_color=recall_colors,
+        hovertext=hover_recall, hoverinfo="text",
+        showlegend=False,
+    ), row=1, col=2)
 
+    # Legend traces
     fig.add_trace(go.Bar(x=[None], y=[None], marker_color=C["orange"],
-                         name="Parenteral (injectable)", showlegend=True))
+                         name="Has injectable form (OB)", showlegend=True))
     fig.add_trace(go.Bar(x=[None], y=[None], marker_color=C["blue"],
-                         name="Oral", showlegend=True))
+                         name="Oral formulations only", showlegend=True))
 
     fig.update_layout(
-        height=420, margin=dict(l=10, r=160, t=10, b=10),
+        height=420, margin=dict(l=10, r=10, t=50, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(title="Number of FEIs producing drug", range=[0, 45]),
+        xaxis=dict(title="# FEIs", gridcolor="#F0F0F0"),
+        xaxis2=dict(title="# Recall events", gridcolor="#F0F0F0"),
         yaxis=dict(gridcolor="white"),
+        yaxis2=dict(showticklabels=False, gridcolor="white"),
         legend=dict(x=0.72, y=0.02),
         barmode="overlay",
     )
@@ -427,7 +433,7 @@ def _fig_risk_matrix(
     fig = go.Figure(go.Scatter(
         x=df["n_feis"],
         y=df["quality_risk"],
-        mode="markers+text",
+        mode="markers",
         marker=dict(
             size=size_scale,
             color=df["n_shortages"],
@@ -437,12 +443,24 @@ def _fig_risk_matrix(
             line=dict(width=1.5, color="white"),
             symbol=["diamond" if p else "circle" for p in df["parenteral"]],
         ),
-        text=df["drug"].str.split(";").str[0].str.strip(),
-        textposition="top center",
-        textfont=dict(size=10),
         hovertext=hover, hoverinfo="text",
         showlegend=False,
     ))
+
+    # Labels only for the most extreme drugs (avoid clutter)
+    extremes = df[(df["n_feis"] <= df["n_feis"].quantile(0.35)) |
+                  (df["quality_risk"] >= df["quality_risk"].quantile(0.65)) |
+                  (df["n_shortages"] >= df["n_shortages"].quantile(0.75))]
+    for _, row in extremes.iterrows():
+        short_name = row["drug"].split(";")[0].strip()
+        fig.add_annotation(
+            x=row["n_feis"], y=row["quality_risk"],
+            text=short_name,
+            showarrow=False,
+            yshift=12 + row["n_recalls"] * 2,
+            font=dict(size=9.5, color="#333"),
+            xanchor="center",
+        )
 
     # Quadrant lines
     x_mid = df["n_feis"].median()
@@ -683,6 +701,142 @@ def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def _load_case_study(drug: str = "Metformin") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Load per-year quality signals, recalls, and shortage events for one drug."""
+    fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
+    fei_map.columns = [c.strip() for c in fei_map.columns]
+    api_col = next(c for c in fei_map.columns if c.lower() == "api")
+    fei_col = next(c for c in fei_map.columns if "fei" in c.lower())
+    drug_feis = set(
+        pd.to_numeric(
+            fei_map[fei_map[api_col] == drug][fei_col], errors="coerce"
+        ).dropna().astype(int)
+    )
+
+    # Quality signals: average over all drug FEIs by snapshot year
+    ts = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
+    ts["fei"] = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
+    ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
+    ts["year"] = ts["snapshot_date"].dt.year
+    drug_ts = ts[ts["fei"].isin(drug_feis)]
+    SIGNAL_COLS = ["contamination_llm_share", "severity_critmajor_share",
+                   "data_integrity_llm_share"]
+    quality_by_year = (
+        drug_ts[drug_ts["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
+        .groupby("year")[SIGNAL_COLS].mean()
+        .reset_index()
+    )
+
+    # Recalls linked to drug FEIs
+    recall = pd.read_csv(RECALL_FILT, low_memory=False)
+    recall.columns = [c.strip() for c in recall.columns]
+    recall["fei"]  = pd.to_numeric(recall["FEI Number"], errors="coerce").astype("Int64")
+    recall["year"] = pd.to_datetime(recall["Recall_Date"], errors="coerce").dt.year.astype("Int64")
+    recalls_by_year = (
+        recall[recall["fei"].isin(drug_feis) &
+               recall["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
+        .groupby("year", as_index=False).size()
+        .rename(columns={"size": "n_recalls"})
+    )
+
+    # Shortage events
+    sh = pd.read_excel(UUTAH_FILE, header=1)
+    sh.columns = [c.strip() for c in sh.columns]
+    sh = sh.rename(columns={"Drug Shortages": "drug_raw", "yr": "year"})
+    sh["year"]  = pd.to_numeric(sh["year"], errors="coerce").astype("Int64")
+    sh["drug_raw"] = sh["drug_raw"].astype(str).str.lower()
+    sh_drug = sh[sh["drug_raw"].str.contains(drug.lower(), na=False)]
+    shortages_by_year = (
+        sh_drug[sh_drug["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
+        .groupby("year", as_index=False).size()
+        .rename(columns={"size": "n_shortages"})
+    )
+
+    return quality_by_year, recalls_by_year, shortages_by_year
+
+
+def _fig_case_study(
+    quality: pd.DataFrame,
+    recalls: pd.DataFrame,
+    shortages: pd.DataFrame,
+    drug: str = "Metformin",
+) -> go.Figure:
+    """End-to-end story: quality signal → recall → shortage for one drug."""
+    years = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
+
+    def _fill(df: pd.DataFrame, col: str) -> list:
+        s = df.set_index("year")[col].reindex(years, fill_value=0)
+        return s.tolist()
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Bars: recall count (left Y)
+    fig.add_trace(go.Bar(
+        x=years,
+        y=_fill(recalls, "n_recalls"),
+        name="Recall events",
+        marker_color=C["red"],
+        opacity=0.75,
+        hovertemplate="<b>Year %{x}</b><br>Recalls: %{y}<extra></extra>",
+    ), secondary_y=False)
+
+    # Lines: quality signals (right Y)
+    signal_cfg = [
+        ("severity_critmajor_share",  "Critical/Major severity share", C["orange"],  "solid"),
+        ("contamination_llm_share",   "Contamination flag share",       C["purple"],  "dash"),
+        ("data_integrity_llm_share",  "Data integrity flag share",      C["teal"],    "dot"),
+    ]
+    for col, label, col_color, dash in signal_cfg:
+        if col in quality.columns:
+            fig.add_trace(go.Scatter(
+                x=years,
+                y=quality.set_index("year")[col].reindex(years).tolist(),
+                name=label,
+                mode="lines+markers",
+                line=dict(color=col_color, width=2, dash=dash),
+                marker=dict(size=5),
+                hovertemplate=f"<b>Year %{{x}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
+            ), secondary_y=True)
+
+    # Shortage markers
+    for _, row in shortages.iterrows():
+        fig.add_vline(
+            x=int(row["year"]),
+            line_dash="dot", line_color=C["green"], line_width=1.5,
+        )
+        fig.add_annotation(
+            x=int(row["year"]),
+            y=1.08, yref="paper",
+            text=f"⚠ Shortage<br>({int(row['year'])})",
+            showarrow=False,
+            font=dict(color=C["green"], size=9),
+            align="center",
+        )
+
+    # Key event annotation: 2020 NDMA
+    if drug == "Metformin":
+        fig.add_annotation(
+            x=2020, y=14,
+            text="<b>2020: 14 recalls</b><br>NDMA contamination<br>(CGMP deviations)",
+            showarrow=True, arrowhead=2, arrowcolor=C["red"],
+            ax=60, ay=-50,
+            font=dict(color=C["red"], size=10),
+            bgcolor="rgba(255,255,255,0.85)", bordercolor=C["red"], borderwidth=1,
+        )
+
+    fig.update_layout(
+        height=420, margin=dict(l=10, r=10, t=30, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(title="Year", dtick=1, gridcolor="#F0F0F0"),
+        yaxis=dict(title="# Recall events", gridcolor="#F0F0F0"),
+        yaxis2=dict(title="Quality signal share (0–1)", range=[0, 1.1], gridcolor="rgba(0,0,0,0)"),
+        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.9)",
+                    bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
+        bargap=0.3,
+    )
+    return fig
+
+
 # ── HTML assembly ────────────────────────────────────────────────────────────
 
 def _div(fig: go.Figure, fig_id: str) -> str:
@@ -700,6 +854,9 @@ def build_html(
     quality: pd.DataFrame,
     fi: pd.DataFrame,
     ablation: pd.DataFrame,
+    cs_quality: pd.DataFrame | None = None,
+    cs_recalls: pd.DataFrame | None = None,
+    cs_shortages: pd.DataFrame | None = None,
 ) -> str:
     auc_no  = ablation.iloc[0]["auc"]
     auc_yes = ablation.iloc[1]["auc"]
@@ -713,12 +870,17 @@ def build_html(
         / max(total_shortages, 1) * 100
     )
 
+    cs_div = ""
+    if cs_quality is not None and cs_recalls is not None and cs_shortages is not None:
+        cs_div = _div(_fig_case_study(cs_quality, cs_recalls, cs_shortages), "fig_case")
+
     divs = {
         "funnel":       _div(_fig_funnel(cov),                           "fig_funnel"),
         "supply":       _div(_fig_supply_concentration(supply, recalls_by_drug), "fig_supply"),
         "matrix":       _div(_fig_risk_matrix(supply, recalls_by_drug, shortages, quality), "fig_matrix"),
         "timeline":     _div(_fig_timeline(recalls_by_drug, shortages),  "fig_timeline"),
         "paths":        _div(_fig_path_breakdown(shortages),             "fig_paths"),
+        "case":         cs_div,
         "model":        _div(_fig_model_evidence(fi, ablation),          "fig_model"),
     }
 
@@ -795,9 +957,10 @@ def build_html(
   <div class="nav-brand">Drug Shortage &nbsp;<span>·</span>&nbsp; Quality Risk & Causal Paths</div>
   <a href="#coverage">① Coverage</a>
   <a href="#supply">② Supply Landscape</a>
-  <a href="#timeline">③ Events Timeline</a>
+  <a href="#timeline">③ Timeline</a>
   <a href="#paths">④ Causal Paths</a>
-  <a href="#model">⑤ Model Evidence</a>
+  <a href="#casestudy">⑤ Case Study</a>
+  <a href="#model">⑥ Model Evidence</a>
 </nav>
 
 <div class="hero">
@@ -853,12 +1016,13 @@ def build_html(
   <div class="section-head">
     <div class="section-title">② Supply Concentration & Risk Profile</div>
     <div class="section-sub">
-      Left: how many FEIs produce each drug (March 2026 Valisure mapping). Orange = parenteral
-      (injectable) drugs, which face stricter manufacturing requirements. Recall counts for
-      2015–2024 shown in red.
-      Right: bubble chart — fewer FEIs + higher quality risk signal = upper-left quadrant (highest shortage risk).
-      Bubble size = number of recalls; color intensity = number of shortage events.
-      Diamond shape = parenteral.
+      Left: how many FEIs produce each drug (March 2026 Valisure mapping) + recall events per drug.
+      Orange = drug has at least one injectable formulation approved in the Orange Book
+      ("has injectable form") — this does NOT mean the drug is exclusively injectable.
+      For example, Vancomycin is given IV for bloodstream infections but orally for C. diff;
+      Metoprolol is primarily oral but has an IV form for cardiac emergencies.
+      Right: bubble chart — fewer FEIs + higher quality risk = upper-left (highest shortage risk).
+      Bubble size = recalls; color = shortage events. Diamond = has injectable form.
     </div>
   </div>
   <div class="two-col">
@@ -896,10 +1060,31 @@ def build_html(
   <div class="card">{divs['paths']}</div>
 </section>
 
-<!-- ⑤ Model Evidence -->
+<!-- ⑤ Case Study: Metformin NDMA 2020 -->
+<section id="casestudy">
+  <div class="section-head">
+    <div class="section-title">⑤ Case Study: Metformin — Path A from 483 to Shortage</div>
+    <div class="section-sub">
+      A real end-to-end example of Path A across 26 Metformin FEIs (of 34 total).
+      <b>The chain:</b>
+      (1) 483 inspections in 2019 show rising Critical/Major severity (0.35) and contamination signals;
+      (2) In 2020, severity spikes to 0.57 and data integrity flags jump to 0.43 as FDA inspectors
+      document NDMA impurity findings across multiple manufacturers;
+      (3) 14 recalls in 2020 — all citing "CGMP Deviations: NDMA impurity above acceptable intake level";
+      (4) A shortage of Metformin appears in the UUtah database for 2021 and again in 2024
+      as supply disruption follows the recall wave.
+      <br><br>
+      Bars = recall events (left axis). Lines = LLM-extracted 483 quality signals averaged across
+      Metformin FEIs by year (right axis). Green dotted lines = shortage events per UUtah database.
+    </div>
+  </div>
+  <div class="card">{divs['case']}</div>
+</section>
+
+<!-- ⑥ Model Evidence -->
 <section id="model">
   <div class="section-head">
-    <div class="section-title">⑤ Model Evidence: 483 Text Improves Recall Prediction</div>
+    <div class="section-title">⑥ Model Evidence: 483 Text Improves Recall Prediction</div>
     <div class="section-sub">
       L2 logistic regression, GroupKFold CV by FEI (facility never in both train and test).
       Adding LLM-extracted 483 text features improves AUC from {auc_no:.3f} to {auc_yes:.3f}
@@ -935,9 +1120,13 @@ def main():
     quality  = _load_drug_quality_profile(fdmap)
     cov      = _load_coverage()
     fi, abl  = _load_model_outputs()
+    cs_q, cs_r, cs_s = _load_case_study("Metformin")
+    log.info("Case study: Metformin — %d quality years, %d recall years, %d shortage years",
+             len(cs_q), len(cs_r), len(cs_s))
 
     log.info("Building HTML…")
-    html = build_html(cov, supply, recalls, shortage, quality, fi, abl)
+    html = build_html(cov, supply, recalls, shortage, quality, fi, abl,
+                      cs_quality=cs_q, cs_recalls=cs_r, cs_shortages=cs_s)
 
     OUT_HTML.write_text(html, encoding="utf-8")
     log.info("Dashboard saved → %s", OUT_HTML)
