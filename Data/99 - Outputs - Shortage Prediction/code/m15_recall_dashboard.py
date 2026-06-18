@@ -616,12 +616,11 @@ def _load_case_study(drug: str = "Metformin") -> tuple[pd.DataFrame, pd.DataFram
     ts["fei"] = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
     ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
     drug_ts = ts[ts["fei"].isin(drug_feis)].copy()
-    drug_ts["month_start"] = drug_ts["snapshot_date"].dt.to_period("M").dt.start_time
-
     SIGNAL_COLS = ["contamination_llm_share", "severity_critmajor_share",
                    "data_integrity_llm_share"]
     cols_present = [c for c in SIGNAL_COLS if c in drug_ts.columns]
-    quality_monthly = drug_ts.groupby("month_start")[cols_present].mean().reset_index()
+    keep_cols = ["fei", "snapshot_date", "n_obs_total"] + cols_present
+    quality_raw = drug_ts[[c for c in keep_cols if c in drug_ts.columns]].copy()
 
     # Recalls: aggregate to month level
     recall = pd.read_csv(RECALL_FILT, low_memory=False)
@@ -648,19 +647,30 @@ def _load_case_study(drug: str = "Metformin") -> tuple[pd.DataFrame, pd.DataFram
         .rename(columns={"size": "n_shortages"})
     )
 
-    return quality_monthly, recalls_monthly, shortages_yearly
+    return quality_raw, recalls_monthly, shortages_yearly
 
 
 def _add_signal_dropdown(fig: go.Figure, n_signals: int) -> None:
-    """Add signal-selector dropdown. Signal traces are 0..n_signals-1; recall trace follows."""
-    n_total = len(fig.data)
-    has_recall = n_total > n_signals
-    labels = [t.name for t in fig.data[:n_signals]]
-    all_vis = [True] * n_total
+    """Signal dropdown. Traces per signal: [agg_line, raw_dots] × n_signals, then recall bar.
+    'All signals' shows only aggregate lines (clean).
+    Individual signal shows its aggregate line + per-FEI dots (cascade visible).
+    """
+    n_total    = len(fig.data)
+    has_recall = n_total > 2 * n_signals
+    labels = [fig.data[i * 2].name for i in range(n_signals)]
+    # All signals: show aggregate lines only, hide raw dots
+    all_vis = []
+    for _ in range(n_signals):
+        all_vis += [True, False]
+    if has_recall:
+        all_vis.append(True)
     buttons = [dict(label="All signals", method="update", args=[{"visible": all_vis}])]
     for i, lbl in enumerate(labels):
-        vis = [False] * n_signals + ([True] if has_recall else [])
-        vis[i] = True
+        vis = [False] * (2 * n_signals)
+        vis[i * 2]     = True   # aggregate line
+        vis[i * 2 + 1] = True   # raw FEI dots
+        if has_recall:
+            vis.append(True)
         buttons.append(dict(label=lbl, method="update", args=[{"visible": vis}]))
     fig.update_layout(updatemenus=[dict(
         buttons=buttons, direction="down",
@@ -669,45 +679,102 @@ def _add_signal_dropdown(fig: go.Figure, n_signals: int) -> None:
     )])
 
 
+def _semiann_quality(q: pd.DataFrame, sig_cols: list[str]) -> pd.DataFrame:
+    """Aggregate raw FEI snapshots to semi-annual periods (H1=Jan, H2=Jul).
+    Returns period_start, mean signals, n_feis, n_obs."""
+    q = q.copy()
+    q["period_start"] = q["snapshot_date"].apply(
+        lambda d: pd.Timestamp(f"{d.year}-01-01") if d.month <= 6
+                  else pd.Timestamp(f"{d.year}-07-01")
+    )
+    agg_dict: dict = {col: "mean" for col in sig_cols if col in q.columns}
+    agg_dict["fei"] = "nunique"
+    if "n_obs_total" in q.columns:
+        agg_dict["n_obs_total"] = "sum"
+    agg = q.groupby("period_start").agg(agg_dict).reset_index()
+    agg = agg.rename(columns={"fei": "n_feis"})
+    if "n_obs_total" in agg.columns:
+        agg = agg.rename(columns={"n_obs_total": "n_obs"})
+    else:
+        agg["n_obs"] = agg["n_feis"]
+    return agg.sort_values("period_start").reset_index(drop=True)
+
+
 def _fig_case_study(
     quality: pd.DataFrame,
     recalls: pd.DataFrame,
     shortages: pd.DataFrame,
     drug: str = "Metformin",
 ) -> go.Figure:
-    """Two-row monthly case study with signal dropdown: quality signals (top), recalls (bottom)."""
+    """Two-row case study: semi-annual aggregate quality signals + per-FEI scatter + recall bars.
+
+    Bubble size = n_feis contributing to that period.  Select a signal to reveal
+    individual facility dots (shows the cascade: different FEIs inspected at different times).
+    """
+    SIGNAL_CFG = [
+        ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
+        ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
+        ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
+    ]
     date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
     date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
-    q = quality[quality["month_start"].between(date_start, date_end)].copy()
+    q = quality[quality["snapshot_date"].between(date_start, date_end)].copy()
     r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
+
+    sig_cols = [col for col, _, _, _ in SIGNAL_CFG if col in q.columns]
+    agg = _semiann_quality(q, sig_cols)
 
     fig = make_subplots(
         rows=2, cols=1,
-        subplot_titles=["% of 483 observations flagged (per snapshot month — use dropdown to isolate signals)",
-                        "Recall events (monthly count)"],
+        subplot_titles=[
+            "Quality signals — semi-annual average (bubble = # facilities; "
+            "select signal to reveal individual facility dots)",
+            "Recall events (monthly count)",
+        ],
         vertical_spacing=0.10,
         shared_xaxes=True,
         row_heights=[0.58, 0.42],
     )
 
-    signal_cfg = [
-        ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
-        ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
-        ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
-    ]
     n_signals = 0
-    for col, label, col_color, dash in signal_cfg:
-        if col in q.columns:
-            n_signals += 1
-            fig.add_trace(go.Scatter(
-                x=q["month_start"], y=q[col],
-                name=label,
-                mode="lines+markers",
-                line=dict(color=col_color, width=2.5, dash=dash),
-                marker=dict(size=7),
-                connectgaps=False,
-                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<extra></extra>",
-            ), row=1, col=1)
+    for col, label, col_color, dash in SIGNAL_CFG:
+        if col not in q.columns:
+            continue
+        n_signals += 1
+        sizes = np.clip(agg["n_feis"] * 3 + 7, 8, 30).values
+
+        # Aggregate line with bubbles (always visible in "All signals" mode)
+        fig.add_trace(go.Scatter(
+            x=agg["period_start"], y=agg[col],
+            name=label,
+            mode="lines+markers",
+            line=dict(color=col_color, width=2.5, dash=dash),
+            marker=dict(size=sizes, sizemode="diameter"),
+            connectgaps=False,
+            customdata=np.column_stack([agg["n_feis"], agg["n_obs"]]),
+            hovertemplate=(
+                f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<br>"
+                "Facilities: %{customdata[0]:.0f} · 483 obs: %{customdata[1]:.0f}"
+                "<extra></extra>"
+            ),
+        ), row=1, col=1)
+
+        # Per-FEI raw dots (hidden by default; appear when this signal is selected)
+        fig.add_trace(go.Scatter(
+            x=q["snapshot_date"], y=q[col],
+            name=f"{label} (per FEI)",
+            mode="markers",
+            marker=dict(color=col_color, size=9, opacity=0.40,
+                        symbol="circle-open", line=dict(width=1.5)),
+            visible=False,
+            showlegend=False,
+            customdata=q[["fei"]].values,
+            hovertemplate=(
+                f"<b>%{{x|%b %Y}}</b> · FEI %{{customdata[0]}}<br>"
+                f"{label}: %{{y:.0%}}<br><i>Individual facility snapshot</i>"
+                "<extra></extra>"
+            ),
+        ), row=1, col=1)
 
     if not r.empty:
         fig.add_trace(go.Bar(
@@ -737,14 +804,16 @@ def _fig_case_study(
             font=dict(color=C["red"], size=10),
             bgcolor="rgba(255,255,255,0.92)", bordercolor=C["red"], borderwidth=1,
         )
-        jan2020 = q[q["month_start"] == pd.Timestamp("2020-01-01")]
-        if not jan2020.empty and "severity_critmajor_share" in jan2020.columns:
-            sev = float(jan2020["severity_critmajor_share"].iloc[0])
+        h1_2020 = agg[agg["period_start"] == pd.Timestamp("2020-01-01")]
+        if not h1_2020.empty and "severity_critmajor_share" in h1_2020.columns:
+            sev = float(h1_2020["severity_critmajor_share"].iloc[0])
+            n_f  = int(h1_2020["n_feis"].iloc[0])
+            n_o  = int(h1_2020["n_obs"].iloc[0])
             fig.add_annotation(
                 x="2020-01-01", y=sev, yref="y",
-                text="<b>Jan 2020</b><br>Quality spike<br>~5 months before recalls",
+                text=f"<b>H1 2020</b><br>{n_f} facilities · {n_o} obs<br>Quality spike",
                 showarrow=True, arrowhead=2, arrowcolor=C["orange"],
-                ax=-105, ay=-40,
+                ax=-115, ay=-40,
                 font=dict(color=C["orange"], size=10),
                 bgcolor="rgba(255,255,255,0.92)", bordercolor=C["orange"], borderwidth=1,
             )
@@ -756,7 +825,7 @@ def _fig_case_study(
         margin=dict(l=10, r=10, t=70, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         xaxis2=dict(
-            title="Month", gridcolor="#F0F0F0",
+            title="Half-year (Jan = H1, Jul = H2)", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
         yaxis=dict(title="% of 483 observations flagged", tickformat=".0%",
@@ -774,16 +843,25 @@ def _fig_case_study_path_b(
     shortages: pd.DataFrame,
     drug: str = "Lisinopril",
 ) -> go.Figure:
-    """Path B case study with signal dropdown: quality signals + recalls from same FEIs."""
+    """Path B case study: semi-annual aggregate quality signals + per-FEI dots + recall bars."""
+    SIGNAL_CFG = [
+        ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
+        ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
+        ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
+    ]
     date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
     date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
-    q = quality[quality["month_start"].between(date_start, date_end)].copy()
+    q = quality[quality["snapshot_date"].between(date_start, date_end)].copy()
     r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
+
+    sig_cols = [col for col, _, _, _ in SIGNAL_CFG if col in q.columns]
+    agg = _semiann_quality(q, sig_cols)
 
     fig = make_subplots(
         rows=2, cols=1,
         subplot_titles=[
-            "% of 483 observations flagged (per snapshot month — use dropdown to isolate signals)",
+            "Quality signals — semi-annual average (bubble = # facilities; "
+            "select signal to reveal individual facility dots)",
             "Recalls linked to these FEIs (may include other products from same facilities)",
         ],
         vertical_spacing=0.10,
@@ -791,26 +869,45 @@ def _fig_case_study_path_b(
         row_heights=[0.58, 0.42],
     )
 
-    signal_cfg = [
-        ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
-        ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
-        ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
-    ]
     n_signals = 0
     has_quality = False
-    for col, label, col_color, dash in signal_cfg:
-        if col in q.columns and not q[col].isna().all():
-            has_quality = True
-            n_signals += 1
-            fig.add_trace(go.Scatter(
-                x=q["month_start"], y=q[col],
-                name=label,
-                mode="lines+markers",
-                line=dict(color=col_color, width=2.5, dash=dash),
-                marker=dict(size=7),
-                connectgaps=False,
-                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<extra></extra>",
-            ), row=1, col=1)
+    for col, label, col_color, dash in SIGNAL_CFG:
+        if col not in q.columns or q[col].isna().all():
+            continue
+        has_quality = True
+        n_signals += 1
+        sizes = np.clip(agg["n_feis"] * 3 + 7, 8, 30).values
+
+        fig.add_trace(go.Scatter(
+            x=agg["period_start"], y=agg[col],
+            name=label,
+            mode="lines+markers",
+            line=dict(color=col_color, width=2.5, dash=dash),
+            marker=dict(size=sizes, sizemode="diameter"),
+            connectgaps=False,
+            customdata=np.column_stack([agg["n_feis"], agg["n_obs"]]),
+            hovertemplate=(
+                f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<br>"
+                "Facilities: %{customdata[0]:.0f} · 483 obs: %{customdata[1]:.0f}"
+                "<extra></extra>"
+            ),
+        ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=q["snapshot_date"], y=q[col],
+            name=f"{label} (per FEI)",
+            mode="markers",
+            marker=dict(color=col_color, size=9, opacity=0.40,
+                        symbol="circle-open", line=dict(width=1.5)),
+            visible=False,
+            showlegend=False,
+            customdata=q[["fei"]].values,
+            hovertemplate=(
+                f"<b>%{{x|%b %Y}}</b> · FEI %{{customdata[0]}}<br>"
+                f"{label}: %{{y:.0%}}<br><i>Individual facility snapshot</i>"
+                "<extra></extra>"
+            ),
+        ), row=1, col=1)
 
     if not has_quality:
         fig.add_annotation(
@@ -847,7 +944,7 @@ def _fig_case_study_path_b(
         margin=dict(l=10, r=10, t=70, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         xaxis2=dict(
-            title="Month", gridcolor="#F0F0F0",
+            title="Half-year (Jan = H1, Jul = H2)", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
         yaxis=dict(title="% of 483 observations flagged", tickformat=".0%",
