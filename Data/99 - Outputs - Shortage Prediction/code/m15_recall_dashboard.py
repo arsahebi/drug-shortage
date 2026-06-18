@@ -651,13 +651,31 @@ def _load_case_study(drug: str = "Metformin") -> tuple[pd.DataFrame, pd.DataFram
     return quality_monthly, recalls_monthly, shortages_yearly
 
 
+def _add_signal_dropdown(fig: go.Figure, n_signals: int) -> None:
+    """Add signal-selector dropdown. Signal traces are 0..n_signals-1; recall trace follows."""
+    n_total = len(fig.data)
+    has_recall = n_total > n_signals
+    labels = [t.name for t in fig.data[:n_signals]]
+    all_vis = [True] * n_total
+    buttons = [dict(label="All signals", method="update", args=[{"visible": all_vis}])]
+    for i, lbl in enumerate(labels):
+        vis = [False] * n_signals + ([True] if has_recall else [])
+        vis[i] = True
+        buttons.append(dict(label=lbl, method="update", args=[{"visible": vis}]))
+    fig.update_layout(updatemenus=[dict(
+        buttons=buttons, direction="down",
+        x=0.0, y=1.13, xanchor="left", yanchor="top",
+        showactive=True, bgcolor="white", bordercolor="#DDD", font=dict(size=11),
+    )])
+
+
 def _fig_case_study(
     quality: pd.DataFrame,
     recalls: pd.DataFrame,
     shortages: pd.DataFrame,
     drug: str = "Metformin",
 ) -> go.Figure:
-    """Two-row monthly case study: quality signals (top), recall bars (bottom)."""
+    """Two-row monthly case study with signal dropdown: quality signals (top), recalls (bottom)."""
     date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
     date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
     q = quality[quality["month_start"].between(date_start, date_end)].copy()
@@ -665,32 +683,32 @@ def _fig_case_study(
 
     fig = make_subplots(
         rows=2, cols=1,
-        subplot_titles=["% of 483 observations flagged for each issue (LLM-extracted, monthly snapshots)",
+        subplot_titles=["% of 483 observations flagged (per snapshot month — use dropdown to isolate signals)",
                         "Recall events (monthly count)"],
         vertical_spacing=0.10,
         shared_xaxes=True,
-        row_heights=[0.55, 0.45],
+        row_heights=[0.58, 0.42],
     )
 
-    # Row 1: Quality signal lines (only where snapshots exist — no gap-fill)
     signal_cfg = [
         ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
         ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
         ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
     ]
+    n_signals = 0
     for col, label, col_color, dash in signal_cfg:
         if col in q.columns:
+            n_signals += 1
             fig.add_trace(go.Scatter(
                 x=q["month_start"], y=q[col],
                 name=label,
                 mode="lines+markers",
                 line=dict(color=col_color, width=2.5, dash=dash),
-                marker=dict(size=6),
+                marker=dict(size=7),
                 connectgaps=False,
-                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
+                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<extra></extra>",
             ), row=1, col=1)
 
-    # Row 2: Monthly recall bars
     if not r.empty:
         fig.add_trace(go.Bar(
             x=r["month_start"], y=r["n_recalls"],
@@ -699,7 +717,6 @@ def _fig_case_study(
             hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
         ), row=2, col=1)
 
-    # Shortage vlines on both rows + top annotation
     for _, sh_row in shortages.iterrows():
         yr = int(sh_row["year"])
         for rn in [1, 2]:
@@ -712,7 +729,6 @@ def _fig_case_study(
         )
 
     if drug == "Metformin":
-        # June 2020 recall spike annotation (row 2)
         fig.add_annotation(
             x="2020-06-01", y=14, yref="y2",
             text="<b>June 2020</b><br>14 NDMA recalls",
@@ -721,7 +737,6 @@ def _fig_case_study(
             font=dict(color=C["red"], size=10),
             bgcolor="rgba(255,255,255,0.92)", bordercolor=C["red"], borderwidth=1,
         )
-        # Jan 2020 quality spike annotation (row 1)
         jan2020 = q[q["month_start"] == pd.Timestamp("2020-01-01")]
         if not jan2020.empty and "severity_critmajor_share" in jan2020.columns:
             sev = float(jan2020["severity_critmajor_share"].iloc[0])
@@ -734,15 +749,18 @@ def _fig_case_study(
                 bgcolor="rgba(255,255,255,0.92)", bordercolor=C["orange"], borderwidth=1,
             )
 
+    _add_signal_dropdown(fig, n_signals)
+
     fig.update_layout(
-        height=500,
-        margin=dict(l=10, r=10, t=50, b=10),
+        height=640,
+        margin=dict(l=10, r=10, t=70, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         xaxis2=dict(
             title="Month", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
-        yaxis=dict(title="Share of 483 observations flagged (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
+        yaxis=dict(title="% of 483 observations flagged", tickformat=".0%",
+                   range=[0, 1.2], gridcolor="#F0F0F0"),
         yaxis2=dict(title="# Recalls", gridcolor="#F0F0F0"),
         legend=dict(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.92)",
                     bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
@@ -756,76 +774,61 @@ def _fig_case_study_path_b(
     shortages: pd.DataFrame,
     drug: str = "Lisinopril",
 ) -> go.Figure:
-    """Path B case study: quality signals + absent recalls + business-decision shortage."""
+    """Path B case study with signal dropdown: quality signals + recalls from same FEIs."""
     date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
     date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
     q = quality[quality["month_start"].between(date_start, date_end)].copy()
     r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
-    no_recalls = r.empty or int(r["n_recalls"].sum()) == 0
 
     fig = make_subplots(
         rows=2, cols=1,
         subplot_titles=[
-            "% of 483 observations flagged for each issue (LLM-extracted, monthly snapshots)",
-            "Recall events — Path B: none expected (silent exit)",
+            "% of 483 observations flagged (per snapshot month — use dropdown to isolate signals)",
+            "Recalls linked to these FEIs (may include other products from same facilities)",
         ],
         vertical_spacing=0.10,
         shared_xaxes=True,
-        row_heights=[0.55, 0.45],
+        row_heights=[0.58, 0.42],
     )
 
-    # Row 1: Quality signals
     signal_cfg = [
         ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
         ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
         ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
     ]
+    n_signals = 0
     has_quality = False
     for col, label, col_color, dash in signal_cfg:
         if col in q.columns and not q[col].isna().all():
             has_quality = True
+            n_signals += 1
             fig.add_trace(go.Scatter(
                 x=q["month_start"], y=q[col],
                 name=label,
                 mode="lines+markers",
                 line=dict(color=col_color, width=2.5, dash=dash),
-                marker=dict(size=6),
+                marker=dict(size=7),
                 connectgaps=False,
-                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.2f}}<extra></extra>",
+                hovertemplate=f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<extra></extra>",
             ), row=1, col=1)
 
     if not has_quality:
         fig.add_annotation(
             x=0.5, y=0.75, xref="paper", yref="paper",
-            text=(f"<i>No LLM text features available<br>"
-                  f"for {drug} FEIs in the current pipeline.<br>"
-                  f"483 text extraction covers 98/129 Valisure FEIs.</i>"),
+            text=(f"<i>No LLM text features for {drug} FEIs in current pipeline<br>"
+                  f"(483 text extraction covers 98/129 Valisure FEIs).</i>"),
             showarrow=False, font=dict(color="#888", size=12), align="center",
         )
 
-    # Row 2: Recall bars (empty bars visible to show the absence)
     if not r.empty:
         fig.add_trace(go.Bar(
             x=r["month_start"], y=r["n_recalls"],
-            name="Recalls", marker_color=C["red"], opacity=0.85,
+            name="Recalls (all products from FEIs)",
+            marker_color=C["orange"], opacity=0.75,
             showlegend=False,
             hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
         ), row=2, col=1)
 
-    # "No recalls" label
-    if no_recalls:
-        fig.add_annotation(
-            x=0.5, y=0.18, xref="paper", yref="paper",
-            text=("<b>No recalls issued for this drug</b><br>"
-                  "Path B: firm quietly discontinued — no FDA recall action required"),
-            showarrow=False,
-            font=dict(color=C["purple"], size=11),
-            bgcolor="rgba(123,94,167,0.08)",
-            bordercolor=C["purple"], borderwidth=1, borderpad=8,
-            align="center",
-        )
-
-    # Shortage / Business Decision vlines (purple = Path B colour)
     for _, sh_row in shortages.iterrows():
         yr = int(sh_row["year"])
         for rn in [1, 2]:
@@ -837,16 +840,19 @@ def _fig_case_study_path_b(
             showarrow=False, font=dict(color=C["purple"], size=9), align="center",
         )
 
+    _add_signal_dropdown(fig, n_signals)
+
     fig.update_layout(
-        height=500,
-        margin=dict(l=10, r=10, t=50, b=10),
+        height=640,
+        margin=dict(l=10, r=10, t=70, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         xaxis2=dict(
             title="Month", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
-        yaxis=dict(title="Share of 483 observations flagged (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
-        yaxis2=dict(title="# Recalls", range=[0, 5], gridcolor="#F0F0F0"),
+        yaxis=dict(title="% of 483 observations flagged", tickformat=".0%",
+                   range=[0, 1.2], gridcolor="#F0F0F0"),
+        yaxis2=dict(title="# Recalls", gridcolor="#F0F0F0"),
         legend=dict(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.92)",
                     bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
     )
