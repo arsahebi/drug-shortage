@@ -105,22 +105,41 @@ _PARENTERAL_ROUTES = {
     "INJECTION, SUBCUTANEOUS",
 }
 
-# 14-color palette for drug-level overlays
-_DRUG_COLORS = [
-    "#4A90D9", "#E07B39", "#3DAA6E", "#D94A4A", "#7B5EA7",
-    "#2E8B8B", "#F4A261", "#457B9D", "#2A9D8F", "#E9C46A",
-    "#A8DADC", "#9AA5B1", "#B5838D", "#6D6875",
+# All 12 text-derived share features organized by category for the case study
+SIGNAL_GROUPS: list[tuple[str, list[tuple[str, str, str, str]]]] = [
+    ("Severity", [
+        ("severity_critmajor_share",    "Critical/Major severity", "#E07B39", "solid"),
+    ]),
+    ("Scope", [
+        ("scope_facilitywide_share",    "Facility-wide scope",     "#4A90D9", "solid"),
+        ("scope_multipleproducts_share","Multi-product scope",     "#4A90D9", "dash"),
+    ]),
+    ("LLM — Safety flags", [
+        ("contamination_llm_share",     "Contamination",           "#D94A4A", "solid"),
+        ("data_integrity_llm_share",    "Data integrity",          "#7B5EA7", "dash"),
+    ]),
+    ("LLM — Process flags", [
+        ("investigation_llm_share",     "Investigation gaps",      "#7B5EA7", "dot"),
+        ("repeat_cross_insp_share",     "Repeat findings",         "#9AA5B1", "dashdot"),
+    ]),
+    ("Violation type", [
+        ("vc_labcontrols_share",        "Lab controls",            "#2E8B8B", "solid"),
+        ("vc_qualitysystem_share",      "Quality system",          "#2E8B8B", "dash"),
+    ]),
+    ("Remediation", [
+        ("remediation_none_share",      "No remediation",          "#D94A4A", "dot"),
+        ("remediation_weak_share",      "Weak remediation",        "#E07B39", "dashdot"),
+    ]),
+    ("Cultural", [
+        ("cultural_root_cause_share",   "Cultural root cause",     "#3DAA6E", "solid"),
+    ]),
 ]
-
-# 5 inspection-text signals shown in case study
-SIGNAL_CFG = [
-    ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
-    ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
-    ("data_integrity_llm_share",  "Data integrity flag",     C["teal"],   "dot"),
-    ("scope_facilitywide_share",  "Facility-wide scope",     C["blue"],   "dashdot"),
-    ("cultural_root_cause_share", "Cultural root cause",     C["green"],  "longdash"),
+_ALL_SIG_FLAT: list[tuple[str, str, str, str, str]] = [
+    (col, label, color, dash, grp)
+    for grp, sigs in SIGNAL_GROUPS
+    for col, label, color, dash in sigs
 ]
-N_SIG = len(SIGNAL_CFG)
+N_ALL_SIG = len(_ALL_SIG_FLAT)  # 12
 
 
 # ── Data loading ────────────────────────────────────────────────────────────
@@ -511,243 +530,288 @@ def _fig_case_study_multi(
 ) -> go.Figure:
     """Two-row signal–AE correlation panel with drug-selector dropdown.
 
-    Dropdown:
-      "All drugs (normalized)" — one normalized line per drug in each row,
-          same color for signal (solid) and AE (dashed) to reveal temporal patterns.
-      Per drug — 5 named signal lines (top) + quarterly AE bar (bottom).
+    Top row: inspection text quality signals as lines + filled bubbles
+             (bubble size = # FEIs in the semi-annual window, matching m15 style).
+             Small open-circle dots show per-FEI snapshots in per-drug mode.
+    Bottom row: quarterly FAERS serious AE counts as bars.
 
-    Trace layout (total = n_drugs*2 + n_drugs*(N_SIG+1)):
-      [0 .. n_drugs-1]              : all-drugs mode, signal lines (row 1)
-      [n_drugs .. 2*n_drugs-1]      : all-drugs mode, AE lines (row 2)
-      [2*n_drugs + d*(N_SIG+1) ..]  : per-drug mode, N_SIG signal lines + 1 AE bar
+    Dropdown: "All drugs" (aggregate across all 14 drugs) + each drug individually.
+    Legend: signals grouped by category. Click a group title to toggle that
+            entire category on/off (uses Plotly legendgroup "togglegroup").
+
+    Trace layout (n_all = N_ALL_SIG+1, n_per = N_ALL_SIG*2+1):
+      [0 .. N_ALL_SIG-1]                        : all-drugs aggregate signal lines
+      [N_ALL_SIG]                               : all-drugs AE bar
+      [N_ALL_SIG+1 + d*(N_ALL_SIG*2+1) ..]
+        first  N_ALL_SIG traces                 : drug-d aggregate signal lines
+        next   N_ALL_SIG traces                 : drug-d per-FEI dot scatter
+        last   1 trace                          : drug-d AE bar
     """
-    drugs = sorted(
-        set(quality_by_drug.keys()) | set(ae_annual_by_drug.keys())
-    )
+    drugs   = sorted(set(quality_by_drug) | set(ae_annual_by_drug))
     n_drugs = len(drugs)
-    years   = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
-    yr_ts   = [pd.Timestamp(f"{y}-01-01") for y in years]
+    n_all   = N_ALL_SIG + 1        # all-drugs section
+    n_per   = N_ALL_SIG * 2 + 1    # per-drug section
+
+    # ── Compute "All drugs" aggregate quality data ────────────────────────────
+    all_q_frames = [df for df in quality_by_drug.values() if not df.empty]
+    all_q = pd.concat(all_q_frames, ignore_index=True) if all_q_frames else pd.DataFrame()
+    sig_cols_all = [col for col, *_ in _ALL_SIG_FLAT
+                    if not all_q.empty and col in all_q.columns
+                    and not all_q[col].isna().all()]
+    agg_all = _semiann_quality(all_q, sig_cols_all) if sig_cols_all else pd.DataFrame()
+
+    # ── Compute "All drugs" quarterly AE total ────────────────────────────────
+    ae_all_frames = [df for df in ae_monthly_by_drug.values() if not df.empty]
+    ae_all = pd.DataFrame()
+    if ae_all_frames:
+        ae_combined = pd.concat(ae_all_frames, ignore_index=True)
+        if not ae_combined.empty:
+            ae_all = (ae_combined
+                      .groupby("month_start", as_index=False)["n_ae"].sum()
+                      .sort_values("month_start").reset_index(drop=True))
 
     fig = make_subplots(
         rows=2, cols=1,
-        shared_xaxes=False,
-        vertical_spacing=0.12,
+        shared_xaxes=True,
+        vertical_spacing=0.10,
         subplot_titles=[
-            "Quality signals — inspection text (top panel)",
-            "FAERS serious adverse events (bottom panel)",
+            "All 14 drugs — quality signals aggregate  "
+            "(bubble = # facilities; click legend group titles to filter categories)",
+            "All 14 drugs — FAERS serious AE reports (quarterly total)",
         ],
-        row_heights=[0.55, 0.45],
+        row_heights=[0.58, 0.42],
     )
 
-    # ── ALL DRUGS mode: one normalized signal line + one AE line per drug ────
-    for d_idx, drug in enumerate(drugs):
-        dc = _DRUG_COLORS[d_idx % len(_DRUG_COLORS)]
-        q  = quality_by_drug.get(drug, pd.DataFrame())
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SECTION A: All-drugs aggregate (indices 0 .. n_all-1)
+    # ═══════════════════════════════════════════════════════════════════════════
+    seen_grps: set[str] = set()
+    for col, label, color, dash, grp in _ALL_SIG_FLAT:
+        is_first = grp not in seen_grps
+        if is_first:
+            seen_grps.add(grp)
+        gt_kw = {"legendgrouptitle": dict(text=grp)} if is_first else {}
 
-        sig_cols = [c for c, _, _, _ in SIGNAL_CFG
-                    if not q.empty and c in q.columns and not q[c].isna().all()]
-
-        if not q.empty and sig_cols:
-            q2 = q.copy()
-            q2["yr"] = q2["snapshot_date"].dt.year.astype(int)
-            annual_sig = (
-                q2[q2["yr"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
-                .groupby("yr")[sig_cols].mean()
-                .mean(axis=1)
-                .reindex(years)
-                .reset_index()
-            )
-            annual_sig.columns = ["year", "composite"]
-            smin, smax = annual_sig["composite"].min(), annual_sig["composite"].max()
-            annual_sig["norm"] = (
-                (annual_sig["composite"] - smin) / (smax - smin)
-                if smax > smin else 0.0
-            )
-            n_feis_data = int(q["fei"].nunique()) if "fei" in q.columns else 0
+        has_data = (not agg_all.empty
+                    and col in agg_all.columns
+                    and not agg_all[col].isna().all())
+        if has_data:
+            sizes   = np.clip(agg_all["n_feis"] * 3 + 7, 8, 30).values
+            n_obs_v = agg_all["n_obs"].values if "n_obs" in agg_all.columns \
+                      else agg_all["n_feis"].values
+            cd      = np.column_stack([agg_all["n_feis"].values, n_obs_v])
             fig.add_trace(go.Scatter(
-                x=yr_ts, y=annual_sig["norm"].values,
-                name=drug, mode="lines+markers",
-                line=dict(color=dc, width=2.2),
-                marker=dict(size=7),
-                legendgroup=f"all_{drug}",
-                visible=True,
-                customdata=annual_sig["composite"].values,
+                x=agg_all["period_start"], y=agg_all[col],
+                name=label, mode="lines+markers",
+                line=dict(color=color, width=2.5, dash=dash),
+                marker=dict(size=sizes, sizemode="diameter"),
+                connectgaps=False, customdata=cd,
+                legendgroup=f"grp_{grp}", visible=True, showlegend=True,
                 hovertemplate=(
-                    f"<b>{drug}</b>  %{{x|%Y}}<br>"
-                    f"Quality index: %{{y:.2f}}<br>"
-                    f"Composite raw: %{{customdata:.3f}}<br>"
-                    f"({n_feis_data} FEIs with 483 text)"
+                    f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<br>"
+                    "Facilities: %{customdata[0]:.0f} · obs: %{customdata[1]:.0f}"
                     "<extra></extra>"
                 ),
+                **gt_kw,
             ), row=1, col=1)
         else:
             fig.add_trace(go.Scatter(
-                x=[], y=[], name=drug,
-                legendgroup=f"all_{drug}", visible=True,
-                showlegend=(not q.empty),
+                x=[], y=[], name=label,
+                legendgroup=f"grp_{grp}", visible=False, showlegend=False,
+                **gt_kw,
             ), row=1, col=1)
 
-        ae = ae_annual_by_drug.get(drug, pd.DataFrame())
-        if not ae.empty:
-            ae_r = ae.set_index("year")["n_ae"].reindex(years, fill_value=0).values.astype(float)
-            amin, amax = ae_r.min(), ae_r.max()
-            ae_n = (ae_r - amin) / (amax - amin) if amax > amin else ae_r * 0.0
-            fig.add_trace(go.Scatter(
-                x=yr_ts, y=ae_n,
-                name=drug, mode="lines+markers",
-                line=dict(color=dc, width=2.2, dash="dash"),
-                marker=dict(size=7, symbol="square"),
-                legendgroup=f"all_{drug}",
-                showlegend=False,
-                visible=True,
-                customdata=ae_r.astype(int),
-                hovertemplate=(
-                    f"<b>{drug}</b>  %{{x|%Y}}<br>"
-                    "AE index: %{y:.2f}<br>Raw AE count: %{customdata:,}"
-                    "<extra></extra>"
-                ),
-            ), row=2, col=1)
-        else:
-            fig.add_trace(go.Scatter(
-                x=[], y=[], name=f"{drug}_ae",
-                legendgroup=f"all_{drug}", visible=True, showlegend=False,
-            ), row=2, col=1)
+    # All-drugs AE bar
+    if not ae_all.empty:
+        fig.add_trace(go.Bar(
+            x=ae_all["month_start"], y=ae_all["n_ae"],
+            name="Serious AE reports (all drugs)",
+            marker_color=C["purple"], opacity=0.75,
+            visible=True, showlegend=False,
+            hovertemplate="<b>%{x|%b %Y}</b><br>Total AE reports: %{y:,}<extra></extra>",
+        ), row=2, col=1)
+    else:
+        fig.add_trace(go.Bar(x=[], y=[], name="no_ae_all",
+                             showlegend=False, visible=True), row=2, col=1)
 
-    # ── PER-DRUG mode: N_SIG named signal lines + quarterly AE bar ───────────
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SECTION B: Per-drug traces (indices n_all .. n_all + n_drugs*n_per - 1)
+    # For each drug: N_ALL_SIG aggregate lines, N_ALL_SIG per-FEI dots, 1 AE bar
+    # ═══════════════════════════════════════════════════════════════════════════
     for d_idx, drug in enumerate(drugs):
         q = quality_by_drug.get(drug, pd.DataFrame())
-        sig_p = [c for c, _, _, _ in SIGNAL_CFG
-                 if not q.empty and c in q.columns and not q[c].isna().all()]
+        sig_p = [col for col, *_ in _ALL_SIG_FLAT
+                 if not q.empty and col in q.columns and not q[col].isna().all()]
         agg = _semiann_quality(q, sig_p) if sig_p and not q.empty else pd.DataFrame()
 
-        for col, label, cc, dash in SIGNAL_CFG:
-            is_p = col in sig_p and not agg.empty and col in agg.columns
-            if is_p:
-                sizes = np.clip(agg["n_feis"] * 3 + 7, 8, 30).values
-                cd    = np.column_stack([agg["n_feis"], agg["n_obs"]])
+        seen_grps_d: set[str] = set()
+
+        # -- aggregate bubble-line traces --
+        for col, label, color, dash, grp in _ALL_SIG_FLAT:
+            is_first = grp not in seen_grps_d
+            if is_first:
+                seen_grps_d.add(grp)
+            gt_kw = {"legendgrouptitle": dict(text=grp)} if is_first else {}
+
+            has_data = (not agg.empty and col in agg.columns
+                        and not agg[col].isna().all())
+            if has_data:
+                sizes   = np.clip(agg["n_feis"] * 3 + 7, 8, 30).values
+                n_obs_v = agg["n_obs"].values if "n_obs" in agg.columns \
+                          else agg["n_feis"].values
+                cd      = np.column_stack([agg["n_feis"].values, n_obs_v])
                 fig.add_trace(go.Scatter(
                     x=agg["period_start"], y=agg[col],
                     name=label, mode="lines+markers",
-                    line=dict(color=cc, width=2.5, dash=dash),
+                    line=dict(color=color, width=2.5, dash=dash),
                     marker=dict(size=sizes, sizemode="diameter"),
                     connectgaps=False, customdata=cd,
-                    visible=False, showlegend=True,
+                    legendgroup=f"grp_{grp}", visible=False, showlegend=True,
                     hovertemplate=(
                         f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<br>"
                         "Facilities: %{customdata[0]:.0f} · obs: %{customdata[1]:.0f}"
                         "<extra></extra>"
                     ),
+                    **gt_kw,
                 ), row=1, col=1)
             else:
                 fig.add_trace(go.Scatter(
-                    x=[], y=[], name=label, visible=False, showlegend=False,
+                    x=[], y=[], name=label,
+                    legendgroup=f"grp_{grp}", visible=False, showlegend=False,
+                    **gt_kw,
                 ), row=1, col=1)
 
+        # -- per-FEI small dot traces (showlegend=False; respond to legendgroup toggle) --
+        for col, label, color, dash, grp in _ALL_SIG_FLAT:
+            if not q.empty and col in q.columns and not q[col].isna().all():
+                cd_fei = q["fei"].values.reshape(-1, 1) if "fei" in q.columns \
+                         else np.zeros((len(q), 1), dtype=int)
+                fig.add_trace(go.Scatter(
+                    x=q["snapshot_date"], y=q[col],
+                    name=f"{label} (per FEI)",
+                    mode="markers",
+                    marker=dict(color=color, size=9, opacity=0.38,
+                                symbol="circle-open", line=dict(width=1.5)),
+                    visible=False, showlegend=False,
+                    legendgroup=f"grp_{grp}",
+                    customdata=cd_fei,
+                    hovertemplate=(
+                        f"<b>%{{x|%b %Y}}</b> · FEI %{{customdata[0]}}<br>"
+                        f"{label}: %{{y:.0%}}<br><i>Individual facility</i>"
+                        "<extra></extra>"
+                    ),
+                ), row=1, col=1)
+            else:
+                fig.add_trace(go.Scatter(
+                    x=[], y=[], visible=False, showlegend=False,
+                    legendgroup=f"grp_{grp}",
+                ), row=1, col=1)
+
+        # -- drug AE bar --
         ae_m = ae_monthly_by_drug.get(drug, pd.DataFrame())
         if not ae_m.empty:
             fig.add_trace(go.Bar(
                 x=ae_m["month_start"], y=ae_m["n_ae"],
-                name="Serious AE reports", marker_color=C["purple"], opacity=0.80,
+                name=f"{drug} — AE reports",
+                marker_color=C["purple"], opacity=0.80,
                 visible=False, showlegend=False,
                 hovertemplate="<b>%{x|%b %Y}</b><br>AE reports: %{y:,}<extra></extra>",
             ), row=2, col=1)
         else:
             fig.add_trace(go.Bar(
-                x=[], y=[], name="no_ae", visible=False, showlegend=False,
+                x=[], y=[], name=f"no_ae_{d_idx}",
+                visible=False, showlegend=False,
             ), row=2, col=1)
 
-    # ── Dropdown ─────────────────────────────────────────────────────────────
-    n_per   = N_SIG + 1  # traces per drug in per-drug mode
-    n_all   = n_drugs * 2
-    n_total = n_all + n_drugs * n_per
-
-    def _vis_all() -> list[bool]:
+    # ── Dropdown ──────────────────────────────────────────────────────────────
+    def _vis_all_drugs() -> list[bool]:
         return [True] * n_all + [False] * (n_drugs * n_per)
 
     def _vis_drug(d: int) -> list[bool]:
         v = [False] * n_all
-        v += [False] * (d * n_per)
-        v += [True]  * n_per
-        v += [False] * ((n_drugs - d - 1) * n_per)
+        for i in range(n_drugs):
+            v += [True] * n_per if i == d else [False] * n_per
         return v
 
-    _all_layout = {
-        "yaxis.title.text":        "Quality signal index (0 = low, 1 = high per drug)",
-        "yaxis.tickformat":        ".2f",
-        "yaxis.range":             [-0.05, 1.1],
-        "xaxis.tickformat":        "%Y",
-        "xaxis.dtick":             "M12",
-        "xaxis.title.text":        "Year",
-        "yaxis2.title.text":       "AE count index (0 = low, 1 = high per drug)",
-        "yaxis2.tickformat":       ".2f",
-        "yaxis2.range":            [-0.05, 1.1],
-        "xaxis2.tickformat":       "%Y",
-        "xaxis2.dtick":            "M12",
-        "xaxis2.title.text":       "Year",
-    }
-    _drug_layout = {
-        "yaxis.title.text":        "% of 483 obs flagged",
-        "yaxis.tickformat":        ".0%",
-        "yaxis.range":             [-0.05, 1.1],
-        "xaxis.tickformat":        "%b %Y",
-        "xaxis.dtick":             "M6",
-        "xaxis.title.text":        "Half-year",
-        "yaxis2.title.text":       "# Serious AE reports",
-        "yaxis2.tickformat":       ",",
-        "yaxis2.range":            None,
-        "xaxis2.tickformat":       "%b %Y",
-        "xaxis2.dtick":            "M6",
-        "xaxis2.title.text":       "Quarter",
+    _common = {
+        "yaxis.title.text": "% of 483 obs flagged",
+        "yaxis.tickformat": ".0%",
+        "yaxis.range":      [-0.05, 1.1],
+        "xaxis.tickformat": "%b %Y",
+        "xaxis.dtick":      "M6",
+        "xaxis.title.text": "Half-year period",
     }
 
     buttons = [dict(
-        label="All drugs (normalized)",
+        label="All drugs",
         method="update",
-        args=[{"visible": _vis_all()}, _all_layout],
+        args=[
+            {"visible": _vis_all_drugs()},
+            {
+                **_common,
+                "yaxis2.title.text":   "# Serious AE reports (all 14 drugs)",
+                "yaxis2.tickformat":   ",",
+                "annotations[0].text": (
+                    "All 14 drugs — quality signals aggregate  "
+                    "(bubble = # facilities; click legend group titles to filter categories)"
+                ),
+                "annotations[1].text": "All 14 drugs — FAERS serious AE reports (quarterly total)",
+            },
+        ],
     )]
     for d_idx, drug in enumerate(drugs):
         buttons.append(dict(
             label=drug,
             method="update",
-            args=[{"visible": _vis_drug(d_idx)}, _drug_layout],
+            args=[
+                {"visible": _vis_drug(d_idx)},
+                {
+                    **_common,
+                    "yaxis2.title.text":   f"{drug} — # Serious AE reports",
+                    "yaxis2.tickformat":   ",",
+                    "annotations[0].text": (
+                        f"{drug} FEIs — quality signals  "
+                        "(bubble = # facilities; click legend group titles to filter)"
+                    ),
+                    "annotations[1].text": f"{drug} — FAERS serious AE reports (quarterly)",
+                },
+            ],
         ))
 
     fig.update_layout(
         updatemenus=[dict(
             buttons=buttons, direction="down",
-            x=0.0, y=1.12, xanchor="left", yanchor="top",
+            x=0.0, y=1.17, xanchor="left", yanchor="top",
             showactive=True, bgcolor="white", bordercolor="#DDD", font=dict(size=11),
         )],
-        height=720,
-        margin=dict(l=10, r=160, t=80, b=10),
+        height=780,
+        margin=dict(l=10, r=210, t=95, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(
+            title="Half-year period", tickformat="%b %Y", dtick="M6",
+            tickangle=-30, gridcolor="#F0F0F0",
+        ),
         yaxis=dict(
-            title="Quality signal index (0 = low, 1 = high per drug)",
-            tickformat=".2f", range=[-0.05, 1.1], gridcolor="#F0F0F0",
+            title="% of 483 obs flagged",
+            tickformat=".0%", range=[-0.05, 1.1], gridcolor="#F0F0F0",
         ),
         yaxis2=dict(
-            title="AE count index (0 = low, 1 = high per drug)",
-            tickformat=".2f", range=[-0.05, 1.1], gridcolor="#F0F0F0",
-        ),
-        xaxis=dict(
-            title="Year", tickformat="%Y", dtick="M12",
-            tickangle=-30, gridcolor="#F0F0F0",
-        ),
-        xaxis2=dict(
-            title="Year", tickformat="%Y", dtick="M12",
-            tickangle=-30, gridcolor="#F0F0F0",
+            title="# Serious AE reports (all 14 drugs)",
+            tickformat=",", gridcolor="#F0F0F0",
         ),
         legend=dict(
-            x=1.01, y=1, bgcolor="rgba(255,255,255,0.92)",
-            bordercolor="#E0E0E0", borderwidth=1, font=dict(size=10),
-            tracegroupgap=2,
+            x=1.01, y=1,
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="#E0E0E0", borderwidth=1,
+            font=dict(size=10),
+            tracegroupgap=6,
+            groupclick="togglegroup",
         ),
     )
 
-    # Legend guide annotation (all-drugs mode)
     fig.add_annotation(
         x=1.01, y=0.02, xref="paper", yref="paper",
-        text="<b>Line style (all-drugs):</b><br>— solid: quality signal<br>– dashed: AE count",
+        text="<b>Tip:</b> click a category title in<br>the legend to show/hide that group",
         showarrow=False, align="left",
         font=dict(size=9, color="#555"),
         bgcolor="rgba(255,255,255,0.85)", bordercolor="#DDD", borderwidth=1,
