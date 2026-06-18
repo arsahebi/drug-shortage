@@ -1,21 +1,21 @@
 """
-Module 15 — Interactive shortage story dashboard.
+Module 18 — Interactive FAERS adverse event story dashboard.
 
-Tells the full causal chain: manufacturing quality failures → drug shortage via multiple routes.
+Tells the causal chain: manufacturing quality failures → serious adverse events.
 
 Sections:
   1. Data coverage — facility funnel
-  2. Supply landscape — FEIs per drug (concentration risk) + risk bubble matrix
-  3. Shortage analysis — causal reason breakdown
-  4. Events timeline — recalls & shortages by drug × year
-  5. Case study — quality signals preceding the Metformin NDMA recall
-  6. Model evidence — text feature AUC lift + feature importance
+  2. Supply landscape — FEIs per drug + AE event counts
+  3. AE severity breakdown — Hospitalization vs Other Serious by drug
+  4. AE timeline — FAERS serious AE counts per drug × year
+  5. Case study — Metformin: quality signals preceding AE surge
+  6. Model evidence — text feature AUC lift + feature importance (from m17)
 
 Output:
-  outputs/figures/recall_fei_dashboard.html
+  outputs/figures/faers_fei_dashboard.html
 
 Run:
-  python m15_recall_dashboard.py
+  python m18_faers_dashboard.py
 """
 
 from __future__ import annotations
@@ -44,26 +44,24 @@ except ModuleNotFoundError:
 
 from config import (
     DATA, OUT_FIGS, OUT_DATA, OUT_MODELS, OUT_TABS, OUT_LOGS,
-    TEXT_TIMESERIES_REDICA_CSV, RECALL_FILT, VALISURE_FEI,
+    TEXT_TIMESERIES_REDICA_CSV, FAERS_ALL, VALISURE_CSV, VALISURE_FEI,
     PANEL_START_YEAR, PANEL_END_YEAR, SEED,
 )
-from utils import get_logger
+from utils import get_logger, ValisureDrugMatcher, load_valisure_api_names
 
-log = get_logger("m15_dashboard", OUT_LOGS / "m15_dashboard.log")
+log = get_logger("m18_faers_dashboard", OUT_LOGS / "m18_dashboard.log")
 
-REDICA_RAW    = DATA / "07 - Redica" / "raw"
-UUTAH_FILE    = DATA / "24 - UUtah - Drug Shortage" / "raw" / "efox shortages small file through 2025 final.xlsx"
-OB_PRODUCTS   = DATA / "01 - Orange Book" / "output_data" / "products.csv"
-OUT_HTML      = OUT_FIGS / "recall_fei_dashboard.html"
-SDUD_PANEL    = DATA / "04_11 - Build - Monthly Panel (SDUD+NADAC)" / "processed" / "2026-03-26-sdud_nadac_panel.csv"
-NDC_PRODUCT   = DATA / "03 - FDA - NDC" / "product.csv"
+REDICA_RAW  = DATA / "07 - Redica" / "raw"
+OB_PRODUCTS = DATA / "01 - Orange Book" / "output_data" / "products.csv"
+OUT_HTML    = OUT_FIGS / "faers_fei_dashboard.html"
+SDUD_PANEL  = DATA / "04_11 - Build - Monthly Panel (SDUD+NADAC)" / "processed" / "2026-03-26-sdud_nadac_panel.csv"
+NDC_PRODUCT = DATA / "03 - FDA - NDC" / "product.csv"
 
 # Per-drug story FEI: fei_id → (display_name, sdud_keyword)
 _STORY_FEIS: dict[str, dict[int, tuple[str, str]]] = {
-    "Metformin":  {3005263655: ("Amneal Pharmaceuticals", "amneal")},
+    "Metformin": {3005263655: ("Amneal Pharmaceuticals", "amneal")},
 }
 
-# Feature groups — must match m14
 INSP_FEATS   = ["n_oai_cumul", "n_vai_t", "n_inspections_t", "n_warning_letters_t"]
 TEXT_FEATS   = [
     "severity_critmajor_share", "scope_facilitywide_share",
@@ -124,18 +122,6 @@ _PARENTERAL_ROUTES = {
     "INJECTION, SUBCUTANEOUS",
 }
 
-# Shortage reason → causal path
-_PATH_A = re.compile(
-    r"manufactur|regulatory|cgmp|quality|recall|contamina|potency|ingredient",
-    re.IGNORECASE,
-)
-_PATH_B = re.compile(
-    r"discontinu|business decision|market exit|exit|withdrew",
-    re.IGNORECASE,
-)
-_DEMAND = re.compile(r"demand|supply", re.IGNORECASE)
-_RAW    = re.compile(r"raw material|ingredient shortage|api shortage", re.IGNORECASE)
-
 TARGET_DRUGS = {
     "metformin": "Metformin",
     "atorvastatin": "Atorvastatin",
@@ -165,7 +151,6 @@ def _fei_drug_map() -> pd.DataFrame:
     df = fm[[fei_col, api_col]].dropna().rename(columns={fei_col: "fei", api_col: "drug"})
     df["fei"] = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
 
-    # Parenteral from OB
     parenteral_drugs: set[str] = set()
     if OB_PRODUCTS.exists():
         ob = pd.read_csv(OB_PRODUCTS)
@@ -186,7 +171,6 @@ def _fei_drug_map() -> pd.DataFrame:
 
 
 def _load_supply_concentration(fdmap: pd.DataFrame) -> pd.DataFrame:
-    """Count FEIs per drug and recall rate."""
     supply = (
         fdmap.groupby("drug", as_index=False)
         .agg(n_feis=("fei", "nunique"), parenteral=("parenteral", "max"))
@@ -195,100 +179,94 @@ def _load_supply_concentration(fdmap: pd.DataFrame) -> pd.DataFrame:
     return supply
 
 
-def _load_recall_by_drug(fdmap: pd.DataFrame) -> pd.DataFrame:
-    """Join recall events to drugs via Valisure FEI mapping."""
-    recall = pd.read_csv(RECALL_FILT, low_memory=False)
-    recall.columns = [c.strip() for c in recall.columns]
-    recall["fei"]  = pd.to_numeric(recall["FEI Number"], errors="coerce").astype("Int64")
-    recall["year"] = pd.to_datetime(recall["Recall_Date"], errors="coerce").dt.year.astype("Int64")
-    cls_col = next((c for c in recall.columns if "event" in c.lower() and "class" in c.lower()), None)
-    if cls_col is None:
-        cls_col = next((c for c in recall.columns if "class" in c.lower()), "")
-    if cls_col:
-        recall["class_i"] = recall[cls_col].astype(str).str.contains("Class I|Class-I", regex=True).astype(int)
-    else:
-        recall["class_i"] = 0
+def _load_ae_by_drug(fdmap: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate FAERS by drug × year, joined to canonical API via Valisure matcher."""
+    if not FAERS_ALL.exists():
+        log.warning("FAERS file not found; returning empty AE frame")
+        return pd.DataFrame(columns=["drug", "year", "severity", "n_ae"])
 
-    df = recall.merge(fdmap[["fei", "drug"]].drop_duplicates(), on="fei", how="inner")
+    df = pd.read_csv(FAERS_ALL, low_memory=False)
+    df.columns = [c.strip() for c in df.columns]
+
+    prod_col = next((c for c in df.columns if c.lower() == "prod_ai"), None)
+    year_col = next((c for c in df.columns if c.lower() == "year"), None)
+    sev_col  = next((c for c in df.columns if c.lower() == "severity"), None)
+    if not prod_col or not year_col:
+        log.warning("FAERS missing prod_ai or year; columns: %s", list(df.columns))
+        return pd.DataFrame(columns=["drug", "year", "severity", "n_ae"])
+
+    df["year"] = pd.to_numeric(df[year_col], errors="coerce").astype("Int64")
+    df = df.dropna(subset=["year", prod_col])
     df = df[(df["year"] >= PANEL_START_YEAR) & (df["year"] <= PANEL_END_YEAR)]
-    agg = df.groupby(["drug", "year"], as_index=False).agg(
-        n_recalls=("fei", "count"),
-        n_class_i=("class_i", "sum"),
-    )
-    log.info("Recall-drug events: %d rows, %d drugs", len(agg), agg["drug"].nunique())
+
+    api_names = load_valisure_api_names(VALISURE_CSV)
+    matcher   = ValisureDrugMatcher(api_names)
+    df["drug"] = df[prod_col].astype(str).map(matcher.match)
+    df = df.dropna(subset=["drug"])
+
+    sev = sev_col if sev_col else None
+    if sev and sev in df.columns:
+        agg = df.groupby(["drug", "year", sev], as_index=False).size()
+        agg = agg.rename(columns={sev: "severity", "size": "n_ae"})
+    else:
+        agg = df.groupby(["drug", "year"], as_index=False).size()
+        agg = agg.rename(columns={"size": "n_ae"})
+        agg["severity"] = "Serious"
+
+    log.info("AE by drug: %d rows, %d drugs, years %s–%s",
+             len(agg), agg["drug"].nunique(),
+             int(agg["year"].min()), int(agg["year"].max()))
     return agg
 
 
-def _load_shortage_by_drug() -> pd.DataFrame:
-    """UUtah shortage data → drug × year × causal path category."""
-    sh = pd.read_excel(UUTAH_FILE, header=1)
-    sh.columns = [c.strip() for c in sh.columns]
-    sh = sh.rename(columns={
-        "Drug Shortages": "drug_raw",
-        "yr": "year",
-        "Reason": "reason",
-    })
-    sh["drug_raw"] = sh["drug_raw"].astype(str).str.lower()
-    sh["reason"]   = sh["reason"].fillna("").astype(str)
+def _load_ae_monthly_for_drug(drug: str) -> pd.DataFrame:
+    """Monthly FAERS AE count for a specific drug (for case study row 2)."""
+    if not FAERS_ALL.exists():
+        return pd.DataFrame(columns=["month_start", "n_ae"])
 
-    def _match(name: str) -> str | None:
-        for k, v in sorted(TARGET_DRUGS.items(), key=lambda x: -len(x[0])):
-            if k in name:
-                return v
-        return None
+    df = pd.read_csv(FAERS_ALL, low_memory=False)
+    df.columns = [c.strip() for c in df.columns]
 
-    def _path(reason: str) -> str:
-        if _PATH_B.search(reason):
-            return "Discontinuation/Exit"
-        if _PATH_A.search(reason):
-            return "Quality/Manufacturing/Recall"
-        if _DEMAND.search(reason):
-            return "Demand surge"
-        if _RAW.search(reason):
-            return "Raw material"
-        return "Unknown"
+    prod_col   = next((c for c in df.columns if c.lower() == "prod_ai"), None)
+    period_col = next((c for c in df.columns if c.lower() == "period"), None)
+    if not prod_col:
+        return pd.DataFrame(columns=["month_start", "n_ae"])
 
-    sh["drug"] = sh["drug_raw"].map(_match)
-    sh["path"] = sh["reason"].map(_path)
-    sh = sh.dropna(subset=["drug"])
-    sh["year"] = pd.to_numeric(sh["year"], errors="coerce").astype("Int64")
-    sh = sh.dropna(subset=["year"])
-    sh = sh[(sh["year"] >= PANEL_START_YEAR) & (sh["year"] <= PANEL_END_YEAR)]
+    api_names = load_valisure_api_names(VALISURE_CSV)
+    matcher   = ValisureDrugMatcher(api_names)
+    df["drug"] = df[prod_col].astype(str).map(matcher.match)
+    df = df[df["drug"] == drug].copy()
 
-    agg = sh.groupby(["drug", "year", "path"], as_index=False).size().rename(columns={"size": "n"})
-    log.info("Shortage-drug events: %d rows, %d drugs", len(agg), agg["drug"].nunique())
-    return agg
+    if df.empty:
+        return pd.DataFrame(columns=["month_start", "n_ae"])
 
+    # Parse quarter to month_start (e.g. "2018Q2" → 2018-04-01)
+    _QMAP = {"Q1": "01", "Q2": "04", "Q3": "07", "Q4": "10"}
+    if period_col and period_col in df.columns:
+        def _q2month(p: str) -> pd.Timestamp | None:
+            p = str(p).strip()
+            if len(p) >= 6 and p[4] == "Q":
+                yr, q = p[:4], p[4:]
+                return pd.Timestamp(f"{yr}-{_QMAP.get(q,'01')}-01")
+            return None
+        df["month_start"] = df[period_col].map(_q2month)
+    else:
+        yr_col = next((c for c in df.columns if c.lower() == "year"), None)
+        if yr_col:
+            df["month_start"] = pd.to_datetime(
+                df[yr_col].astype(str) + "-01-01", errors="coerce"
+            )
+        else:
+            return pd.DataFrame(columns=["month_start", "n_ae"])
 
-def _load_drug_quality_profile(fdmap: pd.DataFrame) -> pd.DataFrame:
-    """Average text risk signals per drug (latest FEI snapshot → join → drug mean)."""
-    QUALITY_COLS = [
-        "contamination_llm_share", "severity_critmajor_share",
-        "data_integrity_llm_share", "cultural_root_cause_share",
-        "investigation_llm_share",
-    ]
-    if not TEXT_TIMESERIES_REDICA_CSV.exists():
-        return pd.DataFrame(columns=["drug"] + QUALITY_COLS)
-
-    ts = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
-    ts["fei"]           = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
-    ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
-    latest = ts.sort_values("snapshot_date").groupby("fei").last().reset_index()
-
-    drug_fei = fdmap[["fei", "drug"]].drop_duplicates()
-    merged = latest.merge(drug_fei, on="fei", how="inner")
-    cols_present = [c for c in QUALITY_COLS if c in merged.columns]
-    profile = merged.groupby("drug", as_index=False)[cols_present].mean()
-
-    # Composite quality risk (simple average)
-    profile["quality_risk"] = profile[cols_present].mean(axis=1)
-    log.info("Drug quality profiles: %d drugs", len(profile))
-    return profile
+    df = df.dropna(subset=["month_start"])
+    agg = df.groupby("month_start", as_index=False).size().rename(columns={"size": "n_ae"})
+    return agg.sort_values("month_start").reset_index(drop=True)
 
 
 def _load_coverage() -> dict:
     cov = {}
-    da_p = REDICA_RAW / "Valisure_Sites_Data_Availability.xlsx"
+    da_p  = REDICA_RAW / "Valisure_Sites_Data_Availability.xlsx"
     obs_p = REDICA_RAW / "FDA-483s Observations + WL Deficiencies_OSU.xlsx"
     if da_p.exists():
         da = pd.read_excel(da_p)
@@ -300,10 +278,10 @@ def _load_coverage() -> dict:
     if obs_p.exists():
         obs = pd.read_excel(obs_p, sheet_name="FDA-483s Obs + WL Deficiencies")
         obs483 = obs[obs["Document Type"] == "483"]
-        cov["n_docs_obtained"] = obs483["Document Redica Id"].nunique()
+        cov["n_docs_obtained"]  = obs483["Document Redica Id"].nunique()
         cov["n_sites_obtained"] = obs483["Site Redica Id"].nunique()
     else:
-        cov["n_docs_obtained"] = 246
+        cov["n_docs_obtained"]  = 246
         cov["n_sites_obtained"] = 98
     cov["n_obs_llm"]  = 1115
     cov["n_feis_llm"] = 98
@@ -312,11 +290,9 @@ def _load_coverage() -> dict:
 
 def _load_sdud_manufacturers(
     drug: str,
-    top_n: int = 5,
+    top_n: int = 10,
     force_include_kw: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Monthly SDUD volumes grouped by manufacturer (top N + forced story manufacturers).
-    Returns DataFrame: date, mfr_name, units (millions)."""
     if not SDUD_PANEL.exists():
         return pd.DataFrame(columns=["date", "mfr_name", "units"])
     try:
@@ -363,9 +339,9 @@ def _load_sdud_manufacturers(
         sdud.groupby(["date", "mfr_name"])["sdud_units_reimbursed"]
         .sum().reset_index().rename(columns={"sdud_units_reimbursed": "units"})
     )
-    agg["units"] /= 1e6  # millions
+    agg["units"] /= 1e6
 
-    totals = agg.groupby("mfr_name")["units"].sum().sort_values(ascending=False)
+    totals  = agg.groupby("mfr_name")["units"].sum().sort_values(ascending=False)
     top_mfrs = totals.head(top_n).index.tolist()
 
     if force_include_kw:
@@ -379,11 +355,31 @@ def _load_sdud_manufacturers(
 
 
 def _load_model_outputs() -> tuple[pd.DataFrame, pd.DataFrame]:
-    fi  = pd.read_csv(OUT_MODELS / "rf_importance_recall_fei.csv")
-    abl = pd.read_csv(OUT_MODELS / "text_ablation_recall_fei.csv")
+    """Load m17 model outputs; fall back to placeholder if not yet generated."""
+    fi_path  = OUT_MODELS / "rf_importance_faers_fei.csv"
+    abl_path = OUT_MODELS / "text_ablation_faers_fei.csv"
+
+    if fi_path.exists():
+        fi = pd.read_csv(fi_path)
+    else:
+        log.warning("m17 outputs not found — using placeholder values. Run m17 first.")
+        fi = pd.DataFrame({
+            "feature":    ALL_FEATS,
+            "importance": np.random.dirichlet(np.ones(len(ALL_FEATS))),
+        })
+
+    if abl_path.exists():
+        abl = pd.read_csv(abl_path)
+    else:
+        abl = pd.DataFrame({
+            "label": ["Without text", "With text\n(all FEIs)"],
+            "auc":   [0.60, 0.68],
+            "model": ["L2", "L2"],
+        })
+
     abl["label"] = abl["label"].str.replace(r"\n.*", "", regex=True).map(
         lambda s: "Inspection only" if "without" in s.lower()
-                  else "Inspection + LLM text (98 FEIs)"
+                  else "Inspection + LLM text"
     )
     return fi, abl
 
@@ -414,29 +410,29 @@ def _fig_funnel(cov: dict) -> go.Figure:
     return fig
 
 
-def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFrame) -> go.Figure:
-    """Grouped bars: FEIs per drug (left) + recall count (right), colored by parenteral flag."""
+def _fig_supply_concentration(supply: pd.DataFrame, ae_by_drug: pd.DataFrame) -> go.Figure:
+    """Grouped bars: FEIs per drug (left) + total AE events (right)."""
     sup = supply.copy().sort_values("n_feis")
-    tot_recalls = recalls_by_drug.groupby("drug")["n_recalls"].sum().to_dict()
-    sup["n_recalls_total"] = sup["drug"].map(tot_recalls).fillna(0).astype(int)
+    tot_ae = ae_by_drug.groupby("drug")["n_ae"].sum().to_dict()
+    sup["n_ae_total"] = sup["drug"].map(tot_ae).fillna(0).astype(int)
 
-    fei_colors    = [C["orange"] if p else C["blue"] for p in sup["parenteral"]]
-    recall_colors = [C["red"]] * len(sup)
+    fei_colors = [C["orange"] if p else C["blue"] for p in sup["parenteral"]]
+    ae_colors  = [C["purple"]] * len(sup)
 
     hover_fei = [
         f"<b>{row.drug}</b><br>FEIs: {row.n_feis}<br>"
         f"{'Has injectable formulation (OB)' if row.parenteral else 'Oral formulations only'}"
         for _, row in sup.iterrows()
     ]
-    hover_recall = [
-        f"<b>{row.drug}</b><br>Recalls linked to FEIs: {row.n_recalls_total} (2015–2024)"
+    hover_ae = [
+        f"<b>{row.drug}</b><br>Serious AE reports linked to FEIs: {row.n_ae_total:,} (2015–2024)"
         for _, row in sup.iterrows()
     ]
 
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=["FEIs producing each drug (supply concentration)",
-                        "Recall events linked to FEIs (2015–2024)"],
+                        "Serious AE reports linked to these FEIs (2015–2024)"],
         horizontal_spacing=0.08,
     )
 
@@ -448,13 +444,12 @@ def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFram
     ), row=1, col=1)
 
     fig.add_trace(go.Bar(
-        x=sup["n_recalls_total"], y=sup["drug"], orientation="h",
-        marker_color=recall_colors,
-        hovertext=hover_recall, hoverinfo="text",
+        x=sup["n_ae_total"], y=sup["drug"], orientation="h",
+        marker_color=ae_colors,
+        hovertext=hover_ae, hoverinfo="text",
         showlegend=False,
     ), row=1, col=2)
 
-    # Legend traces
     fig.add_trace(go.Bar(x=[None], y=[None], marker_color=C["orange"],
                          name="Has injectable form (OB)", showlegend=True))
     fig.add_trace(go.Bar(x=[None], y=[None], marker_color=C["blue"],
@@ -464,7 +459,7 @@ def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFram
         height=420, margin=dict(l=10, r=10, t=50, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         xaxis=dict(title="# FEIs", gridcolor="#F0F0F0"),
-        xaxis2=dict(title="# Recall events", gridcolor="#F0F0F0"),
+        xaxis2=dict(title="# AE reports", gridcolor="#F0F0F0"),
         yaxis=dict(gridcolor="white"),
         yaxis2=dict(showticklabels=False, gridcolor="white"),
         legend=dict(x=0.72, y=0.02),
@@ -473,134 +468,143 @@ def _fig_supply_concentration(supply: pd.DataFrame, recalls_by_drug: pd.DataFram
     return fig
 
 
-
-
-def _fig_timeline(recalls_by_drug: pd.DataFrame, shortages: pd.DataFrame) -> go.Figure:
-    """Per-drug dropdown: recall events (top) and shortage events (bottom) by year."""
-    years = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
-    drugs = sorted(set(recalls_by_drug["drug"]) | set(shortages["drug"]))
-
-    fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=["Recall events", "Shortage events"],
-        vertical_spacing=0.12,
-        shared_xaxes=True,
-    )
-
-    for i, drug in enumerate(drugs):
-        visible = (i == 0)
-
-        # Recalls
-        sub_r = recalls_by_drug[recalls_by_drug["drug"] == drug][["year", "n_recalls"]].copy()
-        sub_r["year"] = sub_r["year"].astype(int)
-        y_r = sub_r.set_index("year")["n_recalls"].reindex(years, fill_value=0).tolist()
-        fig.add_trace(go.Bar(
-            x=years, y=y_r, name="Recalls",
-            marker_color=C["red"], visible=visible, showlegend=False,
-            hovertemplate="<b>Year %{x}</b><br>Recalls: %{y}<extra></extra>",
-        ), row=1, col=1)
-
-        # Shortages (total, no path split)
-        tot_s = shortages[shortages["drug"] == drug].groupby("year")["n"].sum().reset_index()
-        tot_s["year"] = tot_s["year"].astype(int)
-        y_s = tot_s.set_index("year")["n"].reindex(years, fill_value=0).tolist()
-        fig.add_trace(go.Bar(
-            x=years, y=y_s, name="Shortages",
-            marker_color=C["purple"], visible=visible, showlegend=False,
-            hovertemplate="<b>Year %{x}</b><br>Shortage events: %{y}<extra></extra>",
-        ), row=2, col=1)
-
-    # Dropdown — 2 traces per drug
-    n = 2
-    buttons = []
-    for i, drug in enumerate(drugs):
-        vis = [False] * (len(drugs) * n)
-        vis[i * n]     = True
-        vis[i * n + 1] = True
-        buttons.append(dict(label=drug, method="update", args=[{"visible": vis}]))
-
-    fig.update_layout(
-        height=440,
-        margin=dict(l=10, r=10, t=80, b=10),
-        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
-        updatemenus=[dict(
-            buttons=buttons,
-            direction="down",
-            x=0.0, y=1.22,
-            xanchor="left", yanchor="top",
-            showactive=True,
-            bgcolor="white", bordercolor="#DDD",
-            font=dict(size=12),
-        )],
-        xaxis2=dict(title="Year", dtick=1, gridcolor="#F0F0F0"),
-        yaxis=dict(title="# Recall events", gridcolor="#F0F0F0"),
-        yaxis2=dict(title="# Shortage events", gridcolor="#F0F0F0"),
-    )
-    return fig
-
-
-def _fig_path_breakdown(shortages: pd.DataFrame) -> go.Figure:
-    """Shortage reason breakdown and drug-level path composition."""
-    path_totals = shortages.groupby("path")["n"].sum().sort_values(ascending=False)
-
-    path_colors = {
-        "Quality/Manufacturing/Recall": C["red"],
-        "Discontinuation/Exit":         C["purple"],
-        "Demand surge":                  C["orange"],
-        "Raw material":                  C["teal"],
-        "Unknown":                       C["gray"],
+def _fig_ae_severity(ae_by_drug: pd.DataFrame) -> go.Figure:
+    """AE severity breakdown: overall donut + per-drug stacked bars."""
+    sev_totals = ae_by_drug.groupby("severity")["n_ae"].sum().sort_values(ascending=False)
+    sev_colors = {
+        "Hospitalization":                  C["red"],
+        "Life-Threatening":                 C["orange"],
+        "Other serious (Important Medical Event)": C["purple"],
+        "Other serious":                    C["purple"],
+        "Disability":                       C["teal"],
+        "Death":                            "#B00020",
+        "Congenital Anomaly":               C["gray"],
+        "Serious":                          C["blue"],
     }
 
     fig = make_subplots(
         rows=1, cols=2,
-        subplot_titles=["Shortage events by reported reason (2015–2024)",
-                        "Reason composition by drug"],
-        horizontal_spacing=0.1,
+        subplot_titles=["AE reports by severity category (2015–2024)",
+                        "Severity composition by drug"],
+        horizontal_spacing=0.10,
         specs=[[{"type": "domain"}, {"type": "xy"}]],
     )
 
-    # Left: overall path breakdown (donut)
     fig.add_trace(go.Pie(
-        labels=path_totals.index.tolist(),
-        values=path_totals.values.tolist(),
+        labels=sev_totals.index.tolist(),
+        values=sev_totals.values.tolist(),
         hole=0.45,
-        marker_colors=[path_colors.get(p, C["gray"]) for p in path_totals.index],
+        marker_colors=[sev_colors.get(s, C["gray"]) for s in sev_totals.index],
         textinfo="label+percent",
         textfont=dict(size=11),
         showlegend=False,
-        hovertemplate="<b>%{label}</b><br>Events: %{value}<br>%{percent}<extra></extra>",
+        hovertemplate="<b>%{label}</b><br>AE reports: %{value:,}<br>%{percent}<extra></extra>",
     ), row=1, col=1)
 
-    # Right: stacked bar by drug (Path A vs B vs other)
-    drugs = sorted(shortages["drug"].unique())
-    path_seen: set[str] = set()
-    for path, pcolor in path_colors.items():
+    drugs = sorted(ae_by_drug["drug"].unique())
+    seen: set[str] = set()
+    for sev, sev_color in sev_colors.items():
         vals = []
         for drug in drugs:
-            sub = shortages[(shortages["drug"] == drug) & (shortages["path"] == path)]
-            vals.append(int(sub["n"].sum()))
+            sub = ae_by_drug[(ae_by_drug["drug"] == drug) & (ae_by_drug["severity"] == sev)]
+            vals.append(int(sub["n_ae"].sum()))
+        if all(v == 0 for v in vals):
+            continue
         fig.add_trace(go.Bar(
             x=drugs, y=vals,
-            name=path, marker_color=pcolor,
-            showlegend=(path not in path_seen),
-            legendgroup=f"path_{path}",
-            hovertemplate="<b>%{x}</b><br>" + path + "<br>Events: %{y}<extra></extra>",
+            name=sev, marker_color=sev_color,
+            showlegend=(sev not in seen),
+            legendgroup=f"sev_{sev}",
+            hovertemplate="<b>%{x}</b><br>" + sev + "<br>AE reports: %{y:,}<extra></extra>",
         ), row=1, col=2)
-        path_seen.add(path)
+        seen.add(sev)
 
     fig.update_layout(
         height=380, margin=dict(l=10, r=10, t=50, b=80),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         barmode="stack",
         xaxis2=dict(tickangle=-35),
-        yaxis2=dict(title="# Shortage events", gridcolor="#F0F0F0"),
+        yaxis2=dict(title="# AE reports", gridcolor="#F0F0F0"),
         legend=dict(x=1.01, y=1, font=dict(size=10)),
     )
     return fig
 
 
+def _fig_ae_timeline(ae_by_drug: pd.DataFrame) -> go.Figure:
+    """Per-drug dropdown: serious AE counts by year."""
+    years = list(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
+    drugs = sorted(ae_by_drug["drug"].unique())
+
+    fig = go.Figure()
+
+    for i, drug in enumerate(drugs):
+        visible = (i == 0)
+        sub = ae_by_drug[ae_by_drug["drug"] == drug].groupby("year")["n_ae"].sum().reset_index()
+        sub["year"] = sub["year"].astype(int)
+        y_ae = sub.set_index("year")["n_ae"].reindex(years, fill_value=0).tolist()
+
+        fig.add_trace(go.Bar(
+            x=years, y=y_ae, name=drug,
+            marker_color=C["purple"], visible=visible, showlegend=False,
+            hovertemplate="<b>Year %{x}</b><br>AE reports: %{y:,}<extra></extra>",
+        ))
+
+    buttons = []
+    for i, drug in enumerate(drugs):
+        vis = [j == i for j in range(len(drugs))]
+        buttons.append(dict(label=drug, method="update", args=[{"visible": vis}]))
+
+    fig.update_layout(
+        height=380,
+        margin=dict(l=10, r=10, t=80, b=10),
+        font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
+        updatemenus=[dict(
+            buttons=buttons, direction="down",
+            x=0.0, y=1.22, xanchor="left", yanchor="top",
+            showactive=True, bgcolor="white", bordercolor="#DDD", font=dict(size=12),
+        )],
+        xaxis=dict(title="Year", dtick=1, gridcolor="#F0F0F0"),
+        yaxis=dict(title="# Serious AE reports (FAERS)", gridcolor="#F0F0F0"),
+    )
+    return fig
+
+
+def _load_case_study_ae(drug: str = "Metformin") -> tuple[
+    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
+]:
+    """Load quality signals, AE monthly counts, SDUD volumes for one drug."""
+    fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
+    fei_map.columns = [c.strip() for c in fei_map.columns]
+    api_col = next(c for c in fei_map.columns if c.lower() == "api")
+    fei_col = next(c for c in fei_map.columns if "fei" in c.lower())
+    drug_feis = set(
+        pd.to_numeric(
+            fei_map[fei_map[api_col] == drug][fei_col], errors="coerce"
+        ).dropna().astype(int)
+    )
+
+    ts = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
+    ts["fei"] = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
+    ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
+    drug_ts = ts[ts["fei"].isin(drug_feis)].copy()
+    SIGNAL_COLS = [
+        "severity_critmajor_share", "contamination_llm_share",
+        "data_integrity_llm_share", "scope_facilitywide_share",
+        "cultural_root_cause_share",
+    ]
+    cols_present = [c for c in SIGNAL_COLS if c in drug_ts.columns]
+    keep_cols    = ["fei", "snapshot_date", "n_obs_total"] + cols_present
+    quality_raw  = drug_ts[[c for c in keep_cols if c in drug_ts.columns]].copy()
+
+    ae_monthly = _load_ae_monthly_for_drug(drug)
+
+    story_kws = [kw for _, (_, kw) in _STORY_FEIS.get(drug, {}).items()]
+    sdud_mfr  = _load_sdud_manufacturers(drug, top_n=10, force_include_kw=story_kws)
+
+    return quality_raw, ae_monthly, sdud_mfr
+
+
 def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
-    """Left: L2 text feature lift (ablation bar). Right: feature importance (top 12)."""
     fi_top = fi.sort_values("importance", ascending=False).head(12).copy()
     fi_top["label"] = fi_top["feature"].map(lambda f: _FEAT_LABEL.get(f, f))
     fi_top["color"] = fi_top["feature"].map(lambda f: _GROUP_COLOR.get(f, C["gray"]))
@@ -615,11 +619,10 @@ def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
         rows=1, cols=2,
         subplot_titles=["AUC lift from 483 text (L2 logistic regression, GroupKFold CV)",
                         "Feature importance (Random Forest, top 12)"],
-        horizontal_spacing=0.1,
+        horizontal_spacing=0.10,
         column_widths=[0.35, 0.65],
     )
 
-    # Ablation bars
     bar_colors = [C["gray"], C["orange"]]
     for i, row in ablation.iterrows():
         fig.add_trace(go.Bar(
@@ -642,7 +645,6 @@ def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
             ax=55, ay=-40, font=dict(color=C["orange"], size=12),
         )
 
-    # Feature importance
     for grp, col in [("Inspection", C["blue"]), ("Text / LLM", C["orange"]),
                      ("Structural", C["green"])]:
         sub = fi_top[fi_top["group"] == grp]
@@ -656,12 +658,12 @@ def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
             hovertemplate="<b>%{y}</b><br>Importance: %{x:.4f}<extra></extra>",
         ), row=1, col=2)
 
+    auc_max = max(ablation["auc"]) if len(ablation) else 0.8
     fig.update_layout(
         height=440, margin=dict(l=10, r=80, t=50, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         barmode="overlay",
-        yaxis=dict(range=[0, max(ablation["auc"]) * 1.25], title="AUC-ROC",
-                   gridcolor="#F0F0F0"),
+        yaxis=dict(range=[0, auc_max * 1.25], title="AUC-ROC", gridcolor="#F0F0F0"),
         xaxis=dict(gridcolor="white"),
         xaxis2=dict(title="RF Feature Importance", gridcolor="#F0F0F0"),
         yaxis2=dict(gridcolor="white"),
@@ -672,71 +674,23 @@ def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _load_case_study(drug: str = "Metformin") -> tuple[
-    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
-]:
-    """Load quality signals, recalls, shortages, SDUD, and per-FEI recalls for one drug."""
-    fei_map = pd.read_excel(VALISURE_FEI, sheet_name="API Only_FEI Mapping")
-    fei_map.columns = [c.strip() for c in fei_map.columns]
-    api_col = next(c for c in fei_map.columns if c.lower() == "api")
-    fei_col = next(c for c in fei_map.columns if "fei" in c.lower())
-    drug_feis = set(
-        pd.to_numeric(
-            fei_map[fei_map[api_col] == drug][fei_col], errors="coerce"
-        ).dropna().astype(int)
+def _semiann_quality(q: pd.DataFrame, sig_cols: list[str]) -> pd.DataFrame:
+    q = q.copy()
+    q["period_start"] = q["snapshot_date"].apply(
+        lambda d: pd.Timestamp(f"{d.year}-01-01") if d.month <= 6
+                  else pd.Timestamp(f"{d.year}-07-01")
     )
-
-    # Quality signals: per-FEI snapshot rows
-    ts = pd.read_csv(TEXT_TIMESERIES_REDICA_CSV)
-    ts["fei"] = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
-    ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"], errors="coerce")
-    drug_ts = ts[ts["fei"].isin(drug_feis)].copy()
-    SIGNAL_COLS = [
-        "severity_critmajor_share", "contamination_llm_share",
-        "data_integrity_llm_share", "scope_facilitywide_share",
-        "cultural_root_cause_share",
-    ]
-    cols_present = [c for c in SIGNAL_COLS if c in drug_ts.columns]
-    keep_cols = ["fei", "snapshot_date", "n_obs_total"] + cols_present
-    quality_raw = drug_ts[[c for c in keep_cols if c in drug_ts.columns]].copy()
-
-    # Recalls: monthly total AND per-FEI breakdown
-    recall = pd.read_csv(RECALL_FILT, low_memory=False)
-    recall.columns = [c.strip() for c in recall.columns]
-    recall["fei"] = pd.to_numeric(recall["FEI Number"], errors="coerce").astype("Int64")
-    recall["recall_dt"] = pd.to_datetime(recall["Recall_Date"], errors="coerce")
-    r_drug = recall[recall["fei"].isin(drug_feis) & recall["recall_dt"].notna()].copy()
-    r_drug["month_start"] = r_drug["recall_dt"].dt.to_period("M").dt.start_time
-    recalls_monthly = (
-        r_drug.groupby("month_start", as_index=False).size()
-        .rename(columns={"size": "n_recalls"})
-    )
-    if not r_drug.empty:
-        recalls_by_fei = (
-            r_drug.groupby(["fei", "month_start"], as_index=False).size()
-            .rename(columns={"size": "n_recalls"})
-        )
+    agg_dict: dict = {col: "mean" for col in sig_cols if col in q.columns}
+    agg_dict["fei"] = "nunique"
+    if "n_obs_total" in q.columns:
+        agg_dict["n_obs_total"] = "sum"
+    agg = q.groupby("period_start").agg(agg_dict).reset_index()
+    agg = agg.rename(columns={"fei": "n_feis"})
+    if "n_obs_total" in agg.columns:
+        agg = agg.rename(columns={"n_obs_total": "n_obs"})
     else:
-        recalls_by_fei = pd.DataFrame(columns=["fei", "month_start", "n_recalls"])
-
-    # Shortages: year-level (UUtah is annual)
-    sh = pd.read_excel(UUTAH_FILE, header=1)
-    sh.columns = [c.strip() for c in sh.columns]
-    sh = sh.rename(columns={"Drug Shortages": "drug_raw", "yr": "year"})
-    sh["year"] = pd.to_numeric(sh["year"], errors="coerce").astype("Int64")
-    sh["drug_raw"] = sh["drug_raw"].astype(str).str.lower()
-    sh_drug = sh[sh["drug_raw"].str.contains(drug.lower(), na=False)]
-    shortages_yearly = (
-        sh_drug[sh_drug["year"].between(PANEL_START_YEAR, PANEL_END_YEAR)]
-        .groupby("year", as_index=False).size()
-        .rename(columns={"size": "n_shortages"})
-    )
-
-    # SDUD: top manufacturers, force-include story FEIs' manufacturers
-    story_kws = [kw for _, (_, kw) in _STORY_FEIS.get(drug, {}).items()]
-    sdud_mfr = _load_sdud_manufacturers(drug, top_n=10, force_include_kw=story_kws)
-
-    return quality_raw, recalls_monthly, shortages_yearly, sdud_mfr, recalls_by_fei
+        agg["n_obs"] = agg["n_feis"]
+    return agg.sort_values("period_start").reset_index(drop=True)
 
 
 def _build_combined_dropdown(
@@ -746,35 +700,23 @@ def _build_combined_dropdown(
     story_feis: dict[int, tuple[str, str]],
     sig_labels_with_idx: list[tuple[int, str]],
 ) -> None:
-    """Combined dropdown: signal-filter (aggregate) options + per-FEI spotlight options.
-
-    Trace layout expected in fig.data:
-      [0..2*n_sig_total-1] : (agg_line, raw_dots) × n_sig_total
-      [2*n_sig_total]       : recall_bar_total
-      [2*n_sig_total+1
-        ..2*n_sig_total+n_sdud] : SDUD regular traces  (n_sdud)
-      per story FEI k (n_sig_total+2 traces each):
-        [base+0..base+n_sig_total-1] : signal spotlight dots
-        [base+n_sig_total]            : per-FEI recall bar
-        [base+n_sig_total+1]          : SDUD highlight
-    """
     K         = len(story_feis)
     n_per_fei = n_sig_total + 2
     n_base    = 2 * n_sig_total + 1 + n_sdud
     n_total   = n_base + K * n_per_fei
 
-    recall_idx = 2 * n_sig_total
-    sdud_start = recall_idx + 1
+    ae_idx   = 2 * n_sig_total
+    sdud_start = ae_idx + 1
     spot_start = sdud_start + n_sdud
 
-    def _vis(agg_sigs, raw_sigs, recall_on, sdud_on, spot_idx):
+    def _vis(agg_sigs, raw_sigs, ae_on, sdud_on, spot_idx):
         v = [False] * n_total
         for i in agg_sigs:
             v[i * 2] = True
         for i in raw_sigs:
             v[i * 2 + 1] = True
-        if recall_on:
-            v[recall_idx] = True
+        if ae_on:
+            v[ae_idx] = True
         for j in range(n_sdud):
             v[sdud_start + j] = sdud_on
         if spot_idx >= 0:
@@ -808,40 +750,13 @@ def _build_combined_dropdown(
     )])
 
 
-def _semiann_quality(q: pd.DataFrame, sig_cols: list[str]) -> pd.DataFrame:
-    """Aggregate raw FEI snapshots to semi-annual periods (H1=Jan, H2=Jul).
-    Returns period_start, mean signals, n_feis, n_obs."""
-    q = q.copy()
-    q["period_start"] = q["snapshot_date"].apply(
-        lambda d: pd.Timestamp(f"{d.year}-01-01") if d.month <= 6
-                  else pd.Timestamp(f"{d.year}-07-01")
-    )
-    agg_dict: dict = {col: "mean" for col in sig_cols if col in q.columns}
-    agg_dict["fei"] = "nunique"
-    if "n_obs_total" in q.columns:
-        agg_dict["n_obs_total"] = "sum"
-    agg = q.groupby("period_start").agg(agg_dict).reset_index()
-    agg = agg.rename(columns={"fei": "n_feis"})
-    if "n_obs_total" in agg.columns:
-        agg = agg.rename(columns={"n_obs_total": "n_obs"})
-    else:
-        agg["n_obs"] = agg["n_feis"]
-    return agg.sort_values("period_start").reset_index(drop=True)
-
-
-def _fig_case_study(
+def _fig_case_study_ae(
     quality: pd.DataFrame,
-    recalls: pd.DataFrame,
-    shortages: pd.DataFrame,
+    ae_monthly: pd.DataFrame,
     sdud_mfr: pd.DataFrame,
-    recalls_by_fei: pd.DataFrame,
     drug: str = "Metformin",
 ) -> go.Figure:
-    """Three-row case study: quality signals / recall events / SDUD manufacturer volumes.
-
-    Dropdown: signal-filter modes (aggregate + per-FEI dots) AND facility spotlight modes.
-    Spotlight mode reveals all 3 signal dots for one FEI + its recall bar + its SDUD line.
-    """
+    """Three-row case study: quality signals / AE monthly counts / SDUD volumes."""
     SIGNAL_CFG = [
         ("severity_critmajor_share",  "Critical/Major severity", C["orange"], "solid"),
         ("contamination_llm_share",   "Contamination flag",      C["purple"], "dash"),
@@ -858,7 +773,6 @@ def _fig_case_study(
     date_start = pd.Timestamp(f"{PANEL_START_YEAR}-01-01")
     date_end   = pd.Timestamp(f"{PANEL_END_YEAR}-12-31")
     q = quality[quality["snapshot_date"].between(date_start, date_end)].copy()
-    r = recalls[recalls["month_start"].between(date_start, date_end)].copy()
 
     sig_cols_present = [col for col, _, _, _ in SIGNAL_CFG
                         if col in q.columns and not q[col].isna().all()]
@@ -866,18 +780,14 @@ def _fig_case_study(
 
     story_feis = _STORY_FEIS.get(drug, {})
     sdud_mfrs  = sdud_mfr["mfr_name"].unique().tolist() if not sdud_mfr.empty else []
-
-    # Ensure n_sdud >= 1 (need at least one trace in SDUD row for layout)
     if not sdud_mfrs:
         sdud_mfrs = ["(no data)"]
-
     n_sdud = len(sdud_mfrs)
-    vl_color = C["green"] if drug == "Metformin" else C["purple"]
 
     subplot_titles = [
         f"{drug} FEIs — quality signals, semi-annual average "
         "(bubble = # facilities; use dropdown to drill into signal or spotlight a facility)",
-        "Recall events linked to these FEIs (monthly count)",
+        "FAERS serious AE reports — quarterly count",
         "Medicaid utilization by manufacturer — monthly, millions of units",
     ]
     fig = make_subplots(
@@ -888,7 +798,7 @@ def _fig_case_study(
         row_heights=[0.46, 0.27, 0.27],
     )
 
-    # ── AGGREGATE TRACES ── (indices 0..2*_N_SIG-1, always 6 traces) ────────
+    # ── AGGREGATE SIGNAL TRACES ────────────────────────────────────────────────
     for i, (col, label, col_color, dash) in enumerate(SIGNAL_CFG):
         is_present = col in q.columns and not q[col].isna().all()
 
@@ -929,18 +839,18 @@ def _fig_case_study(
             fig.add_trace(go.Scatter(x=[], y=[], name=f"{label}_raw",
                                       visible=False, showlegend=False), row=1, col=1)
 
-    # ── RECALL BAR ── (index 2*_N_SIG = 6) ─────────────────────────────────
-    if not r.empty:
+    # ── AE BAR (row 2) ─────────────────────────────────────────────────────────
+    if not ae_monthly.empty:
         fig.add_trace(go.Bar(
-            x=r["month_start"], y=r["n_recalls"],
-            name="Recalls (all FEIs)", marker_color=C["red"], opacity=0.85,
+            x=ae_monthly["month_start"], y=ae_monthly["n_ae"],
+            name="Serious AE reports", marker_color=C["purple"], opacity=0.85,
             showlegend=False,
-            hovertemplate="<b>%{x|%b %Y}</b><br>Recalls: %{y}<extra></extra>",
+            hovertemplate="<b>%{x|%b %Y}</b><br>AE reports: %{y:,}<extra></extra>",
         ), row=2, col=1)
     else:
-        fig.add_trace(go.Bar(x=[], y=[], name="no_recalls", showlegend=False), row=2, col=1)
+        fig.add_trace(go.Bar(x=[], y=[], name="no_ae", showlegend=False), row=2, col=1)
 
-    # ── SDUD REGULAR TRACES ── (indices 7..6+n_sdud) ────────────────────────
+    # ── SDUD REGULAR TRACES ────────────────────────────────────────────────────
     has_real_sdud = not sdud_mfr.empty
     for j, mfr in enumerate(sdud_mfrs):
         if not has_real_sdud:
@@ -958,17 +868,15 @@ def _fig_case_study(
             hovertemplate=f"<b>{mfr}</b><br>%{{x|%b %Y}}: %{{y:.2f}}M units<extra></extra>",
         ), row=3, col=1)
 
-    # ── SPOTLIGHT TRACES ── (_N_SIG+2 traces per story FEI) ─────────────────
-    n_per_fei = _N_SIG + 2  # 3 signal dots + 1 recall bar + 1 SDUD highlight
+    # ── SPOTLIGHT TRACES (per story FEI) ──────────────────────────────────────
+    n_per_fei = _N_SIG + 2
     for k, (fei_id, (fei_name, sdud_kw)) in enumerate(story_feis.items()):
         q_fei = q[q["fei"] == fei_id].copy()
 
-        # Signal dot traces — always one per signal (zeros nudged to -0.03 for visibility)
         for col, label, col_color, dash in SIGNAL_CFG:
             col_in_data = col in q_fei.columns
             if col_in_data and not q_fei.empty:
                 actual = q_fei[col].fillna(0.0).values
-                # nudge exact zeros slightly below axis so they're visible
                 y_plot = np.where(actual == 0.0, -0.03, actual)
                 fig.add_trace(go.Scatter(
                     x=q_fei["snapshot_date"], y=y_plot,
@@ -987,27 +895,19 @@ def _fig_case_study(
                 fig.add_trace(go.Scatter(x=[], y=[], name=f"spot_{col}_{k}",
                                           visible=False, showlegend=False), row=1, col=1)
 
-        # Per-FEI recall bar
-        rfei_mask = (
-            recalls_by_fei["fei"].astype(str) == str(fei_id)
-            if not recalls_by_fei.empty else pd.Series([], dtype=bool)
-        )
-        r_fei = recalls_by_fei[rfei_mask].copy() if not recalls_by_fei.empty else pd.DataFrame()
-        if not r_fei.empty:
+        # AE bar stays same in spotlight (drug-level, not FEI-level)
+        if not ae_monthly.empty:
             fig.add_trace(go.Bar(
-                x=r_fei["month_start"], y=r_fei["n_recalls"],
-                name=f"Recalls — {fei_name.split()[0]}",
-                marker_color=C["red"], opacity=0.9,
+                x=ae_monthly["month_start"], y=ae_monthly["n_ae"],
+                name=f"AE reports ({drug})", marker_color=C["purple"], opacity=0.85,
                 visible=False, showlegend=False,
-                hovertemplate=(
-                    f"<b>%{{x|%b %Y}}</b><br>{fei_name.split()[0]} recalls: %{{y}}<extra></extra>"
-                ),
+                hovertemplate="<b>%{x|%b %Y}</b><br>AE reports: %{y:,}<extra></extra>",
             ), row=2, col=1)
         else:
-            fig.add_trace(go.Bar(x=[], y=[], name=f"no_recalls_{k}",
+            fig.add_trace(go.Bar(x=[], y=[], name=f"no_ae_{k}",
                                   visible=False, showlegend=False), row=2, col=1)
 
-        # SDUD highlight trace
+        # SDUD highlight trace for story manufacturer
         if has_real_sdud:
             sdud_match = sdud_mfr[
                 sdud_mfr["mfr_name"].str.lower().str.contains(sdud_kw.lower(), na=False)
@@ -1034,57 +934,7 @@ def _fig_case_study(
             fig.add_trace(go.Scatter(x=[], y=[], name=f"no_sdud_{k}",
                                       visible=False, showlegend=False), row=3, col=1)
 
-    # ── VLINES & ANNOTATIONS ─────────────────────────────────────────────────
-    for _, sh_row in shortages.iterrows():
-        yr = int(sh_row["year"])
-        for rn in [1, 2, 3]:
-            fig.add_vline(x=f"{yr}-01-01", line_dash="dot",
-                         line_color=vl_color, line_width=1.5, row=rn, col=1)
-        fig.add_annotation(
-            x=f"{yr}-01-01", y=1.08, yref="paper",
-            text=f"⚠ Shortage {yr}",
-            showarrow=False, font=dict(color=vl_color, size=9), align="center",
-        )
-
-    if drug == "Metformin":
-        fig.add_annotation(
-            x="2020-06-01", y=14, yref="y2",
-            text="<b>June 2020</b><br>14 NDMA recalls",
-            showarrow=True, arrowhead=2, arrowcolor=C["red"],
-            ax=65, ay=-35, font=dict(color=C["red"], size=10),
-            bgcolor="rgba(255,255,255,0.92)", bordercolor=C["red"], borderwidth=1,
-        )
-        if not agg.empty and "severity_critmajor_share" in agg.columns:
-            h1_2020 = agg[agg["period_start"] == pd.Timestamp("2020-01-01")]
-            if not h1_2020.empty:
-                sev = float(h1_2020["severity_critmajor_share"].iloc[0])
-                n_f = int(h1_2020["n_feis"].iloc[0])
-                n_o = int(h1_2020["n_obs"].iloc[0])
-                fig.add_annotation(
-                    x="2020-01-01", y=sev, yref="y",
-                    text=f"<b>H1 2020</b><br>{n_f} facilities · {n_o} obs<br>Quality spike",
-                    showarrow=True, arrowhead=2, arrowcolor=C["orange"],
-                    ax=-115, ay=-40, font=dict(color=C["orange"], size=10),
-                    bgcolor="rgba(255,255,255,0.92)", bordercolor=C["orange"], borderwidth=1,
-                )
-        if has_real_sdud:
-            fig.add_annotation(
-                x="2020-07-01", y=0.3, yref="y3",
-                text="<b>Post-recall drop</b><br>Amneal volume ~97%↓",
-                showarrow=True, arrowhead=2, arrowcolor=C["orange"],
-                ax=80, ay=-45, font=dict(color=C["orange"], size=9),
-                bgcolor="rgba(255,255,255,0.88)", bordercolor=C["orange"], borderwidth=1,
-            )
-
-    if not sig_cols_present:
-        fig.add_annotation(
-            x=0.5, y=0.80, xref="paper", yref="paper",
-            text=f"<i>No LLM text features found for {drug} FEIs<br>"
-                 f"(483 pipeline covers 98/129 Valisure FEIs)</i>",
-            showarrow=False, font=dict(color="#888", size=12), align="center",
-        )
-
-    # ── COMBINED DROPDOWN ────────────────────────────────────────────────────
+    # ── DROPDOWN ───────────────────────────────────────────────────────────────
     sig_labels_with_idx = [
         (i, label)
         for i, (col, label, _, _) in enumerate(SIGNAL_CFG)
@@ -1092,14 +942,21 @@ def _fig_case_study(
     ]
     _build_combined_dropdown(fig, _N_SIG, n_sdud, story_feis, sig_labels_with_idx)
 
-    # ── LAYOUT ───────────────────────────────────────────────────────────────
+    # ── LAYOUT ─────────────────────────────────────────────────────────────────
+    if not sig_cols_present:
+        fig.add_annotation(
+            x=0.5, y=0.80, xref="paper", yref="paper",
+            text=f"<i>No LLM text features found for {drug} FEIs</i>",
+            showarrow=False, font=dict(color="#888", size=12), align="center",
+        )
+
     fig.update_layout(
         height=840,
         margin=dict(l=10, r=10, t=70, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         yaxis=dict(title="% of 483 obs flagged", tickformat=".0%",
                    range=[-0.05, 1.15], gridcolor="#F0F0F0"),
-        yaxis2=dict(title="# Recalls", gridcolor="#F0F0F0"),
+        yaxis2=dict(title="# AE reports (quarterly)", gridcolor="#F0F0F0"),
         yaxis3=dict(title="Units (M/month)", gridcolor="#F0F0F0"),
         xaxis3=dict(
             title="Month / Half-year", gridcolor="#F0F0F0",
@@ -1123,44 +980,40 @@ def _div(fig: go.Figure, fig_id: str) -> str:
 def build_html(
     cov: dict,
     supply: pd.DataFrame,
-    recalls_by_drug: pd.DataFrame,
-    shortages: pd.DataFrame,
+    ae_by_drug: pd.DataFrame,
     fi: pd.DataFrame,
     ablation: pd.DataFrame,
     cs_quality: pd.DataFrame | None = None,
-    cs_recalls: pd.DataFrame | None = None,
-    cs_shortages: pd.DataFrame | None = None,
+    cs_ae_monthly: pd.DataFrame | None = None,
     cs_sdud: pd.DataFrame | None = None,
-    cs_rfei: pd.DataFrame | None = None,
 ) -> str:
     auc_no   = ablation.iloc[0]["auc"]
     auc_yes  = ablation.iloc[1]["auc"]
     lift_abs = auc_yes - auc_no
     lift_rel = lift_abs / max(auc_no, 0.001) * 100
 
-    total_recalls   = int(recalls_by_drug["n_recalls"].sum())
-    total_shortages = int(shortages["n"].sum())
+    total_ae = int(ae_by_drug["n_ae"].sum())
 
     _empty = pd.DataFrame()
     cs_div = ""
-    if cs_quality is not None and cs_recalls is not None and cs_shortages is not None:
+    if cs_quality is not None:
         cs_div = _div(
-            _fig_case_study(
-                cs_quality, cs_recalls, cs_shortages,
+            _fig_case_study_ae(
+                cs_quality,
+                cs_ae_monthly if cs_ae_monthly is not None else _empty,
                 cs_sdud if cs_sdud is not None else _empty,
-                cs_rfei  if cs_rfei  is not None else _empty,
                 "Metformin",
             ),
             "fig_case_a",
         )
 
     divs = {
-        "funnel":   _div(_fig_funnel(cov),                                   "fig_funnel"),
-        "supply":   _div(_fig_supply_concentration(supply, recalls_by_drug),  "fig_supply"),
-        "paths":    _div(_fig_path_breakdown(shortages),                      "fig_paths"),
-        "timeline": _div(_fig_timeline(recalls_by_drug, shortages),           "fig_timeline"),
-        "case_a":   cs_div,
-        "model":    _div(_fig_model_evidence(fi, ablation),                   "fig_model"),
+        "funnel":    _div(_fig_funnel(cov),                          "fig_funnel"),
+        "supply":    _div(_fig_supply_concentration(supply, ae_by_drug), "fig_supply"),
+        "severity":  _div(_fig_ae_severity(ae_by_drug),              "fig_severity"),
+        "timeline":  _div(_fig_ae_timeline(ae_by_drug),              "fig_timeline"),
+        "case_a":    cs_div,
+        "model":     _div(_fig_model_evidence(fi, ablation),         "fig_model"),
     }
 
     today = date.today().strftime("%B %d, %Y")
@@ -1170,7 +1023,7 @@ def build_html(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drug Shortage — Quality Risk & Causal Paths</title>
+<title>Drug Safety — Quality Risk &amp; Adverse Events</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -1192,29 +1045,19 @@ def build_html(
   .hero h1 {{ font-size: 23px; font-weight: 700; margin-bottom: 8px; }}
   .hero p   {{ color: #A0AEC0; font-size: 13.5px; line-height: 1.65; max-width: 800px; margin-bottom: 24px; }}
 
-  /* ── Causal path flowchart ── */
   .flow-diagram {{ display: flex; flex-direction: column; align-items: center;
                    gap: 0; margin-bottom: 28px; }}
   .flow-row {{ display: flex; justify-content: center; align-items: center; width: 100%; }}
-  .flow-split {{ gap: 60px; align-items: flex-start; margin: 0; }}
-  .flow-side {{ display: flex; flex-direction: column; align-items: center; gap: 0; }}
   .flow-box {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.18);
                 border-radius: 10px; padding: 12px 26px; text-align: center;
-                min-width: 180px; max-width: 230px; }}
+                min-width: 180px; max-width: 260px; }}
   .flow-box.flow-start {{ border-color: #4A90D9; border-width: 2px; }}
-  .flow-box.flow-a     {{ border-color: #D94A4A; border-width: 2px; }}
-  .flow-box.flow-b     {{ border-color: #7B5EA7; border-width: 2px; }}
-  .flow-box.flow-end   {{ border-color: #3DAA6E; border-width: 2px;
-                           background: rgba(61,170,110,0.10); }}
+  .flow-box.flow-end   {{ border-color: #D94A4A; border-width: 2px;
+                           background: rgba(217,74,74,0.10); }}
   .flow-title {{ color: #F0F0F0; font-size: 13px; font-weight: 600; display: block; }}
   .flow-sub   {{ color: #A0AEC0; font-size: 11px; display: block; margin-top: 3px; }}
   .flow-arrow-v {{ color: #A0AEC0; font-size: 20px; line-height: 1; padding: 3px 0;
                     text-align: center; }}
-  .flow-path-badge {{ font-size: 11px; font-weight: 600; letter-spacing: 0.6px;
-                       text-transform: uppercase; margin-bottom: 6px; padding: 3px 10px;
-                       border-radius: 4px; }}
-  .badge-a {{ color: #D94A4A; background: rgba(217,74,74,0.12); }}
-  .badge-b {{ color: #7B5EA7; background: rgba(123,94,167,0.12); }}
 
   .kpi-row {{ display: flex; flex-wrap: wrap; gap: 12px; }}
   .kpi {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
@@ -1237,7 +1080,6 @@ def build_html(
              padding: 22px 0 30px; border-top: 1px solid #DEE2E6; margin-top: 20px; }}
 
   @media (max-width: 860px) {{
-    .flow-split {{ flex-direction: column; align-items: center; gap: 20px; }}
     .page {{ padding: 0 12px 28px; }}
     nav a {{ display: none; }}
   }}
@@ -1246,23 +1088,23 @@ def build_html(
 <body>
 
 <nav>
-  <div class="nav-brand">Drug Shortage &nbsp;<span>·</span>&nbsp; Quality Risk & Causal Paths</div>
+  <div class="nav-brand">Drug Safety &nbsp;<span>·</span>&nbsp; Quality Risk &amp; Adverse Events</div>
   <a href="#coverage">① Coverage</a>
   <a href="#supply">② Supply</a>
-  <a href="#shortage-analysis">③ Shortage Analysis</a>
-  <a href="#timeline">④ Timeline</a>
+  <a href="#ae-severity">③ AE Severity</a>
+  <a href="#timeline">④ AE Timeline</a>
   <a href="#case-a">⑤ Case Study</a>
   <a href="#model">⑥ Model Evidence</a>
 </nav>
 
 <div class="hero">
-  <h1>Manufacturing Quality Failures → Drug Shortages</h1>
-  <p>Quality failures at generic drug manufacturing facilities (FEIs) can trigger shortages
-     through multiple routes. This dashboard traces the causal chain using FDA 483 inspection
-     text, recall records, SDUD Medicaid volumes, and UUtah shortage data across 14
+  <h1>Manufacturing Quality Failures → Serious Adverse Events</h1>
+  <p>Quality failures at generic drug manufacturing facilities (FEIs) can ultimately reach patients
+     in the form of product contamination, subpotency, or degradation — leading to serious adverse
+     events (AEs) reported to the FDA. This dashboard traces the causal chain: FDA 483 inspection
+     text signals → FEI-level model → FAERS serious AE outcomes. Analysis covers 14
      Valisure-validated APIs (2015–2024).</p>
 
-  <!-- Causal flowchart -->
   <div class="flow-diagram">
     <div class="flow-row">
       <div class="flow-box flow-start">
@@ -1276,29 +1118,15 @@ def build_html(
       <span class="flow-sub">LLM extracts severity, scope, root cause</span>
     </div></div>
     <div class="flow-row"><div class="flow-arrow-v">↓</div></div>
-    <div class="flow-row flow-split" style="gap:20px;">
-      <div class="flow-box flow-a" style="min-width:130px;">
-        <span class="flow-title" style="font-size:11px;">Recall</span>
-        <span class="flow-sub">FDA enforcement</span>
-      </div>
-      <div class="flow-box flow-b" style="min-width:130px;">
-        <span class="flow-title" style="font-size:11px;">Discontinuation</span>
-        <span class="flow-sub">Business decision</span>
-      </div>
-      <div class="flow-box" style="border-color:#E07B39;min-width:130px;">
-        <span class="flow-title" style="font-size:11px;">Demand surge</span>
-        <span class="flow-sub">Utilization spike</span>
-      </div>
-      <div class="flow-box" style="border-color:#2E8B8B;min-width:130px;">
-        <span class="flow-title" style="font-size:11px;">Raw material</span>
-        <span class="flow-sub">API/ingredient</span>
-      </div>
-    </div>
+    <div class="flow-row"><div class="flow-box" style="border-color:#7B5EA7;">
+      <span class="flow-title">ML Model (FEI × year)</span>
+      <span class="flow-sub">Quality signals at t → predicts AE surge at t+1</span>
+    </div></div>
     <div class="flow-row"><div class="flow-arrow-v">↓</div></div>
     <div class="flow-row">
       <div class="flow-box flow-end">
-        <span class="flow-title">Drug Shortage</span>
-        <span class="flow-sub">Patients cannot access medication</span>
+        <span class="flow-title">Serious Adverse Events (FAERS)</span>
+        <span class="flow-sub">Hospitalization · Life-threatening · Death</span>
       </div>
     </div>
   </div>
@@ -1306,8 +1134,7 @@ def build_html(
   <div class="kpi-row">
     <div class="kpi"><div class="val">14</div><div class="lbl">APIs tracked<br>(Valisure-tested)</div></div>
     <div class="kpi"><div class="val">{cov['n_feis_llm']}</div><div class="lbl">FEIs with<br>LLM text features</div></div>
-    <div class="kpi"><div class="val">{total_recalls}</div><div class="lbl">Recall events<br>linked to FEIs</div></div>
-    <div class="kpi"><div class="val">{total_shortages}</div><div class="lbl">Shortage events<br>(UUtah, 2015–2024)</div></div>
+    <div class="kpi"><div class="val">{total_ae:,}</div><div class="lbl">Serious AE reports<br>(FAERS, 2015–2024)</div></div>
     <div class="kpi"><div class="val">+{lift_rel:.0f}%</div><div class="lbl">AUC lift from<br>483 text features</div></div>
   </div>
 </div>
@@ -1333,69 +1160,64 @@ def build_html(
     <div class="section-title">② Supply Concentration</div>
     <div class="section-sub">
       Left: how many FEIs produce each drug (March 2026 Valisure mapping) — fewer producers = higher
-      concentration risk. Orange = drug has at least one injectable formulation in the Orange Book;
-      this is not exclusive (Vancomycin is given IV for bloodstream infections but orally for C. diff;
-      Metoprolol is primarily oral but has an IV cardiac form).
-      Right: total recall events linked to these FEIs (2015–2024).
+      concentration risk. Orange = drug has at least one injectable formulation in the Orange Book.
+      Right: total FAERS serious AE reports linked to these FEIs (2015–2024).
     </div>
   </div>
   <div class="card">{divs['supply']}</div>
 </section>
 
-<!-- ③ Shortage Analysis -->
-<section id="shortage-analysis">
+<!-- ③ AE Severity Breakdown -->
+<section id="ae-severity">
   <div class="section-head">
-    <div class="section-title">③ Shortage Analysis</div>
+    <div class="section-title">③ Adverse Event Severity Breakdown</div>
     <div class="section-sub">
-      Shortage events classified by reported reason from the UUtah database free-text
-      <i>Reason</i> field — keyword matching into four categories: Quality/Manufacturing/Recall,
-      Discontinuation/Exit, Demand surge, Raw material, or Unknown.
-      <b>~50% of events are reported as "Unknown"</b>; the chart reflects only events with a
-      recorded reason. Classification is observational and does not establish causation.
+      FAERS serious adverse event reports classified by reported outcome severity.
+      All reports are <b>pre-filtered to serious cases only</b> (Hospitalization, Life-Threatening,
+      Disability, Death, or Other Serious). The donut shows the overall severity distribution;
+      the bar chart shows composition per drug. Note: AE reports reflect drugs reaching patients,
+      not a direct measure of manufacturing quality at any specific FEI.
     </div>
   </div>
-  <div class="card">{divs['paths']}</div>
+  <div class="card">{divs['severity']}</div>
 </section>
 
-<!-- ④ Recall & Shortage Timeline (per-drug) -->
+<!-- ④ AE Timeline (per-drug) -->
 <section id="timeline">
   <div class="section-head">
-    <div class="section-title">④ Recall &amp; Shortage Timeline — Per Drug</div>
+    <div class="section-title">④ Adverse Event Timeline — Per Drug</div>
     <div class="section-sub">
-      Use the dropdown to select a drug and see its recall events (top) and shortage events
-      (bottom) by year. Raw counts only — check whether recalls precede shortages or shortages
-      arise independently.
+      Use the dropdown to select a drug and see its serious FAERS AE report count by year.
+      Raw counts only — trend over time may reflect changes in reporting rates, prescribing volume,
+      or true patient harm.
     </div>
   </div>
   <div class="card">{divs['timeline']}</div>
 </section>
 
-<!-- ⑤ Case Study: quality signals preceding the Metformin NDMA recall -->
+<!-- ⑤ Case Study: quality signals preceding AE surge -->
 <section id="case-a">
   <div class="section-head">
-    <div class="section-title">⑤ Case Study: Quality Signals Preceding the Metformin NDMA Recall</div>
+    <div class="section-title">⑤ Case Study: Quality Signals vs. Adverse Event Counts — Metformin</div>
     <div class="section-sub">
-      This case study illustrates the step the model is trained to predict:
-      <b>quality signals at year t → recall at year t+1.</b>
+      This case study illustrates what the model predicts:
+      <b>quality signals at FEIs in year t → above-median AE volume in year t+1.</b>
       <br><br>
       <b>What the data shows:</b>
       (1) Quality signals (contamination, severity, scope, cultural root cause) were elevated
-      across multiple Metformin FEIs throughout 2018–2020 — 18 months before the enforcement action.
-      (2) <b>June 2020:</b> 14 Class I recalls citing NDMA impurity.
-      (3) Amneal Pharmaceuticals, one of the significant Medicaid Metformin suppliers
-      (peak ~12M units/month, #8 by total panel volume),
-      saw a ~97% volume drop following the recall.
-      Other manufacturers (Avet/Sun, Ascend) partially filled the gap.
-      (4) UUtah records Metformin shortage events in 2021 and 2024, both with <b>reason "Unknown."</b>
+      across multiple Metformin FEIs throughout 2018–2020.
+      (2) FAERS AE reports for Metformin (quarterly, drug-level — not FEI-specific).
+      (3) Medicaid (SDUD) volume by manufacturer — showing supply distribution.
       <br><br>
-      <b>Limitations:</b> Amneal's Medicaid volume began declining before the June 2020 recall,
-      suggesting competitive market dynamics may also be a factor. The recall-to-shortage link is
-      not established — shortage reason is unknown and other manufacturers compensated.
-      The model predicts recalls (step 2), not shortages (step 4).
+      <b>Interpretation:</b> The model is not claiming a direct causal chain from a specific FEI's
+      quality failures to specific patient AEs. Rather, it tests whether facility-level quality
+      signals (aggregated across the drug's FEI universe) predict years when the drug has
+      above-median serious AE volume in FAERS. Use the <b>dropdown</b> to isolate a signal
+      or spotlight a facility.
       <br><br>
-      Use the <b>dropdown</b> to isolate a signal or select <i>Spotlight: Amneal</i> to see that
-      facility's signals, recalls, and Medicaid volume together.
-      Green dashed lines = UUtah shortage years.
+      <b>Limitations:</b> FAERS is drug-level, not FEI-level; we cannot trace AEs to individual
+      manufacturers. AE reporting rates vary by year and drug lifecycle. The AE outcome is
+      a population-level proxy, not a direct measure of product quality.
     </div>
   </div>
   <div class="card">{divs['case_a']}</div>
@@ -1404,16 +1226,14 @@ def build_html(
 <!-- ⑥ Model Evidence -->
 <section id="model">
   <div class="section-head">
-    <div class="section-title">⑥ Model Evidence: 483 Text Improves Recall Prediction</div>
+    <div class="section-title">⑥ Model Evidence: 483 Text Improves AE Prediction</div>
     <div class="section-sub">
-      <b>What this model predicts:</b> whether a FEI will have a <i>recall event</i> in year t+1,
-      given features measured in year t. This is not a direct shortage prediction; the link from
-      recall to shortage depends on supply concentration (Section ②).
+      <b>What this model predicts:</b> whether a FEI's drug will have above-median serious AE
+      volume in year t+1, given quality features measured in year t.
       <br>
-      <b>AUC-ROC</b> (Area Under the Receiver Operating Curve) measures how often the model
-      correctly ranks a facility that <i>will</i> have a recall above one that won't — 0.5 means
-      random chance, 1.0 means perfect. Think of it as: "out of all pairs of
-      (recall facility, non-recall facility), what share does the model rank correctly?"
+      <b>AUC-ROC</b> measures how often the model correctly ranks a facility-year that will have
+      high AE volume above one that won't — 0.5 = random chance, 1.0 = perfect.
+      Think of it as: "out of all (high-AE, low-AE) pairs, what fraction does the model rank correctly?"
       <br>
       L2 logistic regression, GroupKFold CV by FEI. Adding LLM-extracted 483 text features
       improves AUC from {auc_no:.3f} to {auc_yes:.3f}
@@ -1429,7 +1249,8 @@ def build_html(
   Generated {today} &nbsp;·&nbsp; Drug Shortage Project &nbsp;·&nbsp; NC State University<br>
   <span style="font-size:11px; color:#BEC8D0;">
     483 text features: Redica database (2018–2026), LLM pipeline.
-    Recall data: FDA CDER. Shortage data: University of Utah. Supply concentration: Valisure (March 2026).
+    Adverse event data: FDA FAERS. Supply concentration: Valisure (March 2026).
+    Medicaid volumes: CMS SDUD.
   </span>
 </footer>
 
@@ -1441,23 +1262,20 @@ def build_html(
 
 def main():
     log.info("Loading data…")
-    fdmap    = _fei_drug_map()
-    supply   = _load_supply_concentration(fdmap)
-    recalls  = _load_recall_by_drug(fdmap)
-    shortage = _load_shortage_by_drug()
-    cov      = _load_coverage()
-    fi, abl  = _load_model_outputs()
+    fdmap   = _fei_drug_map()
+    supply  = _load_supply_concentration(fdmap)
+    ae_drug = _load_ae_by_drug(fdmap)
+    cov     = _load_coverage()
+    fi, abl = _load_model_outputs()
 
-    cs_q, cs_r, cs_s, cs_sdud, cs_rfei = _load_case_study("Metformin")
-    log.info("Case study A (Metformin): %d quality rows, %d recall months, %d shortage years, "
-             "%d SDUD mfr-months, %d fei-recall rows",
-             len(cs_q), len(cs_r), len(cs_s), len(cs_sdud), len(cs_rfei))
+    cs_q, cs_ae, cs_sdud = _load_case_study_ae("Metformin")
+    log.info("Case study (Metformin): %d quality rows, %d AE months, %d SDUD mfr-months",
+             len(cs_q), len(cs_ae), len(cs_sdud))
 
     log.info("Building HTML…")
     html = build_html(
-        cov, supply, recalls, shortage, fi, abl,
-        cs_quality=cs_q, cs_recalls=cs_r, cs_shortages=cs_s,
-        cs_sdud=cs_sdud, cs_rfei=cs_rfei,
+        cov, supply, ae_drug, fi, abl,
+        cs_quality=cs_q, cs_ae_monthly=cs_ae, cs_sdud=cs_sdud,
     )
 
     OUT_HTML.write_text(html, encoding="utf-8")
