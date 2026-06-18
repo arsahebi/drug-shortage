@@ -665,7 +665,7 @@ def _fig_case_study(
 
     fig = make_subplots(
         rows=2, cols=1,
-        subplot_titles=["LLM-extracted 483 quality signals (monthly snapshots)",
+        subplot_titles=["% of 483 observations flagged for each issue (LLM-extracted, monthly snapshots)",
                         "Recall events (monthly count)"],
         vertical_spacing=0.10,
         shared_xaxes=True,
@@ -742,7 +742,7 @@ def _fig_case_study(
             title="Month", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
-        yaxis=dict(title="Signal share (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
+        yaxis=dict(title="Share of 483 observations flagged (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
         yaxis2=dict(title="# Recalls", gridcolor="#F0F0F0"),
         legend=dict(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.92)",
                     bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
@@ -766,8 +766,8 @@ def _fig_case_study_path_b(
     fig = make_subplots(
         rows=2, cols=1,
         subplot_titles=[
-            "LLM-extracted 483 quality signals (monthly snapshots)",
-            "Recall events — Path B: none issued (silent exit)",
+            "% of 483 observations flagged for each issue (LLM-extracted, monthly snapshots)",
+            "Recall events — Path B: none expected (silent exit)",
         ],
         vertical_spacing=0.10,
         shared_xaxes=True,
@@ -845,7 +845,7 @@ def _fig_case_study_path_b(
             title="Month", gridcolor="#F0F0F0",
             tickformat="%b %Y", dtick="M6", tickangle=-30,
         ),
-        yaxis=dict(title="Signal share (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
+        yaxis=dict(title="Share of 483 observations flagged (0–1)", range=[0, 1.2], gridcolor="#F0F0F0"),
         yaxis2=dict(title="# Recalls", range=[0, 5], gridcolor="#F0F0F0"),
         legend=dict(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.92)",
                     bordercolor="#E0E0E0", borderwidth=1, font=dict(size=11)),
