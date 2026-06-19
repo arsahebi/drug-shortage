@@ -556,16 +556,13 @@ def _fig_case_study_multi(
 
     # ── Helper: build all 49 trace data for one selection ────────────────────
     def _build_data(
-        q: pd.DataFrame, ae_m: pd.DataFrame, include_dots: bool
+        q: pd.DataFrame, ae_m: pd.DataFrame, include_dots: bool,
+        fixed_lag: int | None = None,
     ) -> tuple:
         """
-        Returns 16-tuple:
-          agg_x, agg_y, agg_cd, agg_sz  (N items each)
-          dot_x, dot_y, dot_cd           (N items each)
-          ae_x, ae_y                     (1 item each)
-          cs_x, cs_y, cs_cd              (N items each — corr signal)
-          ca_x, ca_y, ca_cd              (N items each — corr AE)
-          corr_names                     (N items)
+        Returns 17-tuple (same as before plus cs_text).
+        fixed_lag: if None, auto-pick best lag per signal.
+                   if int 0-4, use that specific lag for all signals.
         """
         sig_p = [col for col, *_ in _ALL_SIG_FLAT
                  if not q.empty and col in q.columns and not q[col].isna().all()]
@@ -662,21 +659,33 @@ def _fig_case_study_multi(
                         ly = pd.Series([p[1] for p in pairs])
                         lag_results[lag] = (lx.rank().corr(ly.rank()), len(pairs))
 
-                best_lag = (
-                    max(lag_results, key=lambda l: abs(lag_results[l][0]))
-                    if lag_results else None
-                )
-                if best_lag is not None:
-                    brho, bn = lag_results[best_lag]
-                    rho_pt    = f"  ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]}"
-                    cs_text_i = [""] * (len(sv_n) - 1) + [rho_pt]
-                    name_r    = f"{label}  ·  best ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]} (n={bn})"
-                    if 2 in lag_results and best_lag != 2:
-                        r1yr, _ = lag_results[2]
-                        name_r += f"  |  +1yr: ρ={r1yr:+.2f}"
+                if fixed_lag is not None:
+                    # Specific lag requested
+                    if fixed_lag in lag_results:
+                        brho, bn = lag_results[fixed_lag]
+                        rho_pt    = f"  ρ={brho:+.2f} @ {_LAG_LBLS[fixed_lag]}"
+                        cs_text_i = [""] * (len(sv_n) - 1) + [rho_pt]
+                        name_r    = f"{label}  ·  ρ={brho:+.2f} @ {_LAG_LBLS[fixed_lag]} (n={bn})"
+                    else:
+                        cs_text_i = [""] * len(sv_n)
+                        name_r    = f"{label}  ·  (n<4 at {_LAG_LBLS.get(fixed_lag, '?')})"
                 else:
-                    cs_text_i = [""] * len(sv_n)
-                    name_r    = f"{label}  ·  (n<4)"
+                    # Auto: pick best lag per signal
+                    best_lag = (
+                        max(lag_results, key=lambda l: abs(lag_results[l][0]))
+                        if lag_results else None
+                    )
+                    if best_lag is not None:
+                        brho, bn = lag_results[best_lag]
+                        rho_pt    = f"  ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]}"
+                        cs_text_i = [""] * (len(sv_n) - 1) + [rho_pt]
+                        name_r    = f"{label}  ·  best ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]} (n={bn})"
+                        if 2 in lag_results and best_lag != 2:
+                            r1yr, _ = lag_results[2]
+                            name_r += f"  |  +1yr: ρ={r1yr:+.2f}"
+                    else:
+                        cs_text_i = [""] * len(sv_n)
+                        name_r    = f"{label}  ·  (n<4)"
 
                 cs_x.append(vis_ts);  cs_y.append(sv_n.tolist())
                 cs_cd.append([[_hlbl(t), float(sig_semi_s[t])] for t in vis_ts])
@@ -707,6 +716,13 @@ def _fig_case_study_multi(
             ae_all = (ae_c.groupby("month_start", as_index=False)["n_ae"].sum()
                        .sort_values("month_start").reset_index(drop=True))
     ad = _build_data(all_q, ae_all, include_dots=False)
+
+    # "All drugs" precomputed at each fixed lag (for lag dropdown)
+    _LAG_LBLS_UI = {0: "lag 0", 1: "+6mo", 2: "+1yr", 3: "+18mo", 4: "+2yr"}
+    ad_by_lag = {
+        lag: _build_data(all_q, ae_all, include_dots=False, fixed_lag=lag)
+        for lag in range(5)
+    }
 
     drug_data: dict[str, tuple] = {
         drug: _build_data(
@@ -902,6 +918,18 @@ def _fig_case_study_multi(
             args=[{"visible": _sig_vis(i)}],
         ))
 
+    # ── Lag dropdown (updates all-drug data at fixed lag) ─────────────────────
+    # Resets drug filter to "All drugs" — Plotly can't maintain cross-dropdown state
+    lag_buttons = [dict(
+        label="Auto (best)", method="update",
+        args=[_drug_trace_upd(ad), _drug_layout_upd(None)],
+    )]
+    for fixed_lag in range(5):
+        lag_buttons.append(dict(
+            label=_LAG_LBLS_UI[fixed_lag], method="update",
+            args=[_drug_trace_upd(ad_by_lag[fixed_lag]), _drug_layout_upd(None)],
+        ))
+
     # ── Layout ────────────────────────────────────────────────────────────────
     fig.update_layout(
         updatemenus=[
@@ -914,6 +942,12 @@ def _fig_case_study_multi(
             dict(
                 buttons=sig_buttons, direction="down",
                 x=0.26, y=1.16, xanchor="left", yanchor="top",
+                showactive=True, bgcolor="white", bordercolor="#DDD",
+                font=dict(size=11), pad={"r": 10, "t": 5},
+            ),
+            dict(
+                buttons=lag_buttons, direction="down",
+                x=0.52, y=1.16, xanchor="left", yanchor="top",
                 showactive=True, bgcolor="white", bordercolor="#DDD",
                 font=dict(size=11), pad={"r": 10, "t": 5},
             ),
@@ -948,12 +982,12 @@ def _fig_case_study_multi(
         x=1.01, y=0.02, xref="paper", yref="paper",
         text=(
             "<b>Tips:</b><br>"
-            "① Drug filter → changes data<br>"
+            "① Drug filter → per-drug view<br>"
             "② Signal filter → shows one<br>"
-            "   signal + per-FEI dots +<br>"
-            "   temporal correlation row<br>"
-            "③ Legend group titles toggle<br>"
-            "   signal categories on/off"
+            "   signal + dots + corr row<br>"
+            "③ Lag filter → row 3 ρ at<br>"
+            "   that lag (resets to All)<br>"
+            "④ Legend titles toggle groups"
         ),
         showarrow=False, align="left",
         font=dict(size=9, color="#555"),
