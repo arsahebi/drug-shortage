@@ -528,33 +528,44 @@ def _fig_case_study_multi(
     ae_annual_by_drug: dict[str, pd.DataFrame],
     ae_monthly_by_drug: dict[str, pd.DataFrame],
 ) -> go.Figure:
-    """Two-row signal–AE correlation panel with independent drug + signal dropdowns.
+    """Three-row signal–AE panel with independent drug + signal dropdowns.
 
-    Top row: inspection text quality signals as lines + filled bubbles
-             (bubble size = # FEIs in the semi-annual window, m15 style).
-             Selecting a specific signal also shows per-FEI open-circle dots.
-    Bottom row: quarterly FAERS serious AE counts as bars.
+    Row 1: quality signal aggregate bubble-lines (semi-annual, m15 style).
+           Selecting a specific signal adds per-FEI open-circle dots.
+    Row 2: quarterly FAERS serious AE counts as bars.
+    Row 3: temporal correlation — annual normalized signal (solid) overlaid
+           with annual normalized AE (dashed, same color). If the signal leads
+           AEs you'll see the solid line peak 1–2 years before the dashed line.
+           Spearman ρ at lag +1yr is shown in the trace name. Visible only
+           when a specific signal is selected from the signal dropdown.
 
-    Two independent dropdowns (orthogonal updates):
-      Drug dropdown  → updates trace DATA (x/y/customdata/marker.size) only.
-      Signal dropdown → updates trace VISIBLE only.
-    Because data and visibility are separate, selecting a drug preserves the
-    signal filter and vice versa.
+    Two independent orthogonal dropdowns:
+      Drug dropdown  → updates trace DATA (x/y/customdata/marker.size/name).
+      Signal dropdown → updates trace VISIBILITY only.
+    Selecting a drug preserves the signal filter and vice versa.
 
-    Trace layout (25 traces total):
-      [0  .. N_ALL_SIG-1]   : aggregate signal lines+bubbles  (data updated by drug btn)
-      [N_ALL_SIG .. 2*N-1]  : per-FEI open-circle dots       (data updated by drug btn;
-                               hidden in "All signals" mode, shown only for selected signal)
-      [2*N_ALL_SIG]         : AE bar                         (data updated by drug btn)
+    Trace layout (49 traces: N = N_ALL_SIG = 12):
+      [0   .. N-1 ]   agg signal bubble-lines     row 1
+      [N   .. 2N-1]   per-FEI open-circle dots    row 1
+      [2N        ]    AE bar                       row 2
+      [2N+1..3N  ]    corr signal lines (annual)   row 3
+      [3N+1..4N  ]    corr AE lines (annual)       row 3
     """
+    N = N_ALL_SIG
     drugs = sorted(set(quality_by_drug) | set(ae_annual_by_drug))
 
-    # ── Helper: build raw data arrays for one drug (or all drugs combined) ────
-    def _build_data(q: pd.DataFrame, ae_m: pd.DataFrame, include_dots: bool
-                    ) -> tuple[list, list, list, list, list, list, list, list, list]:
+    # ── Helper: build all 49 trace data for one selection ────────────────────
+    def _build_data(
+        q: pd.DataFrame, ae_m: pd.DataFrame, include_dots: bool
+    ) -> tuple:
         """
-        Returns (agg_x, agg_y, agg_cd, agg_sz, dot_x, dot_y, dot_cd, ae_x, ae_y).
-        Each of agg_*/dot_* is a list of N_ALL_SIG items.
+        Returns 16-tuple:
+          agg_x, agg_y, agg_cd, agg_sz  (N items each)
+          dot_x, dot_y, dot_cd           (N items each)
+          ae_x, ae_y                     (1 item each)
+          cs_x, cs_y, cs_cd              (N items each — corr signal)
+          ca_x, ca_y, ca_cd              (N items each — corr AE)
+          corr_names                     (N items)
         """
         sig_p = [col for col, *_ in _ALL_SIG_FLAT
                  if not q.empty and col in q.columns and not q[col].isna().all()]
@@ -570,7 +581,8 @@ def _fig_case_study_multi(
                         else agg["n_feis"].values
                 agg_cd.append(np.column_stack([agg["n_feis"].values, n_obs]).tolist())
             else:
-                agg_x.append([]); agg_y.append([]); agg_sz.append([]); agg_cd.append([])
+                agg_x.append([]); agg_y.append([])
+                agg_sz.append([]); agg_cd.append([])
 
         dot_x, dot_y, dot_cd = [], [], []
         for col, *_ in _ALL_SIG_FLAT:
@@ -578,19 +590,83 @@ def _fig_case_study_multi(
                     and not q[col].isna().all():
                 dot_x.append(q["snapshot_date"].tolist())
                 dot_y.append(q[col].tolist())
-                fei_col = q["fei"].values.reshape(-1, 1) if "fei" in q.columns \
-                          else np.zeros((len(q), 1), dtype=int)
-                dot_cd.append(fei_col.tolist())
+                fv = q["fei"].values.reshape(-1, 1) if "fei" in q.columns \
+                     else np.zeros((len(q), 1), dtype=int)
+                dot_cd.append(fv.tolist())
             else:
                 dot_x.append([]); dot_y.append([]); dot_cd.append([])
 
         ae_x = ae_m["month_start"].tolist() if not ae_m.empty else []
         ae_y = ae_m["n_ae"].tolist() if not ae_m.empty else []
-        return agg_x, agg_y, agg_cd, agg_sz, dot_x, dot_y, dot_cd, ae_x, ae_y
 
-    # Compute "All drugs" combined data (dots hidden — too many points)
+        # ── Temporal correlation row (annual, normalized) ──────────────────
+        if not q.empty:
+            q_yr = q.copy()
+            q_yr["year"] = q_yr["snapshot_date"].dt.year
+        if not ae_m.empty:
+            ae_m_yr = ae_m.copy()
+            ae_m_yr["year"] = ae_m_yr["month_start"].dt.year
+            ae_annual = ae_m_yr.groupby("year")["n_ae"].sum()
+        else:
+            ae_annual = pd.Series(dtype=float)
+
+        cs_x, cs_y, cs_cd = [], [], []
+        ca_x, ca_y, ca_cd = [], [], []
+        corr_names = []
+
+        for col, label, *_ in _ALL_SIG_FLAT:
+            if not q.empty and col in q.columns and not q[col].isna().all():
+                sig_annual = q_yr.groupby("year")[col].mean()
+                common = sorted(
+                    set(sig_annual.index) & set(ae_annual.index)
+                    & set(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
+                )
+            else:
+                sig_annual = pd.Series(dtype=float)
+                common = []
+
+            if len(common) >= 3:
+                sv = np.array([sig_annual[y] for y in common])
+                av = np.array([ae_annual[y] for y in common])
+                sv_n = (sv - sv.min()) / ((sv.max() - sv.min()) + 1e-12)
+                av_n = (av - av.min()) / ((av.max() - av.min()) + 1e-12)
+                ts = [pd.Timestamp(f"{y}-07-01") for y in common]
+
+                # Spearman ρ at lag +1yr
+                lag_pairs = [
+                    (float(sig_annual.get(y)), float(ae_annual.get(y + 1)))
+                    for y in common if y + 1 in ae_annual.index
+                    and not np.isnan(sig_annual.get(y, np.nan))
+                    and not np.isnan(ae_annual.get(y + 1, np.nan))
+                ]
+                if len(lag_pairs) >= 4:
+                    lx = pd.Series([p[0] for p in lag_pairs])
+                    ly = pd.Series([p[1] for p in lag_pairs])
+                    rho = lx.rank().corr(ly.rank())
+                    rho_tag = f"ρ={rho:+.2f}  (lag +1yr, n={len(lag_pairs)})"
+                else:
+                    rho_tag = f"(n<4 pairs at lag +1yr)"
+
+                cs_x.append(ts);  cs_y.append(sv_n.tolist())
+                ca_x.append(ts);  ca_y.append(av_n.tolist())
+                cs_cd.append(np.column_stack([common, sv]).tolist())
+                ca_cd.append(np.column_stack([common, av]).tolist())
+                corr_names.append(f"{label}  ·  {rho_tag}")
+            else:
+                cs_x.append([]); cs_y.append([]); cs_cd.append([])
+                ca_x.append([]); ca_y.append([]); ca_cd.append([])
+                corr_names.append(f"{label}  ·  (no data)")
+
+        return (agg_x, agg_y, agg_cd, agg_sz,
+                dot_x, dot_y, dot_cd,
+                ae_x, ae_y,
+                cs_x, cs_y, cs_cd,
+                ca_x, ca_y, ca_cd,
+                corr_names)
+
+    # Compute "All drugs" data (dots hidden — too many points)
     all_q_frames = [df for df in quality_by_drug.values() if not df.empty]
-    all_q  = pd.concat(all_q_frames, ignore_index=True) if all_q_frames else pd.DataFrame()
+    all_q = pd.concat(all_q_frames, ignore_index=True) if all_q_frames else pd.DataFrame()
     ae_frames = [df for df in ae_monthly_by_drug.values() if not df.empty]
     ae_all = pd.DataFrame()
     if ae_frames:
@@ -600,7 +676,6 @@ def _fig_case_study_multi(
                        .sort_values("month_start").reset_index(drop=True))
     ad = _build_data(all_q, ae_all, include_dots=False)
 
-    # Compute per-drug data (with per-FEI dots)
     drug_data: dict[str, tuple] = {
         drug: _build_data(
             quality_by_drug.get(drug, pd.DataFrame()),
@@ -610,41 +685,47 @@ def _fig_case_study_multi(
         for drug in drugs
     }
 
-    # Shorthand for unpacking
     def _unpack(d: tuple) -> tuple:
-        return d  # (agg_x, agg_y, agg_cd, agg_sz, dot_x, dot_y, dot_cd, ae_x, ae_y)
+        return d
 
-    agg_x0, agg_y0, agg_cd0, agg_sz0, dot_x0, dot_y0, dot_cd0, ae_x0, ae_y0 = _unpack(ad)
+    (ax0, ay0, acd0, asz0,
+     dx0, dy0, dcd0,
+     ex0, ey0,
+     csx0, csy0, cscd0,
+     cax0, cay0, cacd0,
+     cnames0) = _unpack(ad)
 
-    # ── Build figure with initial "All drugs" data ────────────────────────────
+    # ── Build figure (3 rows, shared x-axis) ─────────────────────────────────
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.10,
+        vertical_spacing=0.08,
         subplot_titles=[
-            "All 14 drugs — quality signals aggregate  "
+            "Quality signals aggregate  "
             "(bubble = # facilities · use dropdowns to filter drug or signal)",
-            "All 14 drugs — FAERS serious AE reports (quarterly total)",
+            "FAERS serious AE reports (quarterly)",
+            "Temporal correlation: signal (solid) vs AE count (dashed), both normalized 0→1  "
+            "│ select a specific signal above to reveal  ·  ρ(lag +1yr) shown in legend",
         ],
-        row_heights=[0.58, 0.42],
+        row_heights=[0.36, 0.22, 0.42],
     )
 
-    # Aggregate signal traces [0 .. N_ALL_SIG-1]
+    # Row 1 – aggregate signal traces [0..N-1]
     seen_grps: set[str] = set()
     for i, (col, label, color, dash, grp) in enumerate(_ALL_SIG_FLAT):
         is_first = grp not in seen_grps
         if is_first:
             seen_grps.add(grp)
         gt_kw = {"legendgrouptitle": dict(text=grp)} if is_first else {}
-        sizes = agg_sz0[i] if agg_sz0[i] else 8
-        cd    = agg_cd0[i] if agg_cd0[i] else None
-        ht    = (
+        sizes = asz0[i] if asz0[i] else 8
+        cd    = acd0[i] if acd0[i] else None
+        ht = (
             f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<br>"
             "Facilities: %{customdata[0]:.0f} · obs: %{customdata[1]:.0f}"
             "<extra></extra>"
         ) if cd else f"<b>%{{x|%b %Y}}</b><br>{label}: %{{y:.0%}}<extra></extra>"
         fig.add_trace(go.Scatter(
-            x=agg_x0[i], y=agg_y0[i], name=label,
+            x=ax0[i], y=ay0[i], name=label,
             mode="lines+markers",
             line=dict(color=color, width=2.5, dash=dash),
             marker=dict(size=sizes, sizemode="diameter"),
@@ -653,38 +734,85 @@ def _fig_case_study_multi(
             hovertemplate=ht, **gt_kw,
         ), row=1, col=1)
 
-    # Per-FEI dot traces [N_ALL_SIG .. 2*N_ALL_SIG-1] — initially empty (All drugs)
+    # Row 1 – per-FEI dot traces [N..2N-1] (initially empty for "All drugs")
     for i, (col, label, color, dash, grp) in enumerate(_ALL_SIG_FLAT):
         fig.add_trace(go.Scatter(
-            x=dot_x0[i], y=dot_y0[i],
+            x=dx0[i], y=dy0[i],
             name=f"{label} (per FEI)", mode="markers",
             marker=dict(color=color, size=9, opacity=0.38,
                         symbol="circle-open", line=dict(width=1.5)),
             visible=False, showlegend=False,
             legendgroup=f"grp_{grp}",
-            customdata=dot_cd0[i] if dot_cd0[i] else None,
+            customdata=dcd0[i] if dcd0[i] else None,
             hovertemplate=(
                 f"<b>%{{x|%b %Y}}</b> · FEI %{{customdata[0]}}<br>"
                 f"{label}: %{{y:.0%}}<br><i>Individual facility</i><extra></extra>"
             ),
         ), row=1, col=1)
 
-    # AE bar [2*N_ALL_SIG]
+    # Row 2 – AE bar [2N]
     fig.add_trace(go.Bar(
-        x=ae_x0, y=ae_y0, name="Serious AE reports",
+        x=ex0, y=ey0, name="Serious AE reports",
         marker_color=C["purple"], opacity=0.75,
         visible=True, showlegend=False,
         hovertemplate="<b>%{x|%b %Y}</b><br>AE reports: %{y:,}<extra></extra>",
     ), row=2, col=1)
 
+    # Row 3 – corr signal traces [2N+1..3N] (initially hidden)
+    for i, (col, label, color, dash, grp) in enumerate(_ALL_SIG_FLAT):
+        cd_cs = cscd0[i] if cscd0[i] else None
+        fig.add_trace(go.Scatter(
+            x=csx0[i], y=csy0[i],
+            name=cnames0[i], mode="lines+markers",
+            line=dict(color=color, width=2.8, dash="solid"),
+            marker=dict(size=9),
+            connectgaps=False, customdata=cd_cs,
+            legendgroup=f"corr_{grp}",
+            legendgrouptitle=dict(text="Correlation row") if i == 0 else {},
+            visible=False, showlegend=True,
+            hovertemplate=(
+                f"<b>%{{x|%Y}}</b><br>{label}: %{{customdata[1]:.0%}}<br>"
+                "Normalized: %{y:.2f}<extra></extra>"
+            ) if cd_cs else f"<b>%{{x|%Y}}</b><br>{label} (norm): %{{y:.2f}}<extra></extra>",
+        ), row=3, col=1)
+
+    # Row 3 – corr AE traces [3N+1..4N] (initially hidden)
+    for i, (col, label, color, dash, grp) in enumerate(_ALL_SIG_FLAT):
+        cd_ca = cacd0[i] if cacd0[i] else None
+        fig.add_trace(go.Scatter(
+            x=cax0[i], y=cay0[i],
+            name="AE count (normalized)", mode="lines+markers",
+            line=dict(color=color, width=2.0, dash="dash"),
+            marker=dict(size=7, symbol="square"),
+            connectgaps=False, customdata=cd_ca,
+            legendgroup=f"corr_{grp}",
+            visible=False, showlegend=(i == 0),
+            hovertemplate=(
+                "<b>%{x|%Y}</b><br>AE reports: %{customdata[1]:,.0f}<br>"
+                "Normalized: %{y:.2f}<extra></extra>"
+            ) if cd_ca else "<b>%{x|%Y}</b><br>AE count (norm): %{y:.2f}<extra></extra>",
+        ), row=3, col=1)
+
     # ── Drug dropdown (updates DATA, not visibility) ───────────────────────────
     def _drug_trace_upd(d: tuple) -> dict:
-        ax, ay, acd, asz, dx, dy, dcd, ex, ey = _unpack(d)
+        (ax, ay, acd, asz,
+         dx, dy, dcd,
+         ex, ey,
+         csx, csy, cscd,
+         cax, cay, cacd,
+         cnames) = _unpack(d)
         return {
-            "x":          ax + dx + [ex],           # 25 lists
-            "y":          ay + dy + [ey],
-            "customdata": acd + dcd + [None],        # None = skip AE bar
-            "marker.size": asz + [9]*N_ALL_SIG + [None],
+            "x":           ax + dx + [ex] + csx + cax,          # 49 lists
+            "y":           ay + dy + [ey] + csy + cay,
+            "customdata":  acd + dcd + [None] + cscd + cacd,
+            "marker.size": asz + [9]*N + [None] + [None]*N + [None]*N,
+            "name": (
+                [lbl for _, lbl, *_ in _ALL_SIG_FLAT]
+                + [f"{lbl} (per FEI)" for _, lbl, *_ in _ALL_SIG_FLAT]
+                + ["Serious AE reports"]
+                + cnames
+                + ["AE count (normalized)"] * N
+            ),
         }
 
     def _drug_layout_upd(drug: str | None) -> dict:
@@ -698,8 +826,11 @@ def _fig_case_study_multi(
                   "(bubble = # facilities · use dropdowns to filter drug or signal)")
             t1 = f"{drug} — FAERS serious AE reports (quarterly)"
             y2 = f"{drug} — # Serious AE reports"
-        return {"annotations[0].text": t0, "annotations[1].text": t1,
-                "yaxis2.title.text": y2}
+        return {
+            "annotations[0].text": t0,
+            "annotations[1].text": t1,
+            "yaxis2.title.text":   y2,
+        }
 
     drug_buttons = [dict(
         label="All drugs", method="update",
@@ -711,15 +842,14 @@ def _fig_case_study_multi(
             args=[_drug_trace_upd(drug_data[drug]), _drug_layout_upd(drug)],
         ))
 
-    # ── Signal dropdown (updates VISIBILITY only, data unchanged) ─────────────
-    # "All signals" → show all agg, hide all dots (too many points when stacked)
-    # Individual signal → show agg[i] + dot[i] only
+    # ── Signal dropdown (updates VISIBILITY only) ─────────────────────────────
+    # "All signals" → all agg shown, dots hidden, corr row hidden
+    # Signal S      → agg[S]+dot[S]+corr_sig[S]+corr_ae[S] shown
     def _sig_vis(sig_idx: int | None) -> list[bool]:
         if sig_idx is None:
-            return [True]*N_ALL_SIG + [False]*N_ALL_SIG + [True]
-        v_agg = [j == sig_idx for j in range(N_ALL_SIG)]
-        v_dot = [j == sig_idx for j in range(N_ALL_SIG)]
-        return v_agg + v_dot + [True]
+            return [True]*N + [False]*N + [True] + [False]*N + [False]*N
+        v = [j == sig_idx for j in range(N)]
+        return v + v + [True] + v + v
 
     sig_buttons = [dict(
         label="All signals", method="restyle",
@@ -736,31 +866,33 @@ def _fig_case_study_multi(
         updatemenus=[
             dict(
                 buttons=drug_buttons, direction="down",
-                x=0.00, y=1.20, xanchor="left", yanchor="top",
+                x=0.00, y=1.16, xanchor="left", yanchor="top",
                 showactive=True, bgcolor="white", bordercolor="#DDD",
                 font=dict(size=11), pad={"r": 10, "t": 5},
             ),
             dict(
                 buttons=sig_buttons, direction="down",
-                x=0.26, y=1.20, xanchor="left", yanchor="top",
+                x=0.26, y=1.16, xanchor="left", yanchor="top",
                 showactive=True, bgcolor="white", bordercolor="#DDD",
                 font=dict(size=11), pad={"r": 10, "t": 5},
             ),
         ],
-        height=790,
-        margin=dict(l=10, r=215, t=115, b=10),
+        height=950,
+        margin=dict(l=10, r=220, t=110, b=10),
         font=_PLOTLY_FONT, plot_bgcolor="white", paper_bgcolor="white",
         xaxis=dict(
-            title="Half-year period", tickformat="%b %Y", dtick="M6",
-            tickangle=-30, gridcolor="#F0F0F0",
+            tickformat="%b %Y", dtick="M6", tickangle=-30, gridcolor="#F0F0F0",
         ),
         yaxis=dict(
             title="% of 483 obs flagged",
             tickformat=".0%", range=[-0.05, 1.1], gridcolor="#F0F0F0",
         ),
         yaxis2=dict(
-            title="# Serious AE reports (all 14 drugs)",
-            tickformat=",", gridcolor="#F0F0F0",
+            title="# Serious AE reports", tickformat=",", gridcolor="#F0F0F0",
+        ),
+        yaxis3=dict(
+            title="0 → 1 normalized",
+            tickformat=".2f", range=[-0.05, 1.1], gridcolor="#F0F0F0",
         ),
         legend=dict(
             x=1.01, y=1,
@@ -775,11 +907,12 @@ def _fig_case_study_multi(
         x=1.01, y=0.02, xref="paper", yref="paper",
         text=(
             "<b>Tips:</b><br>"
-            "① Drug filter: changes data<br>"
-            "② Signal filter: changes<br>"
-            "   which signal is shown<br>"
-            "③ Click legend group title<br>"
-            "   to toggle a category"
+            "① Drug filter → changes data<br>"
+            "② Signal filter → shows one<br>"
+            "   signal + per-FEI dots +<br>"
+            "   temporal correlation row<br>"
+            "③ Legend group titles toggle<br>"
+            "   signal categories on/off"
         ),
         showarrow=False, align="left",
         font=dict(size=9, color="#555"),
