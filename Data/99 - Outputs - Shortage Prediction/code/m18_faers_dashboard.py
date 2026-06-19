@@ -599,68 +599,100 @@ def _fig_case_study_multi(
         ae_x = ae_m["month_start"].tolist() if not ae_m.empty else []
         ae_y = ae_m["n_ae"].tolist() if not ae_m.empty else []
 
-        # ── Temporal correlation row (annual, normalized) ──────────────────
-        if not q.empty:
-            q_yr = q.copy()
-            q_yr["year"] = q_yr["snapshot_date"].dt.year
+        # ── Temporal correlation row (SEMI-ANNUAL, normalized) ──────────────
+        # Aggregate quarterly AE to H1 (Q1+Q2) and H2 (Q3+Q4)
         if not ae_m.empty:
-            ae_m_yr = ae_m.copy()
-            ae_m_yr["year"] = ae_m_yr["month_start"].dt.year
-            ae_annual = ae_m_yr.groupby("year")["n_ae"].sum()
+            ae_mc = ae_m.copy()
+            ae_mc["halfyr"] = ae_mc["month_start"].apply(
+                lambda d: pd.Timestamp(f"{d.year}-01-01") if d.month <= 6
+                          else pd.Timestamp(f"{d.year}-07-01")
+            )
+            ae_semi_s = ae_mc.groupby("halfyr")["n_ae"].sum()
         else:
-            ae_annual = pd.Series(dtype=float)
+            ae_semi_s = pd.Series(dtype=float)
 
-        cs_x, cs_y, cs_cd = [], [], []
+        # Full semi-annual grid (H1 = Jan-1, H2 = Jul-1) for lag computation
+        _hgrid = pd.DatetimeIndex([
+            pd.Timestamp(f"{y}-{m:02d}-01")
+            for y in range(PANEL_START_YEAR, PANEL_END_YEAR + 1)
+            for m in [1, 7]
+        ])
+        ae_full = ae_semi_s.reindex(_hgrid).fillna(0)
+
+        _LAG_LBLS = {0: "lag 0", 1: "+6mo", 2: "+1yr", 3: "+18mo", 4: "+2yr"}
+
+        def _hlbl(t: pd.Timestamp) -> str:
+            return f"{t.year} H{'1' if t.month <= 6 else '2'}"
+
+        cs_x, cs_y, cs_cd, cs_text = [], [], [], []
         ca_x, ca_y, ca_cd = [], [], []
         corr_names = []
 
         for col, label, *_ in _ALL_SIG_FLAT:
-            if not q.empty and col in q.columns and not q[col].isna().all():
-                sig_annual = q_yr.groupby("year")[col].mean()
-                common = sorted(
-                    set(sig_annual.index) & set(ae_annual.index)
-                    & set(range(PANEL_START_YEAR, PANEL_END_YEAR + 1))
-                )
+            sig_avail = (
+                not agg.empty and col in agg.columns
+                and not agg[col].isna().all()
+            )
+            if sig_avail:
+                sig_semi_s = agg.set_index("period_start")[col].dropna()
+                sig_full   = sig_semi_s.reindex(_hgrid)   # NaN where no inspection
+                vis_ts = [t for t in _hgrid if pd.notna(sig_full.get(t))]
             else:
-                sig_annual = pd.Series(dtype=float)
-                common = []
+                sig_semi_s = pd.Series(dtype=float)
+                sig_full   = pd.Series(np.nan, index=_hgrid)
+                vis_ts = []
 
-            if len(common) >= 3:
-                sv = np.array([sig_annual[y] for y in common])
-                av = np.array([ae_annual[y] for y in common])
+            if len(vis_ts) >= 3:
+                sv = np.array([float(sig_semi_s[t]) for t in vis_ts])
                 sv_n = (sv - sv.min()) / ((sv.max() - sv.min()) + 1e-12)
-                av_n = (av - av.min()) / ((av.max() - av.min()) + 1e-12)
-                ts = [pd.Timestamp(f"{y}-07-01") for y in common]
+                av_all = ae_full.values.astype(float)
+                av_n_all = (av_all - av_all.min()) / ((av_all.max() - av_all.min()) + 1e-12)
 
-                # Spearman ρ at lag +1yr
-                lag_pairs = [
-                    (float(sig_annual.get(y)), float(ae_annual.get(y + 1)))
-                    for y in common if y + 1 in ae_annual.index
-                    and not np.isnan(sig_annual.get(y, np.nan))
-                    and not np.isnan(ae_annual.get(y + 1, np.nan))
-                ]
-                if len(lag_pairs) >= 4:
-                    lx = pd.Series([p[0] for p in lag_pairs])
-                    ly = pd.Series([p[1] for p in lag_pairs])
-                    rho = lx.rank().corr(ly.rank())
-                    rho_tag = f"ρ={rho:+.2f}  (lag +1yr, n={len(lag_pairs)})"
+                # Multi-lag Spearman ρ: signal at t predicts AE at t + lag half-years
+                n_h = len(_hgrid)
+                lag_results: dict[int, tuple[float, int]] = {}
+                for lag in range(5):
+                    pairs = [
+                        (float(sig_full.iloc[i]), float(ae_full.iloc[i + lag]))
+                        for i in range(n_h - lag)
+                        if pd.notna(sig_full.iloc[i])
+                    ]
+                    if len(pairs) >= 4:
+                        lx = pd.Series([p[0] for p in pairs])
+                        ly = pd.Series([p[1] for p in pairs])
+                        lag_results[lag] = (lx.rank().corr(ly.rank()), len(pairs))
+
+                best_lag = (
+                    max(lag_results, key=lambda l: abs(lag_results[l][0]))
+                    if lag_results else None
+                )
+                if best_lag is not None:
+                    brho, bn = lag_results[best_lag]
+                    rho_pt    = f"  ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]}"
+                    cs_text_i = [""] * (len(sv_n) - 1) + [rho_pt]
+                    name_r    = f"{label}  ·  best ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]} (n={bn})"
+                    if 2 in lag_results and best_lag != 2:
+                        r1yr, _ = lag_results[2]
+                        name_r += f"  |  +1yr: ρ={r1yr:+.2f}"
                 else:
-                    rho_tag = f"(n<4 pairs at lag +1yr)"
+                    cs_text_i = [""] * len(sv_n)
+                    name_r    = f"{label}  ·  (n<4)"
 
-                cs_x.append(ts);  cs_y.append(sv_n.tolist())
-                ca_x.append(ts);  ca_y.append(av_n.tolist())
-                cs_cd.append(np.column_stack([common, sv]).tolist())
-                ca_cd.append(np.column_stack([common, av]).tolist())
-                corr_names.append(f"{label}  ·  {rho_tag}")
+                cs_x.append(vis_ts);  cs_y.append(sv_n.tolist())
+                cs_cd.append([[_hlbl(t), float(sig_semi_s[t])] for t in vis_ts])
+                cs_text.append(cs_text_i)
+                ca_x.append(list(_hgrid));  ca_y.append(av_n_all.tolist())
+                ca_cd.append([[_hlbl(t), float(ae_full[t])] for t in _hgrid])
+                corr_names.append(name_r)
             else:
-                cs_x.append([]); cs_y.append([]); cs_cd.append([])
+                cs_x.append([]); cs_y.append([]); cs_cd.append([]); cs_text.append([])
                 ca_x.append([]); ca_y.append([]); ca_cd.append([])
                 corr_names.append(f"{label}  ·  (no data)")
 
         return (agg_x, agg_y, agg_cd, agg_sz,
                 dot_x, dot_y, dot_cd,
                 ae_x, ae_y,
-                cs_x, cs_y, cs_cd,
+                cs_x, cs_y, cs_cd, cs_text,
                 ca_x, ca_y, ca_cd,
                 corr_names)
 
@@ -691,7 +723,7 @@ def _fig_case_study_multi(
     (ax0, ay0, acd0, asz0,
      dx0, dy0, dcd0,
      ex0, ey0,
-     csx0, csy0, cscd0,
+     csx0, csy0, cscd0, cst0,
      cax0, cay0, cacd0,
      cnames0) = _unpack(ad)
 
@@ -705,7 +737,7 @@ def _fig_case_study_multi(
             "(bubble = # facilities · use dropdowns to filter drug or signal)",
             "FAERS serious AE reports (quarterly)",
             "Temporal correlation: signal (solid) vs AE count (dashed), both normalized 0→1  "
-            "│ select a specific signal above to reveal  ·  ρ(lag +1yr) shown in legend",
+            "│ semi-annual  ·  select a signal to reveal  ·  best-lag ρ shown on chart",
         ],
         row_heights=[0.36, 0.22, 0.42],
     )
@@ -760,10 +792,14 @@ def _fig_case_study_multi(
 
     # Row 3 – corr signal traces [2N+1..3N] (initially hidden)
     for i, (col, label, color, dash, grp) in enumerate(_ALL_SIG_FLAT):
-        cd_cs = cscd0[i] if cscd0[i] else None
+        cd_cs  = cscd0[i] if cscd0[i] else None
+        cst_i  = cst0[i]  if cst0[i]  else []
         fig.add_trace(go.Scatter(
             x=csx0[i], y=csy0[i],
-            name=cnames0[i], mode="lines+markers",
+            name=cnames0[i], mode="lines+markers+text",
+            text=cst_i,
+            textposition="middle right",
+            textfont=dict(size=11, color=color),
             line=dict(color=color, width=2.8, dash="solid"),
             marker=dict(size=9),
             connectgaps=False, customdata=cd_cs,
@@ -771,9 +807,9 @@ def _fig_case_study_multi(
             legendgrouptitle=dict(text="Correlation row") if i == 0 else {},
             visible=False, showlegend=True,
             hovertemplate=(
-                f"<b>%{{x|%Y}}</b><br>{label}: %{{customdata[1]:.0%}}<br>"
+                f"<b>%{{customdata[0]}}</b><br>{label}: %{{customdata[1]:.0%}}<br>"
                 "Normalized: %{y:.2f}<extra></extra>"
-            ) if cd_cs else f"<b>%{{x|%Y}}</b><br>{label} (norm): %{{y:.2f}}<extra></extra>",
+            ) if cd_cs else f"<b>%{{x|%b %Y}}</b><br>{label} (norm): %{{y:.2f}}<extra></extra>",
         ), row=3, col=1)
 
     # Row 3 – corr AE traces [3N+1..4N] (initially hidden)
@@ -788,9 +824,9 @@ def _fig_case_study_multi(
             legendgroup=f"corr_{grp}",
             visible=False, showlegend=(i == 0),
             hovertemplate=(
-                "<b>%{x|%Y}</b><br>AE reports: %{customdata[1]:,.0f}<br>"
+                "<b>%{customdata[0]}</b><br>AE reports: %{customdata[1]:,.0f}<br>"
                 "Normalized: %{y:.2f}<extra></extra>"
-            ) if cd_ca else "<b>%{x|%Y}</b><br>AE count (norm): %{y:.2f}<extra></extra>",
+            ) if cd_ca else "<b>%{x|%b %Y}</b><br>AE count (norm): %{y:.2f}<extra></extra>",
         ), row=3, col=1)
 
     # ── Drug dropdown (updates DATA, not visibility) ───────────────────────────
@@ -798,7 +834,7 @@ def _fig_case_study_multi(
         (ax, ay, acd, asz,
          dx, dy, dcd,
          ex, ey,
-         csx, csy, cscd,
+         csx, csy, cscd, cst,
          cax, cay, cacd,
          cnames) = _unpack(d)
         return {
@@ -806,6 +842,11 @@ def _fig_case_study_multi(
             "y":           ay + dy + [ey] + csy + cay,
             "customdata":  acd + dcd + [None] + cscd + cacd,
             "marker.size": asz + [9]*N + [None] + [None]*N + [None]*N,
+            "text": (
+                [[]]*N + [[]]*N + [[]]   # agg + dot + AE bar: no inline text
+                + cst                    # corr signal: ρ on last point
+                + [[]]*N                 # corr AE: no inline text
+            ),
             "name": (
                 [lbl for _, lbl, *_ in _ALL_SIG_FLAT]
                 + [f"{lbl} (per FEI)" for _, lbl, *_ in _ALL_SIG_FLAT]
