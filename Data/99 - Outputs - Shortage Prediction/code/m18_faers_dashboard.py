@@ -596,63 +596,66 @@ def _fig_case_study_multi(
         ae_x = ae_m["month_start"].tolist() if not ae_m.empty else []
         ae_y = ae_m["n_ae"].tolist() if not ae_m.empty else []
 
-        # ── Temporal correlation row (SEMI-ANNUAL, normalized) ──────────────
-        # Aggregate quarterly AE to H1 (Q1+Q2) and H2 (Q3+Q4)
+        # ── Temporal correlation row (QUARTERLY, forward-filled + 2Q rolling mean) ──
+        # Quarterly grid: Jan / Apr / Jul / Oct starts
+        _qgrid = pd.date_range(
+            f"{PANEL_START_YEAR}-01-01",
+            f"{PANEL_END_YEAR}-10-01",
+            freq="QS",
+        )
+        n_q = len(_qgrid)
+
+        # AE already at quarterly resolution (month_start = QS dates from FAERS)
         if not ae_m.empty:
-            ae_mc = ae_m.copy()
-            ae_mc["halfyr"] = ae_mc["month_start"].apply(
-                lambda d: pd.Timestamp(f"{d.year}-01-01") if d.month <= 6
-                          else pd.Timestamp(f"{d.year}-07-01")
-            )
-            ae_semi_s = ae_mc.groupby("halfyr")["n_ae"].sum()
+            ae_qrt = ae_m.set_index("month_start")["n_ae"].reindex(_qgrid).fillna(0)
         else:
-            ae_semi_s = pd.Series(dtype=float)
+            ae_qrt = pd.Series(0.0, index=_qgrid)
 
-        # Full semi-annual grid (H1 = Jan-1, H2 = Jul-1) for lag computation
-        _hgrid = pd.DatetimeIndex([
-            pd.Timestamp(f"{y}-{m:02d}-01")
-            for y in range(PANEL_START_YEAR, PANEL_END_YEAR + 1)
-            for m in [1, 7]
-        ])
-        ae_full = ae_semi_s.reindex(_hgrid).fillna(0)
+        ae_vals   = ae_qrt.values.astype(float)
+        av_n_all  = (ae_vals - ae_vals.min()) / ((ae_vals.max() - ae_vals.min()) + 1e-12)
 
-        _LAG_LBLS = {0: "lag 0", 1: "+6mo", 2: "+1yr", 3: "+18mo", 4: "+2yr"}
+        _LAG_LBLS = {0: "lag 0", 1: "+1Q (3mo)", 2: "+2Q (6mo)",
+                     3: "+3Q (9mo)", 4: "+4Q (1yr)"}
 
-        def _hlbl(t: pd.Timestamp) -> str:
-            return f"{t.year} H{'1' if t.month <= 6 else '2'}"
+        def _qlbl(t: pd.Timestamp) -> str:
+            return f"{t.year} Q{(t.month - 1) // 3 + 1}"
+
+        # Build quarterly facility-profile per signal once (forward-fill + 2Q rolling)
+        _q_drug: dict[str, pd.Series] = {}
+        if not q.empty:
+            q_qtr = q.copy()
+            q_qtr["qtr"] = q_qtr["snapshot_date"].dt.to_period("Q").dt.start_time
+            for _col, *_ in _ALL_SIG_FLAT:
+                if _col in q_qtr.columns and not q_qtr[_col].isna().all():
+                    _raw = q_qtr.groupby("qtr")[_col].mean()
+                    _filled = _raw.reindex(_qgrid).ffill()          # carry last inspection forward
+                    _smooth = _filled.rolling(window=2, min_periods=1).mean()
+                    _q_drug[_col] = _smooth
+                else:
+                    _q_drug[_col] = pd.Series(dtype=float)
 
         cs_x, cs_y, cs_cd, cs_text = [], [], [], []
         ca_x, ca_y, ca_cd = [], [], []
         corr_names = []
 
         for col, label, *_ in _ALL_SIG_FLAT:
-            sig_avail = (
-                not agg.empty and col in agg.columns
-                and not agg[col].isna().all()
+            sig_q  = _q_drug.get(col, pd.Series(dtype=float))
+            vis_ts = (
+                [t for t in _qgrid if pd.notna(sig_q.get(t, np.nan))]
+                if not sig_q.empty else []
             )
-            if sig_avail:
-                sig_semi_s = agg.set_index("period_start")[col].dropna()
-                sig_full   = sig_semi_s.reindex(_hgrid)   # NaN where no inspection
-                vis_ts = [t for t in _hgrid if pd.notna(sig_full.get(t))]
-            else:
-                sig_semi_s = pd.Series(dtype=float)
-                sig_full   = pd.Series(np.nan, index=_hgrid)
-                vis_ts = []
 
-            if len(vis_ts) >= 3:
-                sv = np.array([float(sig_semi_s[t]) for t in vis_ts])
-                sv_n = (sv - sv.min()) / ((sv.max() - sv.min()) + 1e-12)
-                av_all = ae_full.values.astype(float)
-                av_n_all = (av_all - av_all.min()) / ((av_all.max() - av_all.min()) + 1e-12)
+            if len(vis_ts) >= 4:
+                sv    = np.array([float(sig_q[t]) for t in vis_ts])
+                sv_n  = (sv - sv.min()) / ((sv.max() - sv.min()) + 1e-12)
 
-                # Multi-lag Spearman ρ: signal at t predicts AE at t + lag half-years
-                n_h = len(_hgrid)
+                # Lag ρ on the full quarterly grid
                 lag_results: dict[int, tuple[float, int]] = {}
                 for lag in range(5):
                     pairs = [
-                        (float(sig_full.iloc[i]), float(ae_full.iloc[i + lag]))
-                        for i in range(n_h - lag)
-                        if pd.notna(sig_full.iloc[i])
+                        (float(sig_q.iloc[i]), float(ae_qrt.iloc[i + lag]))
+                        for i in range(n_q - lag)
+                        if pd.notna(sig_q.iloc[i])
                     ]
                     if len(pairs) >= 4:
                         lx = pd.Series([p[0] for p in pairs])
@@ -660,9 +663,8 @@ def _fig_case_study_multi(
                         lag_results[lag] = (lx.rank().corr(ly.rank()), len(pairs))
 
                 if fixed_lag is not None:
-                    # Specific lag requested
                     if fixed_lag in lag_results:
-                        brho, bn = lag_results[fixed_lag]
+                        brho, bn  = lag_results[fixed_lag]
                         rho_pt    = f"  ρ={brho:+.2f} @ {_LAG_LBLS[fixed_lag]}"
                         cs_text_i = [""] * (len(sv_n) - 1) + [rho_pt]
                         name_r    = f"{label}  ·  ρ={brho:+.2f} @ {_LAG_LBLS[fixed_lag]} (n={bn})"
@@ -670,28 +672,27 @@ def _fig_case_study_multi(
                         cs_text_i = [""] * len(sv_n)
                         name_r    = f"{label}  ·  (n<4 at {_LAG_LBLS.get(fixed_lag, '?')})"
                 else:
-                    # Auto: pick best lag per signal
                     best_lag = (
                         max(lag_results, key=lambda l: abs(lag_results[l][0]))
                         if lag_results else None
                     )
                     if best_lag is not None:
-                        brho, bn = lag_results[best_lag]
+                        brho, bn  = lag_results[best_lag]
                         rho_pt    = f"  ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]}"
                         cs_text_i = [""] * (len(sv_n) - 1) + [rho_pt]
                         name_r    = f"{label}  ·  best ρ={brho:+.2f} @ {_LAG_LBLS[best_lag]} (n={bn})"
                         if 2 in lag_results and best_lag != 2:
-                            r1yr, _ = lag_results[2]
-                            name_r += f"  |  +1yr: ρ={r1yr:+.2f}"
+                            r2q, _ = lag_results[2]
+                            name_r += f"  |  +2Q: ρ={r2q:+.2f}"
                     else:
                         cs_text_i = [""] * len(sv_n)
                         name_r    = f"{label}  ·  (n<4)"
 
                 cs_x.append(vis_ts);  cs_y.append(sv_n.tolist())
-                cs_cd.append([[_hlbl(t), float(sig_semi_s[t])] for t in vis_ts])
+                cs_cd.append([[_qlbl(t), float(sig_q[t])] for t in vis_ts])
                 cs_text.append(cs_text_i)
-                ca_x.append(list(_hgrid));  ca_y.append(av_n_all.tolist())
-                ca_cd.append([[_hlbl(t), float(ae_full[t])] for t in _hgrid])
+                ca_x.append(list(_qgrid));  ca_y.append(av_n_all.tolist())
+                ca_cd.append([[_qlbl(t), float(ae_qrt[t])] for t in _qgrid])
                 corr_names.append(name_r)
             else:
                 cs_x.append([]); cs_y.append([]); cs_cd.append([]); cs_text.append([])
@@ -718,7 +719,7 @@ def _fig_case_study_multi(
     ad = _build_data(all_q, ae_all, include_dots=False)
 
     # "All drugs" precomputed at each fixed lag (for lag dropdown)
-    _LAG_LBLS_UI = {0: "lag 0", 1: "+6mo", 2: "+1yr", 3: "+18mo", 4: "+2yr"}
+    _LAG_LBLS_UI = {0: "lag 0", 1: "+1Q (3mo)", 2: "+2Q (6mo)", 3: "+3Q (9mo)", 4: "+4Q (1yr)"}
     ad_by_lag = {
         lag: _build_data(all_q, ae_all, include_dots=False, fixed_lag=lag)
         for lag in range(5)
@@ -752,8 +753,8 @@ def _fig_case_study_multi(
             "Quality signals aggregate  "
             "(bubble = # facilities · use dropdowns to filter drug or signal)",
             "FAERS serious AE reports (quarterly)",
-            "Temporal correlation: signal (solid) vs AE count (dashed), both normalized 0→1  "
-            "│ semi-annual  ·  select a signal to reveal  ·  best-lag ρ shown on chart",
+            "Temporal correlation: signal (solid, quarterly + 2Q rolling mean) vs AE count (dashed)  "
+            "│ select a signal to reveal  ·  best-lag ρ shown on chart",
         ],
         row_heights=[0.36, 0.22, 0.42],
     )
