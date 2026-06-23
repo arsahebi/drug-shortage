@@ -526,6 +526,26 @@ on site → Major; deficient system or procedure only → Moderate; paperwork on
   * FacilityWide = quality-system-level failure affecting all production
   * Unclear = text insufficient to judge breadth
 
+- root_cause_type: why did this failure occur? Choose based on the mechanism described, \
+not on severity. Capital and Cultural failures can both be Minor or Critical.
+  * Capital = deficiency caused by missing, inadequate, or broken equipment, facilities, \
+or designed procedures (SOPs). Examples: no procedure exists; equipment was never qualified \
+or validated; the SOP was inadequate; the facility design did not support contamination \
+control; insufficient resources were allocated to build the system.
+  * Cultural = deficiency caused by people not following or enforcing existing procedures — \
+a behavioral, management, or organizational failure. Examples: trained personnel did not \
+follow the SOP; management accepted non-compliance; data was altered or not recorded \
+contemporaneously; deviations were not reported; quality unit did not exercise oversight.
+  * Mixed = the text documents clear evidence of BOTH a design/resource gap AND a \
+behavioral/management failure contributing to the same observation.
+  * Unclear = the text is insufficient to distinguish whether the root cause is a gap \
+in the system design or a gap in execution.
+  Decision tip: if the SOP exists but was ignored → Cultural; if the SOP does not exist \
+or is inadequate → Capital; if both are stated → Mixed.
+
+- root_cause_rationale: 1–2 sentence justification for root_cause_type. Cite the specific \
+text that drove the assignment. If Unclear, state what information is missing.
+
 - remediation_signal: Strong = specific corrective actions clearly stated; \
 Partial = some corrective intent mentioned; Weak = vague; None = not mentioned
 
@@ -575,8 +595,37 @@ batch failure). False for general missing evaluation or weak procedure requireme
 Do NOT paraphrase.
 - confidence: lower if the text is very short, illegible, or ambiguous.
 
+EDGE CASE GUIDANCE:
+
+Severity calibration — common errors to avoid:
+  (1) A procedure that "lacks" or "does not include" required testing = Moderate, not Major. \
+Severity requires the text to document an actual failure event, not just a missing control.
+  (2) "Multiple batches" with inadequate controls = still Moderate unless a specific batch \
+was found defective. The NUMBER of affected batches does not elevate severity on its own.
+  (3) Cleaning validation "was not performed" for a sterile product-contact surface is \
+Major because the risk of an actual sterility failure is near-certain — this is the systemic \
+exception where severity elevates without a confirmed defect.
+  (4) Environmental monitoring trending out of alert levels = Major if confirmed contamination \
+found; Moderate if only the TREND is adverse but no confirmed contamination.
+
+Root cause calibration — common errors to avoid:
+  (1) If an SOP EXISTED but personnel bypassed or failed to follow it → Cultural. Do not \
+assign Capital just because the observation describes a gap in practice.
+  (2) If the SOP itself is described as inadequate (e.g., "the SOP does not specify \
+acceptance criteria") → Capital, even if personnel were trying to follow it.
+  (3) A data integrity failure where management was aware and did not act → Cultural, not \
+Mixed (management inaction is a cultural failure, not a capital gap).
+
+Scope calibration:
+  (1) An observation describing failures across all production batches reviewed = FacilityWide \
+only if the failure is in the quality management system itself (e.g., CAPA program, deviation \
+management). If it is an operational failure affecting many batches = MultipleProducts.
+  (2) SingleBatch is correct even when multiple examples within the same batch are cited.
+
 Analyze the following observation:\
 """
+
+_ANTHROPIC_CACHE_STATS: dict = {"calls": 0, "write": 0, "read": 0}
 
 _ANTHROPIC_PROMPT_VARIABLE_TEMPLATE = """\
 
@@ -842,6 +891,13 @@ def _call_anthropic(client, obs_row: pd.Series) -> tuple[dict, str, str]:
                     time.sleep(RATE_LIMIT_SLEEP * (attempt + 1))
                     continue
                 raise
+
+        usage = response.usage
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_read  = getattr(usage, "cache_read_input_tokens", 0) or 0
+        _ANTHROPIC_CACHE_STATS["write"] += cache_write
+        _ANTHROPIC_CACHE_STATS["read"]  += cache_read
+        _ANTHROPIC_CACHE_STATS["calls"] += 1
 
         result = None
         for block in response.content:
@@ -1182,5 +1238,14 @@ if not DRY_RUN and client is not None:
           f"errors: {n_error}  skipped: {n_skipped})")
     print(f"Total rows in output  : {len(combined)}")
     print(f"Output                : {SIGNALS_CSV}")
+    if PROVIDER == "anthropic" and _ANTHROPIC_CACHE_STATS["calls"] > 0:
+        s = _ANTHROPIC_CACHE_STATS
+        pct = 100 * s["read"] / max(s["read"] + s["write"], 1)
+        print()
+        print(f"Anthropic cache stats : {s['calls']} calls  "
+              f"write={s['write']:,} tok  read={s['read']:,} tok  "
+              f"({pct:.0f}% cache hit rate)")
+        if s["read"] == 0 and s["calls"] > 1:
+            print("  ⚠ No cache hits — prompt prefix may be below the 4,096-token minimum.")
     print()
     print("Next step: python 02_aggregate_fei_features.py")
