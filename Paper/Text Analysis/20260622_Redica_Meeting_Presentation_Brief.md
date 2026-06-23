@@ -258,7 +258,7 @@ This validation step is required before we can publish these dimensions as resea
 ---
 
 ## ⚠ Document checklist before sharing
-- [ ] `20260611_483_LLM_Prompts_Expert_Review.docx` — **needs update (2 items)**:
-  1. `data_integrity_flag_llm` still described as binary flag — update to 5-class `data_integrity_type` (Falsification / AuditTrail / RawData / ContemporaneousRecording / NoIssue); binary flag is derived from this.
-  2. `root_cause_type` and `root_cause_rationale` are missing — add definitions: Capital (equipment/facility/SOP gap) / Cultural (behavioral/management failure) / Mixed / Unclear.
+- [x] `20260611_483_LLM_Prompts_Expert_Review.docx` — updated 2026-06-23:
+  1. Section 1.3 rewritten: `data_integrity_type` 5-class (Falsification/AuditTrail/RawData/ContemporaneousRecording/NoIssue); binary flag derived; reviewer question updated to note 35% vs 13% gap.
+  2. Section 2.4 updated: field names `[root_cause_type]` / `[root_cause_rationale]` added; rationale definition added; reviewer question updated with observed distribution (Capital 46%, Mixed 37%, Cultural 16%).
 - [ ] `20260616_Redica_Classification_Comparison.docx` — update with full-run numbers: severity 79%, domain 65%, DI F1 0.45
