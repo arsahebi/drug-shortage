@@ -59,10 +59,10 @@
 ---
 
 ## Slide 4 — How we extract features: the LLM pipeline
-**Title:** Each observation text → GPT prompt → JSON with 10 structured dimensions
+**Title:** Each observation text → Anthropic Haiku 4.5 prompt → JSON with 10 structured dimensions
 
 **Visual: simple flow diagram**
-`[Observation text (verbatim)]` → `[GPT prompt + JSON schema]` → `[10-field structured output]`
+`[Observation text (verbatim)]` → `[Anthropic Haiku 4.5 prompt + JSON schema]` → `[10-field structured output]`
 
 **Key design choices:**
 - Strict JSON schema (OpenAI structured outputs mode — no hallucinated fields)
@@ -181,23 +181,27 @@
 
 ---
 
-## Slide 8 — Where we disagree and why
-**Title:** Three systematic gaps — all explainable, none random
+## Slide 8 — Where we agree and where we still differ
+**Title:** Severity is now calibrated — DI threshold is the key open question
 
-**Gap 1 — Severity (the biggest gap)**
-- Redica: 59% of observations = Major
-- Us: 29% = Major (after updating our prompt)
-- Root cause: Redica's PIC/S Major = "significant non-compliance even without confirmed failure." Our prompt requires a confirmed defect or near-certain risk. Neither is wrong — they answer different questions.
+**Resolved — Severity**
+- Redica: 70% of observations = Major or Critical
+- Us: 67% = Major or Critical — 3pp gap (was 25pp with prior prompt)
+- Our updated prompt now aligns with Redica's PIC/S standard for confirmed defects
+- Agreement rate: **79%** (same-text comparison)
 
-**Gap 2 — Domain assignment**
+**Persistent — Domain assignment**
+- Agreement: **65%** (up from 62% with prior prompt)
 - Top pattern: Redica = QualitySystem, Us = ProductionControls (83 cases) or LabControls (79 cases)
 - Root cause: We assign the specific operational domain where the failure occurred. Redica assigns QualitySystem when the quality unit failed to oversee that domain.
 
-**Gap 3 — Data integrity**
-- We flag ~30% more observations as DI issues (F1 = 0.51)
-- Root cause: Our prompt fires on soft data-reliability language; Redica reserves DI labels for confirmed specific sub-types (Data Manipulation, Contemporaneous, etc.)
+**Open question — Data integrity threshold**
+- We flag **35%** of observations as DI issues; Redica flags **13%** (F1 = 0.45, 2.8× over-flag)
+- Our 5-class DI type system casts a wider net: captures raw-data and documentation gaps that Redica reserves for confirmed ALCOA violations only
+- Root cause: Redica's 13-label taxonomy is tighter (confirmed sub-type required); our prompt fires on softer data-reliability language
+- **Question for meeting:** Is our broader DI detection useful for research prediction, or should we tighten to match Redica's confirmed-violation standard?
 
-**Speaker note:** For each gap, the question is: which definition is more useful for predicting manufacturing risk?
+**Speaker note:** Framing shift from prior version — severity is no longer the key gap; DI threshold is the productive discussion topic for the meeting.
 
 ---
 
@@ -230,11 +234,10 @@ This validation step is required before we can publish these dimensions as resea
 - Full field-by-field comparison with validation numbers → `20260616_Redica_Classification_Comparison.docx`
 
 **Proposed next steps:**
-1. Redica shares annotator rubric for severity (Major/Other boundary)
-2. We update our Major prompt based on PIC/S guidance and re-run
-3. Together map our 5 DI types to Redica's 13 ALCOA labels — confirm or revise
-4. Agree on a ~50-observation sample: Redica team reviews our prompt rules and validates whether scope / root cause / remediation definitions make regulatory sense
-5. Schedule follow-up in 4–6 weeks
+1. Redica shares annotator rubric for severity (Major/Other boundary) — confirm our calibration is right or adjust
+2. Together map our 5 DI types to Redica's 13 ALCOA labels — agree on a shared threshold (our 35% vs their 13%)
+3. Agree on a ~50-observation sample: Redica team reviews our prompt rules and validates whether scope / root cause / remediation definitions make regulatory sense
+4. Schedule follow-up in 4–6 weeks
 
 ---
 
@@ -255,5 +258,7 @@ This validation step is required before we can publish these dimensions as resea
 ---
 
 ## ⚠ Document checklist before sharing
-- [ ] `20260611_483_LLM_Prompts_Expert_Review.docx` — **needs update**: still describes `data_integrity_flag_llm` as a binary flag. Must be updated to describe the 5-class `data_integrity_type` (Falsification / AuditTrail / RawData / ContemporaneousRecording / NoIssue). Binary flag is derived from this field.
-- [ ] `20260616_Redica_Classification_Comparison.docx` — current (v2 validation numbers, Us/Our/We language)
+- [ ] `20260611_483_LLM_Prompts_Expert_Review.docx` — **needs update (2 items)**:
+  1. `data_integrity_flag_llm` still described as binary flag — update to 5-class `data_integrity_type` (Falsification / AuditTrail / RawData / ContemporaneousRecording / NoIssue); binary flag is derived from this.
+  2. `root_cause_type` and `root_cause_rationale` are missing — add definitions: Capital (equipment/facility/SOP gap) / Cultural (behavioral/management failure) / Mixed / Unclear.
+- [ ] `20260616_Redica_Classification_Comparison.docx` — update with full-run numbers: severity 79%, domain 65%, DI F1 0.45
