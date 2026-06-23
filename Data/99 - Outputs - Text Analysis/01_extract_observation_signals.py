@@ -79,10 +79,12 @@ SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
 # "redica" : read from redica_483_observations.csv, text col = obs_text
 SOURCE = "pdf"
 _REDICA_OBS_CSV     = HERE / "redica_483_observations.csv"
-_REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals.csv"
+_REDICA_SIGNALS_CSV_OPENAI    = HERE / "redica_483_obs_llm_signals.csv"
+_REDICA_SIGNALS_CSV_ANTHROPIC = HERE / "redica_483_obs_llm_signals_anthropic_v2.csv"
+_REDICA_SIGNALS_CSV = _REDICA_SIGNALS_CSV_OPENAI  # resolved after argparse
 
 # ── Provider / Model ───────────────────────────────────────────────────────
-PROVIDER         = "openai"                    # "openai" or "anthropic"
+PROVIDER         = "anthropic"                 # "openai" or "anthropic"
 MODEL_NAME       = "gpt-5-mini"               # OpenAI model
 ANTHROPIC_MODEL  = "claude-haiku-4-5-20251001" # Anthropic model (cheapest/fastest)
 MAX_TOKENS       = 4000
@@ -1027,8 +1029,11 @@ else:
 
 # ── Apply source-dependent paths ──────────────────────────────────────────
 if SOURCE == "redica":
-    OBS_CSV     = _REDICA_OBS_CSV
-    SIGNALS_CSV = _REDICA_SIGNALS_CSV
+    OBS_CSV = _REDICA_OBS_CSV
+    SIGNALS_CSV = (
+        _REDICA_SIGNALS_CSV_ANTHROPIC if PROVIDER == "anthropic"
+        else _REDICA_SIGNALS_CSV_OPENAI
+    )
 # pdf source keeps the defaults set above
 
 if SAMPLE:
