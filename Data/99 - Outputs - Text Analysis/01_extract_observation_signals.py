@@ -121,7 +121,7 @@ VALID_ROOT_CAUSE_TYPE  = {"Capital", "Cultural", "Mixed", "Unclear"}
 VALID_REMEDIATION           = {"Strong", "Partial", "Weak", "None"}
 VALID_DATA_INTEGRITY_TYPE   = {
     "Falsification", "AuditTrail", "RawData", "ContemporaneousRecording", "NoIssue"
-}
+}  # kept for backward compat; not used in schema — DI is now binary flag only
 
 LLM_FLAG_FIELDS = [
     "repeat_flag_llm", "patient_risk_flag_llm",
@@ -193,7 +193,7 @@ Unclear = text insufficient to decide>",
   "remediation_signal": "<Strong | Partial | Weak | None>",
   "repeat_flag_llm": <true or false — explicit evidence this is a repeat finding>,
   "patient_risk_flag_llm": <true or false — explicit harm pathway to patients exists>,
-  "data_integrity_type": "<Falsification | AuditTrail | RawData | ContemporaneousRecording | NoIssue>",
+  "data_integrity_flag_llm": <true or false — explicit data integrity failure is documented>,
   "contamination_flag_llm": <true or false — contamination or sterility-control risk is described>,
   "investigation_flag_llm": <true or false — explicit failure to investigate or inadequate investigation is described>,
   "evidence_quote": "<verbatim substring from the observation text (6–30 words) that most \
@@ -282,20 +282,12 @@ within the same current observation recur or affect multiple products/lines.
 
 - patient_risk_flag_llm: {patient_risk_rule}
 
-- data_integrity_type: classify ONLY when explicit data integrity language is present. \
-Choose None unless a specific DI failure is clearly described. \
-  * Falsification = records altered, fabricated, backdated, or deleted; test results \
-overwritten or hidden; unreported OOS results. \
-  * AuditTrail = audit trail disabled, bypassed, or incomplete; unauthorized system access; \
-electronic records that can be modified without traceability. \
-  * RawData = original raw data missing, overwritten, or inaccessible; no backup; \
-system allows data deletion and original data cannot be recovered. \
-  * ContemporaneousRecording = entries not made at time of activity; logbook entries \
-reconstructed after the fact; times or dates inconsistent with activity. \
-  * NoIssue = no data integrity issue described. \
-Do NOT assign a non-NoIssue type for ordinary missing SOPs, incomplete documentation, \
-weak recordkeeping, inventory or storage control, or cases where data trustworthiness \
-is not directly at issue.
+- data_integrity_flag_llm: mark true ONLY for explicit data trustworthiness failures: \
+falsification, backdating, deleted or altered records, missing raw data, audit-trail \
+problems (disabled/bypassed audit trail, unauthorized system access), unreported OOS \
+results, or records reconstructed after the fact. \
+Do NOT mark true for ordinary missing SOPs, incomplete documentation, weak \
+recordkeeping, or inventory/storage control unless data reliability is directly at issue.
 
 - contamination_flag_llm: mark true for actual contamination OR clear contamination-control \
 risk, including sterility assurance failures, aseptic processing deficiencies, environmental \
@@ -378,17 +370,14 @@ OPENAI_JSON_SCHEMA = {
                 "where harm requires a chain of hypotheticals."
             ),
         },
-        "data_integrity_type": {
-            "type": "string",
-            "enum": sorted(VALID_DATA_INTEGRITY_TYPE),
+        "data_integrity_flag_llm": {
+            "type": "boolean",
             "description": (
-                "Classify data integrity issue type. None = no DI issue. "
-                "Falsification = altered/fabricated/deleted records or hidden results. "
-                "AuditTrail = audit trail disabled/bypassed or unauthorized system access. "
-                "RawData = original raw data missing, overwritten, or inaccessible. "
-                "ContemporaneousRecording = entries not made at time of activity or reconstructed. "
-                "NoIssue = no data integrity issue present. "
-                "Do NOT assign non-NoIssue for missing SOPs or weak documentation alone."
+                "True only for explicit data trustworthiness failures: falsification, "
+                "backdating, deleted/altered records, missing raw data, disabled/bypassed "
+                "audit trail, unauthorized system access, unreported OOS results, or "
+                "records reconstructed after the fact. False for missing SOPs, incomplete "
+                "documentation, or weak recordkeeping where data reliability is not directly at issue."
             ),
         },
         "contamination_flag_llm": {
@@ -427,7 +416,7 @@ OPENAI_JSON_SCHEMA = {
         "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
         "repeat_flag_llm", "patient_risk_flag_llm",
-        "data_integrity_type", "contamination_flag_llm",
+        "data_integrity_flag_llm", "contamination_flag_llm",
         "investigation_flag_llm",
         "evidence_quote", "confidence",
     ],
@@ -576,14 +565,12 @@ or "that would alter the safety, identity, strength, quality or purity of the dr
 product." This is boilerplate CFR citation text, NOT evidence of actual patient risk. \
 Do not trigger patient_risk based on this preamble language alone.
 
-- data_integrity_type: classify ONLY when explicit data integrity language is present. \
-Use NoIssue unless a specific DI failure is clearly described.
-  * Falsification = records altered, fabricated, backdated, or deleted; unreported OOS.
-  * AuditTrail = audit trail disabled/bypassed; unauthorized system access.
-  * RawData = original raw data missing, overwritten, or inaccessible.
-  * ContemporaneousRecording = entries not made at time of activity; reconstructed records.
-  * NoIssue = no data integrity issue described.
-  Do NOT assign non-NoIssue for missing SOPs or weak recordkeeping alone.
+- data_integrity_flag_llm: mark true ONLY for explicit data trustworthiness failures: \
+falsification, backdating, deleted or altered records, missing raw data, audit-trail \
+problems (disabled/bypassed audit trail, unauthorized system access), unreported OOS \
+results, or records reconstructed after the fact. \
+  Do NOT mark true for ordinary missing SOPs, incomplete documentation, weak \
+recordkeeping, or inventory/storage control unless data reliability is directly at issue.
 
 - contamination_flag_llm: mark true for actual contamination OR clear contamination-control \
 risk: sterility assurance failures, aseptic processing deficiencies, environmental \
@@ -712,11 +699,7 @@ def _validate(result: dict, obs_text_clean: str) -> dict:
     result["remediation_signal"] = _coerce_categorical(
         result.get("remediation_signal", ""), VALID_REMEDIATION, "None"
     )
-    result["data_integrity_type"] = _coerce_categorical(
-        result.get("data_integrity_type", "NoIssue"), VALID_DATA_INTEGRITY_TYPE, "NoIssue"
-    )
-    # derive binary flag for backward compatibility with downstream scripts
-    result["data_integrity_flag_llm"] = result["data_integrity_type"] != "NoIssue"
+    result["data_integrity_flag_llm"] = _coerce_bool(result.get("data_integrity_flag_llm", False))
 
     for flag in LLM_FLAG_FIELDS:
         result[flag] = _coerce_bool(result.get(flag, False))
@@ -951,7 +934,7 @@ def _build_row(obs_row: pd.Series, llm: dict, status: str, error: str) -> dict:
     for field in [
         "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
-        "data_integrity_type", "data_integrity_flag_llm",
+        "data_integrity_flag_llm",
         *LLM_FLAG_FIELDS,
         "evidence_quote", "confidence",
     ]:

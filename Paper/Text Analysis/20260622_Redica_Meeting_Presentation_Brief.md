@@ -2,7 +2,7 @@
 **Audience:** Redica technical team (feature engineers + domain experts)
 **Duration:** 60 minutes
 **Tone:** Collaborative — we explain our rationale, they explain theirs, we find alignment
-**Handouts:** `20260611_483_LLM_Prompts_Expert_Review.docx` (verbatim prompt rules) · `20260616_Redica_Classification_Comparison.docx` (field-by-field validation numbers)
+**Handouts:** *(none — prompt rules document will be shared after the meeting, not before)*
 
 ---
 
@@ -67,7 +67,7 @@
 **Key design choices:**
 - Strict JSON schema (OpenAI structured outputs mode — no hallucinated fields)
 - Each field independently defined with anchor examples in the prompt
-- Binary flags derived from categorical fields (e.g., DI flag = type ≠ NoIssue)
+- Binary flags output directly from the model (e.g., data integrity flag = True/False)
 - Applied to 1,083 Redica observations + 622 PDF observations (separate runs)
 
 **Example — observation text to classification (output + the rule that drove it):**
@@ -77,7 +77,7 @@
 | Dimension | Value | Prompt rule (excerpt) |
 |---|---|---|
 | Severity | **Major** | *"Major: text documents an ACTUAL defect or confirmed failure found at the facility… confirmed examples: test results invalidated, batch records reconstructed"* |
-| Data integrity type | **ContemporaneousRecording** | *"ContemporaneousRecording: entries not made at the time of activity, or records reconstructed after the fact"* |
+| Data integrity flag | **True** | *"True only for explicit data trustworthiness failures: falsification, backdating, deleted records, disabled audit trail, unreported OOS, reconstructed entries"* |
 | Scope | **SingleBatch** | *"SingleBatch: failure explicitly tied to one batch or one product run"* |
 | Root cause | **Cultural** | *"Cultural: failure reflects a behavioral, procedural, or management gap — not lack of equipment or infrastructure"* |
 | Remediation signal | **None** | *"None: no corrective action, commitment, or investigation language present in the text"* |
@@ -99,7 +99,7 @@
 | **Scope of failure** | 4-class | SingleBatch · MultipleProducts · FacilityWide · Unclear | How broadly the failure extends |
 | **Root cause type** | 4-class | Capital · Cultural · Mixed · Unclear | Why the failure occurred |
 | **Remediation signal** | 4-level ordinal | Strong · Partial · Weak · None | Is facility taking corrective action? |
-| **Data integrity type** | 5-class | Falsification · AuditTrail · RawData · ContemporaneousRecording · NoIssue | Specific DI sub-type |
+| **Data integrity flag** | binary | True / False | Is an explicit DI failure documented? |
 | **Repeat flag** | binary | True / False | Cross-inspection recurrence |
 | **Patient risk flag** | binary | True / False | Direct patient safety implication |
 | **Contamination flag** | binary | True / False | Physical/microbial contamination |
@@ -134,28 +134,29 @@
 | Materials (3%) | Material Sampling and Testing · Material Control · Material Storage · Deviation Investigations |
 | Packaging and Labeling (1%) | Labeling and Packaging Controls · Drug Product Containers and Closures |
 
-**Data Integrity: ALCOA-based taxonomy (13 sub-labels):**
+**Data Integrity: ALCOA-based taxonomy (observed sub-labels from 143 DI-flagged obs, 12.8% of total):**
 
-| DI Label | Closest match in our system |
-|---|---|
-| Data Manipulation | Falsification |
-| Testing into Compliance | (no equivalent — unique) |
-| System Controls | AuditTrail |
-| Backup and Archival | AuditTrail |
-| Paper Record Controls | AuditTrail |
-| Original Data | RawData |
-| Data Destruction | RawData |
-| Contemporaneous | ContemporaneousRecording |
-| Attributable (Batch / Lab / General) | ContemporaneousRecording (partial) |
-| Complete | (no equivalent — gap) |
-| Accurate | (no equivalent — gap) |
+| Redica DI sub-label | % of DI obs | ALCOA+ principle | Question for meeting |
+|---|---|---|---|
+| System Controls | 26% | — (21 CFR 11 / system governance) | Is this ALCOA+ or a separate GMP requirement? |
+| **Contemporaneous** | **21%** | **C — Contemporaneous** | ✓ confirmed ALCOA+ |
+| Complete | 15% | Complete (+) | ✓ confirmed ALCOA+ |
+| Attributable | 12% | A — Attributable | ✓ confirmed ALCOA+ |
+| Data Manipulation | 9% | Accurate + Original | Which ALCOA+ dimension does this map to? |
+| Testing into Compliance | 4% | Accurate | Unique to Redica? Not a named ALCOA+ dimension |
+| Data Destruction | 3% | Enduring | ✓ confirmed ALCOA+ |
+| Backup and Archival | 3% | Enduring / Available | ✓ confirmed ALCOA+ |
+| Original Data | 2% | O — Original | ✓ confirmed ALCOA+ |
+| Accurate / Paper Record Controls | ~2% | Accurate / Legible | |
 
-**Speaker note:** This is a genuine learning moment — walk us through the QSL annotation process. For Quality Unit specifically (36% of observations) — what triggers a QU assignment vs the specific operational domain?
+**Our approach (binary flag):** We use a single True/False flag. True = explicit data trustworthiness failure (falsification, backdating, deleted records, disabled audit trail, unreported OOS, reconstructed entries). The sub-classification is deferred pending Redica feedback.
+
+**Speaker note:** The key question is what drove Redica to build a 13-label ALCOA-anchored taxonomy vs a binary flag — does the sub-type granularity feed a specific downstream model or risk score? This is the question for the meeting that will inform whether we adopt a similar sub-classification or stay binary.
 
 ---
 
 ## Slide 7 — How the two systems compare
-**Title:** Three shared dimensions, four unique to us, two unique to Redica
+**Title:** Two shared dimensions, five unique to us, two unique to Redica
 
 **Shared (comparable):**
 
@@ -163,7 +164,18 @@
 |---|---|---|---|
 | Severity | 4-tier (Critical/Major/Moderate/Minor) | 3-tier (Critical/Major/Other) | ✅ Yes — collapse Moderate+Minor → Other |
 | Domain | 8-class (CFR Part 211) | 6 QSL Areas + L1 sub-labels | ✅ Mostly — 5 of 6 areas map directly |
-| Data integrity | 5-class type | 13 ALCOA-based sub-labels | ⚠ Partial — 3 of our 5 types match; 2 Redica gaps (Complete, Accurate) |
+
+**Data integrity — different approaches:**
+
+| | Us | Redica |
+|---|---|---|
+| **Approach** | Binary flag (True/False) | 13-label ALCOA-based taxonomy |
+| **Rate** | ~17% of observations | 12.8% (143 of 1,083) |
+| **Threshold** | Explicit data trustworthiness failure only | Confirmed ALCOA+ sub-type required |
+| **Top labels** | — | System Controls 26% · Contemporaneous 21% · Complete 15% · Attributable 12% |
+| **Origin** | Conservative binary rule | ALCOA+ (Attributable, Legible, Contemporaneous, Original, Accurate + Complete, Enduring, Available) |
+
+**Question for Redica:** What drove the decision to build a 13-label ALCOA taxonomy rather than a binary flag? Does the sub-type granularity feed a specific downstream risk score?
 
 **Unique to us (no Redica equivalent — expert validation requested):**
 - Scope: SingleBatch / MultipleProducts / FacilityWide / Unclear
@@ -177,31 +189,26 @@
 - Full 483 document summaries
 - QSL L1 sub-labels (more granular than our 8-class violation category)
 
-**Speaker note:** Ask Redica: where do OrgPersonnel (training/qualification) violations and RecordsReports (documentation) violations fall in your QSL taxonomy? Both appear under Quality Unit in Redica — but we assign them to their own categories.
+**Speaker note:** Ask Redica: where do OrgPersonnel (training/qualification) violations and RecordsReports (documentation) violations fall in your QSL taxonomy? Both appear under Quality Unit in Redica — but we assign them to their own categories. On DI: we want to understand whether the 13-label taxonomy was built for a specific predictive model or driven by regulatory/audit use cases — the answer will determine whether we adopt a similar taxonomy after the meeting.
 
 ---
 
 ## Slide 8 — Where we agree and where we still differ
-**Title:** Severity is now calibrated — DI threshold is the key open question
+**Title:** Severity is calibrated — domain assignment is the key open question
 
 **Resolved — Severity**
 - Redica: 70% of observations = Major or Critical
 - Us: 67% = Major or Critical — 3pp gap (was 25pp with prior prompt)
 - Our updated prompt now aligns with Redica's PIC/S standard for confirmed defects
-- Agreement rate: **79%** (same-text comparison)
+- Agreement rate: **79%** (same-text comparison, 1,066 matched observations)
 
 **Persistent — Domain assignment**
 - Agreement: **65%** (up from 62% with prior prompt)
-- Top pattern: Redica = QualitySystem, Us = ProductionControls (83 cases) or LabControls (79 cases)
+- Top mismatch pattern: Redica = QualitySystem, Us = ProductionControls (83 cases) or LabControls (79 cases)
 - Root cause: We assign the specific operational domain where the failure occurred. Redica assigns QualitySystem when the quality unit failed to oversee that domain.
+- **Question for meeting:** Is domain assigned by where the failure happened, or who was responsible for preventing it?
 
-**Open question — Data integrity threshold**
-- We flag **35%** of observations as DI issues; Redica flags **13%** (F1 = 0.45, 2.8× over-flag)
-- Our 5-class DI type system casts a wider net: captures raw-data and documentation gaps that Redica reserves for confirmed ALCOA violations only
-- Root cause: Redica's 13-label taxonomy is tighter (confirmed sub-type required); our prompt fires on softer data-reliability language
-- **Question for meeting:** Is our broader DI detection useful for research prediction, or should we tighten to match Redica's confirmed-violation standard?
-
-**Speaker note:** Framing shift from prior version — severity is no longer the key gap; DI threshold is the productive discussion topic for the meeting.
+**Speaker note:** Severity agreement is nearly perfect — the productive discussion topic is domain philosophy. The disagreement is systematic and interpretable: we assign to the technical domain (lab, production); Redica assigns to Quality Unit as the oversight body. Both are defensible. Understanding Redica's choice will tell us whether to realign our prompt or keep the split as a feature.
 
 ---
 
@@ -213,31 +220,40 @@ Do you have 483 coverage for our remaining 29 FEIs?
 Are pre-2018 documents available — even a partial set?
 Your observation summaries (AI-generated) would also help us — cleaner text than our OCR PDFs.
 
-**2. Guidance on definitions**
+**2. Guidance on domain classification**
 For severity: what is the practical annotator boundary between Major and Other?
-For QSL: where do training violations and documentation violations sit — Quality Unit or the specific domain?
-For DI: help us map our 5 types to your 13 ALCOA sub-labels — confirm or suggest revisions.
+For domain (QSL): when a lab or production failure is documented, do you assign it to the specific technical domain, or to Quality Unit as the responsible oversight body?
+Where do training violations (OrgPersonnel) and documentation violations (RecordsReports) fall in your QSL taxonomy?
 
 **3. Expert validation of our unique dimensions**
 Scope, root cause type, remediation signal, and our binary flags have no Redica equivalent.
-We are leaving the full prompt rules document with you — please read through the prompts and tell us whether the definitions and classification rules are reasonable from a regulatory standpoint.
+We will share the full prompt rules document with you after this meeting — we are asking you to review whether the definitions and classification rules are reasonable from a regulatory standpoint.
 This validation step is required before we can publish these dimensions as research features.
 
 ---
 
-## Slide 10 — Leave-behinds and next steps
-**Title:** What we are leaving with you
+## Slide 10 — Open questions for today
 
-**Documents:**
-- This presentation
-- Full prompt rules (all dimensions, verbatim definitions + examples) → `20260611_483_LLM_Prompts_Expert_Review.docx`
-- Full field-by-field comparison with validation numbers → `20260616_Redica_Classification_Comparison.docx`
+**Title:** What we most want to understand from Redica
 
-**Proposed next steps:**
-1. Redica shares annotator rubric for severity (Major/Other boundary) — confirm our calibration is right or adjust
-2. Together map our 5 DI types to Redica's 13 ALCOA labels — agree on a shared threshold (our 35% vs their 13%)
-3. Agree on a ~50-observation sample: Redica team reviews our prompt rules and validates whether scope / root cause / remediation definitions make regulatory sense
-4. Schedule follow-up in 4–6 weeks
+**On severity:**
+- What is the practical annotator boundary between Major and Other — do annotators see a confirmed defect before calling it Major, or does significant non-compliance alone qualify?
+
+**On domain:**
+- When a lab failure is documented, do you assign to Laboratory or to Quality Unit?
+- Where do training deficiencies and documentation gaps (OrgPersonnel, RecordsReports in our taxonomy) fall in your QSL?
+
+**On data integrity:**
+- What drove the decision to build a 13-label ALCOA-based taxonomy rather than a binary flag?
+- Does each sub-label feed a specific downstream risk score, or is the taxonomy for regulatory audit use?
+- We want to adopt a compatible approach — should we follow ALCOA+ sub-classification after this meeting?
+
+**What happens after this meeting:**
+- We will share our full prompt rules document for your review: definitions, anchor examples, and the distributions we observe
+- We will realign our DI classification to match your ALCOA+ approach based on your feedback
+- Goal: a shared classification framework we can both stand behind for publication
+
+**Speaker note:** Keep this slide conversational — these are genuine open questions, not rhetorical. We want Redica's perspective on each before we commit to final prompt definitions.
 
 ---
 
@@ -258,7 +274,12 @@ This validation step is required before we can publish these dimensions as resea
 ---
 
 ## ⚠ Document checklist before sharing
-- [x] `20260611_483_LLM_Prompts_Expert_Review.docx` — updated 2026-06-23:
-  1. Section 1.3 rewritten: `data_integrity_type` 5-class (Falsification/AuditTrail/RawData/ContemporaneousRecording/NoIssue); binary flag derived; reviewer question updated to note 35% vs 13% gap.
-  2. Section 2.4 updated: field names `[root_cause_type]` / `[root_cause_rationale]` added; rationale definition added; reviewer question updated with observed distribution (Capital 46%, Mixed 37%, Cultural 16%).
-- [ ] `20260616_Redica_Classification_Comparison.docx` — update with full-run numbers: severity 79%, domain 65%, DI F1 0.45
+
+**Shared at meeting (presentation only):**
+- [x] This brief → presentation slides
+
+**Shared after meeting:**
+- [ ] `20260611_483_LLM_Prompts_Expert_Review.docx` — needs update before sharing:
+  - Section 1.3: revert to binary `data_integrity_flag_llm` with `[PLACEHOLDER — DI prompt to be updated after Redica meeting feedback]`
+  - Section 2.4: already updated (root_cause_type + rationale field, observed distribution)
+- [ ] `20260616_Redica_Classification_Comparison.docx` — update with full-run numbers: severity 79%, domain 65%; remove DI comparison section (placeholder pending ALCOA+ alignment)
