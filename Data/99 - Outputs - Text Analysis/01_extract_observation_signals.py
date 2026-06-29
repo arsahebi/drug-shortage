@@ -948,7 +948,12 @@ def _build_row(obs_row: pd.Series, llm: dict, status: str, error: str) -> dict:
 
 def _save(rows: list[dict], path: Path) -> None:
     if rows:
-        pd.DataFrame(rows).to_csv(path, index=False)
+        df = pd.DataFrame(rows)
+        n_before = len(df)
+        df = df.drop_duplicates(subset=["fei", "insp_date", "obs_num"]).reset_index(drop=True)
+        if len(df) < n_before:
+            print(f"  Dropped {n_before - len(df)} duplicate (fei, insp_date, obs_num) rows before saving")
+        df.to_csv(path, index=False)
 
 
 # %%

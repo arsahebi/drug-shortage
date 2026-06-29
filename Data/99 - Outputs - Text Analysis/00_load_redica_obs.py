@@ -134,6 +134,10 @@ def main() -> None:
         "site_redica_id":   obs["Site Redica Id"],
     }).reset_index(drop=True)
 
+    n_before = len(out)
+    out = out.drop_duplicates(subset=["fei", "insp_date", "obs_num"]).reset_index(drop=True)
+    if len(out) < n_before:
+        print(f"  Dropped {n_before - len(out)} duplicate (fei, insp_date, obs_num) rows")
     out.to_csv(OUT_CSV, index=False)
 
     # ── summary ─────────────────────────────────────────────────────────────
