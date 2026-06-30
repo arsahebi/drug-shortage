@@ -170,24 +170,62 @@ raw = pd.read_excel(
 raw.columns = ["NDC", "NDC11", "c", "d", "e", "NDC11_F",
                "FEI_G", "Found_FEI_H", "Notes1", "Notes2", "extra"]
 df_amir = raw.iloc[1:].reset_index(drop=True)
-df_amir["ndc11_norm"] = df_amir["NDC11"].apply(to_ndc11)
-df_amir["fei_G"]      = df_amir["FEI_G"].apply(clean_fei)
-df_amir["fei_H"]      = df_amir["Found_FEI_H"].apply(clean_fei)
-df_amir["fei_best"]   = df_amir["fei_G"].fillna(df_amir["fei_H"])
 
-old_feis       = set(df_amir["fei_G"].dropna())
-new_feis       = set(df_amir["fei_H"].dropna())
-confirmed      = new_feis & sheet1_feis
-genuinely_new  = new_feis - sheet1_feis
+# Col F (NDC11_F) is the primary NDC identifier Amir used — has 112 unique NDC11s.
+# The last 16 rows have col F blank but col B (NDC11) filled; fall back to col B for those.
+df_amir["ndc11_norm"] = (
+    df_amir["NDC11_F"].apply(to_ndc11)
+    .fillna(df_amir["NDC11"].apply(to_ndc11))
+)
+df_amir["fei_G"]    = df_amir["FEI_G"].apply(clean_fei)
+df_amir["fei_H"]    = df_amir["Found_FEI_H"].apply(clean_fei)
+df_amir["fei_best"] = df_amir["fei_G"].fillna(df_amir["fei_H"])
 
-print(f"  Rows in Amir's sheet (NDC universe): {len(df_amir)}")
-print(f"  Rows with col G FEI (old)          : {df_amir['fei_G'].notna().sum()}")
-print(f"  Rows with col H FEI (new find)     : {df_amir['fei_H'].notna().sum()}")
-print(f"  Unique FEIs col G                  : {len(old_feis)}  (same as Sheet1)")
-print(f"  Unique FEIs col H                  : {len(new_feis)}")
-print(f"    Already in Sheet1                : {len(confirmed)}")
-print(f"    Genuinely new FEIs               : {len(genuinely_new)}")
-print(f"  Combined unique FEIs (G ∪ H)       : {len(old_feis | new_feis)}")
+# Collapse to unique NDC11 level (some NDC11s span multiple rows)
+amir_u = (
+    df_amir.dropna(subset=["ndc11_norm"])
+    .sort_values(["ndc11_norm", "fei_G", "fei_H"], na_position="last")
+    .drop_duplicates("ndc11_norm", keep="first")
+    .copy()
+)
+# Annotate with Sheet1 country code where known
+amir_u["country"] = amir_u["ndc11_norm"].map(
+    s1_u.set_index("ndc11_norm")["CountryCode"].to_dict()
+)
+
+# NDC11 sets
+has_G  = set(amir_u[amir_u["fei_G"].notna()]["ndc11_norm"])
+has_H  = set(amir_u[amir_u["fei_H"].notna()]["ndc11_norm"])
+no_fei = set(amir_u[amir_u["fei_best"].isna()]["ndc11_norm"])
+has_H_only = has_H - has_G   # col H fills in NDCs that col G missed
+
+old_feis      = set(amir_u["fei_G"].dropna())
+new_feis      = set(amir_u["fei_H"].dropna())
+confirmed     = new_feis & sheet1_feis    # col H FEIs already known from Sheet1
+genuinely_new = new_feis - sheet1_feis   # col H FEIs brand-new
+
+# Country breakdown for col G NDC11s
+g_ctry = amir_u[amir_u["fei_G"].notna()]["country"].value_counts(dropna=False)
+
+print(f"  Total unique NDC11s in Amir's sheet : {len(amir_u)}")
+print(f"    → matches Valisure ground truth    : {len(amir_u) == len(val_union)}")
+print()
+print(f"  NDC11s with col G FEI (old method)  : {len(has_G)}")
+g_ind_chn_usa = sum(g_ctry.get(cc, 0) for cc in ["IND", "CHN", "USA"])
+g_can_bgd     = sum(g_ctry.get(cc, 0) for cc in ["CAN", "BGD"])
+print(f"    IND+CHN+USA (in-scope)             : {g_ind_chn_usa}")
+print(f"    CAN+BGD     (excluded countries)   : {g_can_bgd}")
+print(f"    Note: 4 in-scope Sheet1 NDCs (Amneal + Alkem) have FEI only via col H")
+print()
+print(f"  NDC11s WITHOUT col G FEI             : {len(amir_u) - len(has_G)}")
+print(f"    Amir found FEI via col H            : {len(has_H_only)}")
+print(f"    Still no FEI from either method     : {len(no_fei)}")
+print()
+print(f"  FEIs introduced by col H:")
+print(f"    Unique FEIs in col H               : {len(new_feis)}")
+print(f"    Already in Sheet1 (confirmed)      : {len(confirmed)}")
+print(f"    Genuinely new FEIs                 : {len(genuinely_new)}")
+print(f"  Combined unique FEIs (G ∪ H)         : {len(old_feis | new_feis)}")
 
 # =============================================================================
 # 4. FEI → NDC SUMMARY TABLE
@@ -266,7 +304,7 @@ sep("STEP 5: FEI coverage — Redica vs FDA Inspection Details")
 print(f"  Redica FEI universe              : {len(redica_feis)} sites")
 print(f"  FDA Inspection Details FEIs      : {len(fda_feis):,} (drug rows only)")
 
-all_amir_feis = set(df_amir["fei_best"].dropna())
+all_amir_feis = set(amir_u["fei_best"].dropna())
 
 rows = []
 for label, feis in [("Sheet1 (old)", sheet1_feis), ("Amir G+H (revised)", all_amir_feis)]:
@@ -283,18 +321,18 @@ print()
 print(pd.DataFrame(rows).to_string(index=False))
 
 # =============================================================================
-# 6. NDC-LEVEL COVERAGE (Amir G+H)
+# 6. NDC-LEVEL COVERAGE (Amir G+H, unique NDC11 level)
 # =============================================================================
-sep("STEP 6: NDC-level FEI coverage (Amir G+H combined)")
+sep("STEP 6: NDC-level FEI coverage (Amir G+H combined, unique NDC11s)")
 
-total_ndcs = df_amir["NDC"].nunique()
+total_ndcs = len(amir_u)
 for label, mask in [
-    ("No FEI at all",            df_amir["fei_best"].isna()),
-    ("FEI in Redica",            df_amir["fei_best"].isin(redica_feis)),
-    ("FEI in FDA Details only",  df_amir["fei_best"].isin(fda_feis - redica_feis)),
-    ("FEI in neither source",   ~df_amir["fei_best"].isin(all_sources) & df_amir["fei_best"].notna()),
+    ("No FEI at all",            amir_u["fei_best"].isna()),
+    ("FEI in Redica",            amir_u["fei_best"].isin(redica_feis)),
+    ("FEI in FDA Details only",  amir_u["fei_best"].isin(fda_feis - redica_feis)),
+    ("FEI in neither source",   ~amir_u["fei_best"].isin(all_sources) & amir_u["fei_best"].notna()),
 ]:
-    n = df_amir[mask]["NDC"].nunique()
+    n = mask.sum()
     print(f"  {label:30s}: {n:3d} / {total_ndcs}  ({n/total_ndcs*100:.1f}%)")
 
 # =============================================================================
