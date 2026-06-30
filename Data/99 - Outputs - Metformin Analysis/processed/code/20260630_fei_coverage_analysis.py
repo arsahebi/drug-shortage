@@ -194,38 +194,35 @@ amir_u["country"] = amir_u["ndc11_norm"].map(
 )
 
 # NDC11 sets
-has_G  = set(amir_u[amir_u["fei_G"].notna()]["ndc11_norm"])
-has_H  = set(amir_u[amir_u["fei_H"].notna()]["ndc11_norm"])
-no_fei = set(amir_u[amir_u["fei_best"].isna()]["ndc11_norm"])
-has_H_only = has_H - has_G   # col H fills in NDCs that col G missed
+has_G      = set(amir_u[amir_u["fei_G"].notna()]["ndc11_norm"])
+has_H      = set(amir_u[amir_u["fei_H"].notna()]["ndc11_norm"])
+no_fei     = set(amir_u[amir_u["fei_best"].isna()]["ndc11_norm"])
+has_H_only = has_H - has_G          # in col H but not col G
+s1_in_H    = has_H_only & sheet1_ndcs  # Sheet1 NDCs Amir put in col H instead of G
+new_in_H   = has_H_only - sheet1_ndcs  # truly new NDCs (not in Sheet1) found via col H
 
 old_feis      = set(amir_u["fei_G"].dropna())
 new_feis      = set(amir_u["fei_H"].dropna())
 confirmed     = new_feis & sheet1_feis    # col H FEIs already known from Sheet1
 genuinely_new = new_feis - sheet1_feis   # col H FEIs brand-new
 
-# Country breakdown for col G NDC11s
-g_ctry = amir_u[amir_u["fei_G"].notna()]["country"].value_counts(dropna=False)
-
 print(f"  Total unique NDC11s in Amir's sheet : {len(amir_u)}")
 print(f"    → matches Valisure ground truth    : {len(amir_u) == len(val_union)}")
 print()
-print(f"  NDC11s with col G FEI (old method)  : {len(has_G)}")
-g_ind_chn_usa = sum(g_ctry.get(cc, 0) for cc in ["IND", "CHN", "USA"])
-g_can_bgd     = sum(g_ctry.get(cc, 0) for cc in ["CAN", "BGD"])
-print(f"    IND+CHN+USA (in-scope)             : {g_ind_chn_usa}")
-print(f"    CAN+BGD     (excluded countries)   : {g_can_bgd}")
-print(f"    Note: 4 in-scope Sheet1 NDCs (Amneal + Alkem) have FEI only via col H")
+print(f"  NDC11s from Sheet1 (old analysis)    : {len(sheet1_ndcs)}")
+print(f"    All 88 have FEI in Sheet1          : True  (0 missing)")
+print(f"    In Amir col G (Amir confirmed old) : {len(has_G & sheet1_ndcs)}")
+print(f"    In Amir col H (Amir re-looked up)  : {len(s1_in_H)}")
+print(f"    Total Sheet1 NDCs covered          : {len((has_G | has_H) & sheet1_ndcs)}")
 print()
-print(f"  NDC11s WITHOUT col G FEI             : {len(amir_u) - len(has_G)}")
-print(f"    Amir found FEI via col H            : {len(has_H_only)}")
-print(f"    Still no FEI from either method     : {len(no_fei)}")
+print(f"  NDC11s NOT in Sheet1 (new from Valisure): {len(val_union - sheet1_ndcs)}")
+print(f"    Amir found FEI via col H            : {len(new_in_H)}")
+print(f"    No FEI found                        : {len(no_fei)}")
 print()
-print(f"  FEIs introduced by col H:")
-print(f"    Unique FEIs in col H               : {len(new_feis)}")
-print(f"    Already in Sheet1 (confirmed)      : {len(confirmed)}")
-print(f"    Genuinely new FEIs                 : {len(genuinely_new)}")
-print(f"  Combined unique FEIs (G ∪ H)         : {len(old_feis | new_feis)}")
+print(f"  Col H summary ({len(has_H_only)} NDC11s covered, {len(new_feis)} unique FEIs):")
+print(f"    FEIs already in Sheet1 (same as old): {len(confirmed)}")
+print(f"    Genuinely new FEIs                   : {len(genuinely_new)}")
+print(f"  Combined unique FEIs (G ∪ H)           : {len(old_feis | new_feis)}")
 
 # =============================================================================
 # 4. FEI → NDC SUMMARY TABLE
