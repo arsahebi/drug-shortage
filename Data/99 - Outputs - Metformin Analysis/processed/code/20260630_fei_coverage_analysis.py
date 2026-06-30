@@ -2,15 +2,15 @@
 """
 FEI Coverage Analysis for Metformin NDCs
 =========================================
-Compares two NDC→FEI mapping methods:
-  - Sheet1 ("old method"): the original FEI assignments used in the submitted paper
-  - Amir's sheet ("Amir-Unique NDC from Valisure ("): Amir's manual re-mapping
-    using cols F (NDC11) and G (FEI) with fallback col I (Found FEI)
+Compares NDC→FEI mapping coverage before and after Amir's manual review.
+
+Source: Q&As1234_v8_v02.xlsx, sheet "Amir-Unique NDC from Valisure ("
+  Col G (FEI)       — original FEI carried over from Sheet1 (old method)
+  Col H (Found FEI) — FEI Amir found manually via DailyMed / ProPublica
 
 For each method, reports how many unique FEIs can be matched against:
-  1. Redica combined dataset (redica_all_drugs_combined.csv, 127 FEIs) — primary
-  2. FDA Inspections Details (14 - FDA - Inspection/raw) — fallback for any
-     FEIs absent from Redica
+  1. Redica combined dataset (redica_all_drugs_combined.csv, 127 FEIs)
+  2. FDA Inspections Details (14 - FDA - Inspection/raw) — fallback
 """
 
 import re
@@ -24,25 +24,20 @@ BASE = Path(
     "/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/"
     "My Drive/North Carolina State University/Project - Drug Shortage"
 )
-QA_FILE      = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
-SITE_LIST    = BASE / "Data/07 - Redica/raw/Site List.xlsx"
-REDICA_CSV   = BASE / "Data/07 - Redica/processed/redica_all_drugs_combined.csv"
-FDA_INSP     = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
+QA_FILE   = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
+SITE_LIST = BASE / "Data/07 - Redica/raw/Site List.xlsx"
+REDICA_CSV= BASE / "Data/07 - Redica/processed/redica_all_drugs_combined.csv"
+FDA_INSP  = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
 
 # =============================================================================
 # HELPERS
 # =============================================================================
 def clean_fei(x) -> str | None:
-    """Convert any FEI-like value to a plain integer string; return None if non-numeric."""
-    if pd.isna(x):
-        return None
+    if pd.isna(x): return None
     s = str(x).strip()
-    if re.search(r"[a-zA-Z]", s):   # notes/text → skip
-        return None
-    try:
-        return str(int(float(s)))
-    except ValueError:
-        return None
+    if re.search(r"[a-zA-Z]", s): return None
+    try: return str(int(float(s)))
+    except: return None
 
 
 def sep(title: str = "", w: int = 70):
@@ -57,194 +52,131 @@ def sep(title: str = "", w: int = 70):
 # =============================================================================
 sep("Loading data")
 
-# Amir's manual NDC→FEI mapping (col F = NDC11.1, col G = FEI, col I = Found FEI)
-df_amir = pd.read_excel(QA_FILE, sheet_name="Amir-Unique NDC from Valisure (")
-df_amir["fei_primary"] = df_amir["FEI"].apply(clean_fei)
-df_amir["fei_found"]   = df_amir["Found FEI"].apply(clean_fei)
-df_amir["fei_best"]    = df_amir["fei_primary"].fillna(df_amir["fei_found"])
+# Amir's sheet — read with header=None to get correct column positions:
+#   col 6 (G) = FEI       → original FEI from Sheet1 (old method)
+#   col 7 (H) = Found FEI → FEI Amir found manually (new)
+raw = pd.read_excel(QA_FILE, sheet_name="Amir-Unique NDC from Valisure (", header=None)
+raw.columns = ["NDC","NDC11","c","d","e","NDC11_F","FEI_G","Found_FEI_H","Notes1","Notes2","extra"]
+df_amir = raw.iloc[1:].reset_index(drop=True)
+df_amir["fei_G"] = df_amir["FEI_G"].apply(clean_fei)       # old / Sheet1
+df_amir["fei_H"] = df_amir["Found_FEI_H"].apply(clean_fei) # Amir's new finds
+df_amir["fei_best"] = df_amir["fei_G"].fillna(df_amir["fei_H"])
 
-# Sheet1 – original FEI assignments used in the paper
+# Sheet1 — original paper data
 df_sheet1 = pd.read_excel(QA_FILE, sheet_name="Sheet1")
 df_sheet1["FEI"] = df_sheet1["FEI"].apply(clean_fei)
+sheet1_feis = set(df_sheet1["FEI"].dropna())
 
-# Redica FEI universe (Site List and combined CSV should be identical)
+# Redica FEI universe
 df_site   = pd.read_excel(SITE_LIST)
 df_redica = pd.read_csv(REDICA_CSV)
-redica_feis_site = set(df_site["FEI"].dropna().astype(str).str.strip())
-redica_feis_csv  = set(df_redica["FEI"].dropna().astype(str).str.strip())
-assert redica_feis_site == redica_feis_csv, "Site List and combined CSV FEIs disagree!"
-REDICA_FEIS = redica_feis_site
-print(f"Redica FEI universe: {len(REDICA_FEIS)} sites")
+redica_site = set(df_site["FEI"].dropna().astype(str).str.strip())
+redica_csv  = set(df_redica["FEI"].dropna().astype(str).str.strip())
+assert redica_site == redica_csv, "Site List and combined CSV FEIs disagree!"
+REDICA_FEIS = redica_site
+print(f"Redica FEI universe        : {len(REDICA_FEIS)} sites")
 
-# FDA Inspection Details – drug inspections only (fallback source)
-print("Loading FDA Inspection Details (this is large, may take a moment)...")
+# FDA Inspection Details — drug rows only (fallback)
+print("Loading FDA Inspection Details (large file)...")
 df_fda = pd.read_excel(FDA_INSP)
 df_fda["FEI Number"] = df_fda["FEI Number"].astype(str).str.strip()
 df_fda_drugs = df_fda[df_fda["Product Type"].str.lower().str.contains("drug", na=False)]
 FDA_FEIS = set(df_fda_drugs["FEI Number"].unique())
-print(f"FDA Inspection Details — drug rows: {len(df_fda_drugs):,}  unique FEIs: {len(FDA_FEIS):,}")
+ALL_SOURCES = REDICA_FEIS | FDA_FEIS
+print(f"FDA Inspection Details FEIs: {len(FDA_FEIS):,} (drug inspections only)")
 
 # =============================================================================
-# 2. AMIR'S SHEET COVERAGE
+# 2. COL G — OLD / SHEET1 FEIs (subset visible in Amir's 128-NDC review)
 # =============================================================================
-sep("Amir's NDC→FEI mapping (new method)")
+sep("Col G (FEI) — old method, same as Sheet1")
 
-n_rows_amir      = len(df_amir)
-n_ndc_amir       = df_amir["NDC11.1"].nunique()
-n_with_fei_prim  = df_amir["fei_primary"].notna().sum()
-n_with_fei_found = df_amir["fei_found"].notna().sum()
-n_with_any_fei   = df_amir["fei_best"].notna().sum()
-n_no_fei         = df_amir["fei_best"].isna().sum()
-amir_feis        = set(df_amir["fei_best"].dropna())
-amir_in_redica   = amir_feis & REDICA_FEIS
-amir_not_redica  = amir_feis - REDICA_FEIS
-
-print(f"  Total NDC rows in Amir's sheet         : {n_rows_amir}")
-print(f"  Unique NDC11s                          : {n_ndc_amir}")
-print(f"  NDCs with FEI in col G (primary)       : {n_with_fei_prim}")
-print(f"  NDCs with FEI in col I (Found FEI)     : {n_with_fei_found}")
-print(f"  NDCs with any valid FEI                : {n_with_any_fei}")
-print(f"  NDCs without any FEI                   : {n_no_fei}")
-print(f"  Unique FEIs identified                 : {len(amir_feis)}")
-print(f"  FEIs matched in Redica                 : {len(amir_in_redica)}/{len(amir_feis)}"
-      f" ({len(amir_in_redica)/len(amir_feis)*100:.1f}%)")
-print(f"  FEIs NOT in Redica                     : {sorted(amir_not_redica)}")
-
-# NDCs whose FEI is in Redica
-n_ndc_matched = df_amir[df_amir["fei_best"].isin(amir_in_redica)].shape[0]
-print(f"  NDC rows whose FEI is in Redica        : {n_ndc_matched}/{n_rows_amir}"
-      f" ({n_ndc_matched/n_rows_amir*100:.1f}%)")
-
-# Detail: FEIs not in Redica and which NDCs they belong to
-print("\n  FEIs not in Redica (Amir method):")
-miss_amir = df_amir[df_amir["fei_best"].isin(amir_not_redica)][
-    ["NDC", "NDC11.1", "fei_best"]
-].drop_duplicates().sort_values("fei_best")
-for _, row in miss_amir.iterrows():
-    print(f"    FEI {row['fei_best']}  NDC {row['NDC']}  ({row['NDC11.1']})")
+old_feis = set(df_amir["fei_G"].dropna())
+print(f"  Unique FEIs in col G              : {len(old_feis)}")
+print(f"  All contained in Sheet1?          : {old_feis <= sheet1_feis}")
+print(f"  Sheet1 FEIs absent from col G     : {sorted(sheet1_feis - old_feis)}")
+print(f"    (those NDCs are not in Amir's 128-NDC review list)")
 
 # =============================================================================
-# 3. SHEET1 COVERAGE (old method)
+# 3. COL H — AMIR'S NEW FINDS
 # =============================================================================
-sep("Sheet1 FEI coverage (old / submitted method)")
+sep("Col H (Found FEI) — Amir's manual lookup via DailyMed / ProPublica")
 
-n_ndc_s1        = df_sheet1["NDC11"].nunique()
-sheet1_feis     = set(df_sheet1["FEI"].dropna())
-s1_in_redica    = sheet1_feis & REDICA_FEIS
-s1_not_redica   = sheet1_feis - REDICA_FEIS
+found_feis    = set(df_amir["fei_H"].dropna())
+confirmed     = found_feis & sheet1_feis      # also in Sheet1 (Amir confirmed)
+genuinely_new = found_feis - sheet1_feis      # brand-new FEIs not in Sheet1
 
-print(f"  Unique NDC11s in Sheet1                : {n_ndc_s1}")
-print(f"  Unique FEIs in Sheet1                  : {len(sheet1_feis)}")
-print(f"  FEIs matched in Redica                 : {len(s1_in_redica)}/{len(sheet1_feis)}"
-      f" ({len(s1_in_redica)/len(sheet1_feis)*100:.1f}%)")
-print(f"  FEIs NOT in Redica                     : {sorted(s1_not_redica)}")
-
-print("\n  FEIs not in Redica (Sheet1 method):")
-for fei in sorted(s1_not_redica):
-    firms = df_sheet1[df_sheet1["FEI"] == fei][["Firm", "CountryCode"]].drop_duplicates()
-    for _, row in firms.iterrows():
-        print(f"    FEI {fei}  {row['Firm']} [{row['CountryCode']}]")
-
-# =============================================================================
-# 4. COMPARISON: WHAT AMIR'S METHOD ADDS
-# =============================================================================
-sep("Comparison: Amir (new) vs Sheet1 (old)")
-
-new_feis       = amir_feis - sheet1_feis          # in Amir only
-dropped_feis   = sheet1_feis - amir_feis          # in Sheet1 only
-common_feis    = amir_feis & sheet1_feis
-
-print(f"  FEIs shared by both methods            : {len(common_feis)}")
-print(f"  FEIs added by Amir (new, all in Redica): {len(new_feis)}")
-print(f"    {sorted(new_feis)}")
-
-# Firm names for the new FEIs (from Redica site list)
-print("\n  New FEIs and their Redica display names:")
-for fei in sorted(new_feis):
+print(f"  NDC rows where Amir found a FEI   : {df_amir['fei_H'].notna().sum()} / {len(df_amir)}")
+print(f"  Unique FEIs in col H              : {len(found_feis)}")
+print(f"  Col H FEIs already in Sheet1      : {sorted(confirmed)}")
+print(f"  Col H FEIs genuinely new ({len(genuinely_new)})     :")
+for fei in sorted(genuinely_new):
     name_row = df_site[df_site["FEI"].astype(str).str.strip() == fei]
-    name = name_row["Site Display Name"].values[0] if len(name_row) else "NOT IN REDICA"
-    print(f"    {fei}  {name}")
-
-print(f"\n  FEIs in Sheet1 dropped by Amir          : {len(dropped_feis)}")
-for fei in sorted(dropped_feis):
-    firms = df_sheet1[df_sheet1["FEI"] == fei][["Firm", "CountryCode"]].drop_duplicates()
-    for _, row in firms.iterrows():
-        in_redica = "IN Redica" if fei in REDICA_FEIS else "NOT in Redica"
-        print(f"    {fei}  {row['Firm']} [{row['CountryCode']}]  ({in_redica})")
+    name = name_row["Site Display Name"].values[0] if len(name_row) else "not in Redica"
+    in_r = "Redica ✓" if fei in REDICA_FEIS else ("FDA ✓" if fei in FDA_FEIS else "neither")
+    print(f"    {fei}  {name}  [{in_r}]")
 
 # =============================================================================
-# 5. FDA INSPECTION DETAILS — FALLBACK FOR MISSING FEIS
+# 4. COVERAGE COMPARISON
 # =============================================================================
-sep("FDA Inspection Details coverage for FEIs missing from Redica")
+sep("Coverage comparison: old (Sheet1) vs combined (G + H)")
 
-for label, missing_set in [("Amir (new)", amir_not_redica), ("Sheet1 (old)", s1_not_redica)]:
-    print(f"\n  {label} — FEIs absent from Redica ({len(missing_set)}):")
-    for fei in sorted(missing_set):
+all_amir_feis = set(df_amir["fei_best"].dropna())   # col G ∪ col H
+
+rows = []
+for label, feis in [("Sheet1 (old)", sheet1_feis), ("Amir G+H (revised)", all_amir_feis)]:
+    rows.append({
+        "Method"              : label,
+        "Unique FEIs"         : len(feis),
+        "In Redica"           : len(feis & REDICA_FEIS),
+        "FDA Details only"    : len(feis & (FDA_FEIS - REDICA_FEIS)),
+        "In neither"          : len(feis - ALL_SOURCES),
+        "Redica %"            : f"{len(feis & REDICA_FEIS)/len(feis)*100:.1f}%",
+        "Redica+FDA %"        : f"{len(feis & ALL_SOURCES)/len(feis)*100:.1f}%",
+    })
+print(pd.DataFrame(rows).to_string(index=False))
+
+# =============================================================================
+# 5. FDA FALLBACK — DETAIL FOR FEIs MISSING FROM REDICA
+# =============================================================================
+sep("FDA Inspection Details for FEIs absent from Redica")
+
+for label, feis in [("Sheet1 (old)", sheet1_feis), ("Amir G+H (revised)", all_amir_feis)]:
+    missing = feis - REDICA_FEIS
+    print(f"\n  {label} — {len(missing)} FEIs not in Redica:")
+    for fei in sorted(missing):
         sub = df_fda_drugs[df_fda_drugs["FEI Number"] == fei]
         if sub.empty:
-            print(f"    FEI {fei}: NOT found in FDA Inspection Details either")
+            print(f"    {fei}: NOT in FDA Details either")
         else:
             name    = sub["Legal Name"].iloc[0]
             country = sub["Country/Area"].iloc[0]
-            n_insp  = len(sub)
-            d_min   = sub["Inspection End Date"].min()
-            d_max   = sub["Inspection End Date"].max()
+            n       = len(sub)
             classes = sub["Classification"].value_counts().to_dict()
-            print(f"    FEI {fei}: FOUND — {name} [{country}]")
-            print(f"      Drug inspections: {n_insp}  ({d_min} → {d_max})")
-            print(f"      Classifications: {classes}")
-
-# Combined coverage: Redica OR FDA Inspection Details
-amir_in_either   = amir_feis & (REDICA_FEIS | FDA_FEIS)
-amir_in_neither  = amir_feis - REDICA_FEIS - FDA_FEIS
-s1_in_either     = sheet1_feis & (REDICA_FEIS | FDA_FEIS)
-s1_in_neither    = sheet1_feis - REDICA_FEIS - FDA_FEIS
-
-print(f"\n  Amir FEIs covered by Redica OR FDA Details : {len(amir_in_either)}/{len(amir_feis)}"
-      f" ({len(amir_in_either)/len(amir_feis)*100:.1f}%)")
-print(f"  Amir FEIs in neither source               : {sorted(amir_in_neither)}")
-print(f"\n  Sheet1 FEIs covered by Redica OR FDA Details: {len(s1_in_either)}/{len(sheet1_feis)}"
-      f" ({len(s1_in_either)/len(sheet1_feis)*100:.1f}%)")
-print(f"  Sheet1 FEIs in neither source             : {sorted(s1_in_neither)}")
+            print(f"    {fei}: {name} [{country}]  {n} drug insp.  {classes}")
 
 # =============================================================================
-# 6. SUMMARY TABLE
+# 6. NDC-LEVEL SUMMARY
 # =============================================================================
-sep("Summary table")
+sep("NDC-level coverage (Amir G+H combined)")
 
-summary = pd.DataFrame([
-    {
-        "Method"                    : "Sheet1 (old/submitted)",
-        "Unique NDC11s"             : n_ndc_s1,
-        "Unique FEIs"               : len(sheet1_feis),
-        "FEIs in Redica"            : len(s1_in_redica),
-        "FEIs in FDA Details only"  : len(s1_not_redica & FDA_FEIS),
-        "FEIs in neither"           : len(s1_in_neither),
-        "Redica match %"            : f"{len(s1_in_redica)/len(sheet1_feis)*100:.1f}%",
-        "Redica+FDA match %"        : f"{len(s1_in_either)/len(sheet1_feis)*100:.1f}%",
-    },
-    {
-        "Method"                    : "Amir (new/revised)",
-        "Unique NDC11s"             : n_ndc_amir,
-        "Unique FEIs"               : len(amir_feis),
-        "FEIs in Redica"            : len(amir_in_redica),
-        "FEIs in FDA Details only"  : len(amir_not_redica & FDA_FEIS),
-        "FEIs in neither"           : len(amir_in_neither),
-        "Redica match %"            : f"{len(amir_in_redica)/len(amir_feis)*100:.1f}%",
-        "Redica+FDA match %"        : f"{len(amir_in_either)/len(amir_feis)*100:.1f}%",
-    },
-])
-print(summary.to_string(index=False))
+total_ndcs = df_amir["NDC"].nunique()
+for label, mask in [
+    ("No FEI at all"          , df_amir["fei_best"].isna()),
+    ("FEI in Redica"          , df_amir["fei_best"].isin(REDICA_FEIS)),
+    ("FEI in FDA Details only", df_amir["fei_best"].isin(FDA_FEIS - REDICA_FEIS)),
+    ("FEI in neither source"  , ~df_amir["fei_best"].isin(ALL_SOURCES) & df_amir["fei_best"].notna()),
+]:
+    n = df_amir[mask]["NDC"].nunique()
+    print(f"  {label:30s}: {n:3d} / {total_ndcs}  ({n/total_ndcs*100:.1f}%)")
+
 print()
 print("Notes:")
-print("  - Redica: 127 FEIs (Site List.xlsx = redica_all_drugs_combined.csv)")
-print("  - FDA Details: drug-type inspections only from Inspections Details.xlsx")
-print("  - Amir FEI = col G of 'Amir-Unique NDC from Valisure (' tab,")
-print("    fallback to col I (Found FEI) where col G is blank")
-print("  - 23 of 128 Amir rows have no valid FEI at all")
-print("  - All 3 Amir FEIs absent from Redica ARE present in FDA Details:")
-print("    Inventia Healthcare Ltd (IND), Marksans Pharma Ltd (IND),")
-print("    Qingdao BAHEAL Pharmaceutical Co. (CHN)")
-print("  - The 1 Sheet1 FEI dropped by Amir (Apotex Corp, CAN) is also in FDA Details")
+print("  - Col G = FEI col in Amir's sheet = old method (identical to Sheet1 for matched NDCs)")
+print("  - Col H = Found FEI col = Amir's manual lookup results")
+print("  - 8 genuinely new FEIs from col H vs Sheet1; all 8 are in Redica")
+print("  - The one new FEI not previously identified: Mylan Laboratories Ltd (IND) — 3005587313")
+print("  - 3 FEIs (Marksans, Inventia, BAHEAL) absent from Redica but present in FDA Details")
+print("  - Apotex Corp (3012378179) from Sheet1 absent from Amir's review and from Redica;")
+print("    also NOT found in FDA Inspection Details")
 
 # %%
