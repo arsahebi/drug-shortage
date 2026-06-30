@@ -18,7 +18,8 @@ Output columns
   Site Display Name         — Redica site label
   Valisure Years            — which sweeps tested this NDC (e.g. "2020+2022")
   In Sheet1                 — was this NDC in the original paper?
-  Event Start Date          — Redica inspection date
+  Event Start Date          — FDA inspection start date (from Sheet1 for old NDCs; null for new)
+  Event End Date            — Redica/FDA inspection end date (available for all NDCs)
   EventYear                 — calendar year of inspection
   Classification            — NAI / VAI / OAI
   NAI, VAI, OAI             — binary flags
@@ -304,6 +305,23 @@ df_redica["FEI"] = df_redica["FEI"].astype(str).str.strip()
 df_redica["Event Date"] = pd.to_datetime(df_redica["Event Date"])
 df_redica["EventYear"]  = df_redica["Event Date"].dt.year
 
+# Build (FEI, Event End Date) → Event Start Date lookup from Sheet1.
+# Sheet1's Event End Date = Redica Event Date (confirmed); start dates come
+# from the original FDA OASIS export that Sheet1 was built from.
+df_s1_dates = pd.read_excel(QA_FILE, sheet_name="Sheet1")
+df_s1_dates["ndc11_norm"]   = df_s1_dates["NDC11"].apply(to_ndc11)
+df_s1_dates["fei_norm"]     = df_s1_dates["FEI"].apply(clean_fei)
+df_s1_dates["end_date_dt"]  = pd.to_datetime(df_s1_dates["Event End Date"], errors="coerce")
+df_s1_dates["start_date_dt"]= pd.to_datetime(df_s1_dates["Event Start Date"], errors="coerce")
+# One (FEI, end_date) → start_date mapping (deduplicated)
+s1_date_map = (
+    df_s1_dates[df_s1_dates["end_date_dt"].notna() & df_s1_dates["start_date_dt"].notna()]
+    [["fei_norm", "end_date_dt", "start_date_dt"]]
+    .drop_duplicates(["fei_norm", "end_date_dt"])
+    .rename(columns={"fei_norm": "FEI", "end_date_dt": "Event End Date",
+                     "start_date_dt": "Event Start Date"})
+)
+
 # Site-level OAI rate and inspections per year
 site_stats = (
     df_redica.groupby("FEI").agg(
@@ -336,14 +354,18 @@ ndc_with_redica = ndc_master[ndc_master["FEI"].isin(df_redica["FEI"].unique())].
 ndc_without     = ndc_master[~ndc_master["FEI"].isin(df_redica["FEI"].unique())].copy()
 
 # Join: each NDC gets all inspection events for its FEI
+# Redica Event Date = inspection end date; merge Sheet1 start dates by (FEI, end_date)
 panel_with = ndc_with_redica.merge(
-    df_redica.rename(columns={"Event Date": "Event Start Date"}),
+    df_redica.rename(columns={"Event Date": "Event End Date"}),
     on="FEI", how="left"
+)
+panel_with = panel_with.merge(
+    s1_date_map, on=["FEI", "Event End Date"], how="left"
 )
 
 # NDCs with no Redica data: one blank row each
 panel_without = ndc_without.copy()
-for col in ["Event Start Date", "EventYear", "Classification",
+for col in ["Event Start Date", "Event End Date", "EventYear", "Classification",
             "483", "No 483", "NAI", "VAI", "OAI",
             "483 critical", "483 major", "483 other", "Warning Letter",
             "Total Inspections", "FDA Inspections", "483s Issued",
@@ -375,8 +397,8 @@ FINAL_COLS = [
     "FEI", "Site Display Name",
     # Valisure context
     "Valisure Years", "In Sheet1",
-    # Inspection event
-    "Event Start Date", "EventYear", "Classification",
+    # Inspection event (start date from Sheet1/FDA for old NDCs; end date from Redica for all)
+    "Event Start Date", "Event End Date", "EventYear", "Classification",
     "NAI", "VAI", "OAI", "483", "No 483",
     "483 critical", "483 major", "483 other", "Warning Letter",
     # Site-level aggregates from Redica
