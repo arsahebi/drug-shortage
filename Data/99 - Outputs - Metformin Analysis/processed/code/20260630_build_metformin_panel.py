@@ -10,6 +10,7 @@ Reconstructs a Sheet1-style panel for ALL 112 Valisure-tested metformin NDCs
 
 Output columns
 --------------
+  Insp Source               — "Redica" | "Sheet1" (legacy, FEI no longer in Redica) | null
   NDC, NDC11, NDC8          — three NDC formats
   Firm                      — manufacturer name
   Strength                  — dosage strength
@@ -322,6 +323,44 @@ s1_date_map = (
                      "start_date_dt": "Event Start Date"})
 )
 
+# Sheet1 inspection events for FEIs no longer in current Redica coverage.
+# Deduplicated to unique (FEI, Event End Date) events.
+def _cls_from_binary(row):
+    if row.get("OAI") == 1: return "OAI"
+    if row.get("VAI") == 1: return "VAI"
+    if row.get("NAI") == 1: return "NAI"
+    return None
+
+s1_legacy_events = (
+    df_s1_dates[df_s1_dates["end_date_dt"].notna() & df_s1_dates["fei_norm"].notna()]
+    [["fei_norm", "end_date_dt", "start_date_dt", "EventYear",
+      "483", "No 483", "NAI", "VAI", "OAI"]]
+    .drop_duplicates(["fei_norm", "end_date_dt"])
+    .copy()
+)
+s1_legacy_events["Classification"] = s1_legacy_events.apply(_cls_from_binary, axis=1)
+s1_legacy_events = s1_legacy_events.rename(columns={
+    "fei_norm":      "FEI",
+    "end_date_dt":   "Event End Date",
+    "start_date_dt": "Event Start Date",
+})
+# Pre-compute OAI Rate and Inspections per Year from Sheet1 data per FEI
+_legacy_stats = (
+    s1_legacy_events.groupby("FEI").agg(
+        oai_count    = ("Classification", lambda x: (x == "OAI").sum()),
+        total_events = ("Classification", "count"),
+        min_year     = ("EventYear", "min"),
+        max_year     = ("EventYear", "max"),
+    ).reset_index()
+)
+_legacy_stats["OAI Rate"] = _legacy_stats["oai_count"] / _legacy_stats["total_events"]
+_legacy_stats["Inspections per Year"] = _legacy_stats["total_events"] / (
+    _legacy_stats["max_year"] - _legacy_stats["min_year"] + 1
+)
+s1_legacy_events = s1_legacy_events.merge(
+    _legacy_stats[["FEI", "OAI Rate", "Inspections per Year"]], on="FEI", how="left"
+)
+
 # Site-level OAI rate and inspections per year
 site_stats = (
     df_redica.groupby("FEI").agg(
@@ -362,9 +401,28 @@ panel_with = ndc_with_redica.merge(
 panel_with = panel_with.merge(
     s1_date_map, on=["FEI", "Event End Date"], how="left"
 )
+panel_with["Insp Source"] = "Redica"
 
-# NDCs with no Redica data: one blank row each
-panel_without = ndc_without.copy()
+# NDCs not in Redica: old ones use Sheet1 legacy events; new ones get blank rows
+old_without = ndc_without[ndc_without["In Sheet1"]].copy()
+new_without = ndc_without[~ndc_without["In Sheet1"]].copy()
+
+# Old NDCs not in Redica: fan out to their Sheet1 inspection events
+if len(old_without):
+    panel_legacy = old_without.merge(s1_legacy_events, on="FEI", how="left")
+    panel_legacy["Insp Source"] = "Sheet1"
+    # Redica-specific aggregate columns not available from Sheet1
+    for col in ["483 critical", "483 major", "483 other", "Warning Letter",
+                "Total Inspections", "FDA Inspections", "483s Issued",
+                "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
+                "Site Redica Id", "Site Display Name"]:
+        if col not in panel_legacy.columns:
+            panel_legacy[col] = None
+else:
+    panel_legacy = pd.DataFrame()
+
+# New NDCs with no Redica and no Sheet1: one blank row each
+panel_without = new_without.copy()
 for col in ["Event Start Date", "Event End Date", "EventYear", "Classification",
             "483", "No 483", "NAI", "VAI", "OAI",
             "483 critical", "483 major", "483 other", "Warning Letter",
@@ -372,8 +430,9 @@ for col in ["Event Start Date", "Event End Date", "EventYear", "Classification",
             "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
             "OAI Rate", "Inspections per Year", "Site Redica Id", "Site Display Name"]:
     panel_without[col] = None
+panel_without["Insp Source"] = None
 
-panel = pd.concat([panel_with, panel_without], ignore_index=True)
+panel = pd.concat([panel_with, panel_legacy, panel_without], ignore_index=True)
 
 # Add site display name
 panel["Site Display Name"] = panel.apply(
@@ -392,16 +451,16 @@ panel["Dataset"] = panel["In Sheet1"].map({True: "old", False: "new"})
 
 FINAL_COLS = [
     # NDC identity
-    "Dataset", "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
+    "Dataset", "Insp Source", "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
     # Facility
     "FEI", "Site Display Name",
     # Valisure context
     "Valisure Years", "In Sheet1",
-    # Inspection event (start date from Sheet1/FDA for old NDCs; end date from Redica for all)
+    # Inspection event (start date from Sheet1/FDA for old NDCs; end date from Redica/Sheet1)
     "Event Start Date", "Event End Date", "EventYear", "Classification",
     "NAI", "VAI", "OAI", "483", "No 483",
     "483 critical", "483 major", "483 other", "Warning Letter",
-    # Site-level aggregates from Redica
+    # Site-level aggregates (from Redica for Redica rows; computed from Sheet1 for legacy rows)
     "Total Inspections", "FDA Inspections", "483s Issued",
     "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
     "OAI Rate", "Inspections per Year",
