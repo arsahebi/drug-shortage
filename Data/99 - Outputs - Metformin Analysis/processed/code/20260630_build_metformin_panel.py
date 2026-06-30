@@ -366,9 +366,11 @@ panel["Year"] = panel["EventYear"]
 # =============================================================================
 # 9. SELECT AND ORDER FINAL COLUMNS
 # =============================================================================
+panel["Dataset"] = panel["In Sheet1"].map({True: "old", False: "new"})
+
 FINAL_COLS = [
     # NDC identity
-    "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
+    "Dataset", "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
     # Facility
     "FEI", "Site Display Name",
     # Valisure context
