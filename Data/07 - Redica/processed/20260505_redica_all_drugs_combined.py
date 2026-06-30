@@ -62,11 +62,32 @@ for (site_id, site_name, event_date), group in grouped:
             if "483" in vals: is_483 = 1
             elif "No 483" in vals: is_483 = 0
             if "Warning Letter" in vals: is_warning_letter = 1
+            # Collect (classification, program) pairs; "Drug Quality Assurance"
+            # takes priority over pre-approval programs like "Generic Drug Evaluation"
+            cls_candidates = []
             for v in vals:
-                if "NAI" in v: classification = "NAI"
-                elif "VAI" in v: classification = "VAI"
-                elif "OAI" in v: classification = "OAI"
-                elif v == "NA": classification = "NA"
+                if not isinstance(v, str):
+                    continue
+                if v == "NA":
+                    cls_candidates.append(("NA", ""))
+                elif "NAI" in v:
+                    program = v.split(":", 1)[1].strip() if ":" in v else ""
+                    cls_candidates.append(("NAI", program))
+                elif "VAI" in v:
+                    program = v.split(":", 1)[1].strip() if ":" in v else ""
+                    cls_candidates.append(("VAI", program))
+                elif "OAI" in v:
+                    program = v.split(":", 1)[1].strip() if ":" in v else ""
+                    cls_candidates.append(("OAI", program))
+            dqa = next((cls for cls, prog in cls_candidates if prog == "Drug Quality Assurance"), None)
+            if dqa:
+                classification = dqa
+            elif cls_candidates:
+                for priority in ("OAI", "VAI", "NAI", "NA"):
+                    match = next((cls for cls, _ in cls_candidates if cls == priority), None)
+                    if match:
+                        classification = match
+                        break
         
         if "Post Inspection Document: 483" in attrs:
             for v in vals:
