@@ -30,6 +30,7 @@ Sources
 """
 
 import re
+from typing import Optional
 import pandas as pd
 from pathlib import Path
 
@@ -49,7 +50,7 @@ FDA_INSP  = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
 # =============================================================================
 # HELPERS
 # =============================================================================
-def to_ndc11(x) -> str | None:
+def to_ndc11(x) -> Optional[str]:
     """
     Normalise any NDC variant to 11-digit NDC11 (no hyphens, 5+4+2).
     Parses hyphenated segments to handle 4-3-2, 5-3-2, 5-4-1, 5-4-2 formats.
@@ -73,7 +74,7 @@ def to_ndc11(x) -> str | None:
     return None
 
 
-def clean_fei(x) -> str | None:
+def clean_fei(x) -> Optional[str]:
     if pd.isna(x):
         return None
     s = str(x).strip()
