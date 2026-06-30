@@ -10,7 +10,9 @@ Reconstructs a Sheet1-style panel for ALL 112 Valisure-tested metformin NDCs
 
 Output columns
 --------------
+  FEI_in_old                — True if this FEI was in the original Sheet1 analysis (18 FEIs)
   Insp Source               — "Redica" | "Sheet1" (legacy, FEI no longer in Redica) | null
+  Insp_coverage             — "both" | "new only" | "old only" | null (per inspection event)
   NDC, NDC11, NDC8          — three NDC formats
   Firm                      — manufacturer name
   Strength                  — dosage strength
@@ -188,6 +190,8 @@ s1_meta = (
     .rename(columns={"fei_norm": "FEI", "Firm": "s1_firm", "Strength": "s1_strength"})
 )
 sheet1_ndcs = set(s1_meta["ndc11_norm"])
+# FEIs that appeared in the original Sheet1 analysis (the 18 original facilities)
+sheet1_feis = set(df_s1["FEI"].apply(clean_fei).dropna().unique())
 
 # =============================================================================
 # 3. AMIR'S COL H — FEI for new NDCs not in Sheet1
@@ -378,6 +382,23 @@ site_stats["Inspections per Year"] = site_stats["total_events"] / (
 df_redica = df_redica.merge(site_stats[["FEI", "OAI Rate", "Inspections per Year"]], on="FEI", how="left")
 
 # Derive No483, NAI/VAI/OAI binary columns
+# Sheet1 event set keyed by (FEI, event_end_date as YYYY-MM-DD string).
+# Sheet1 Event End Date == Redica Event Date (exact match; both trace to FDA end date),
+# so we can do a precise set lookup when classifying Insp_coverage.
+s1_event_set = set(
+    zip(
+        df_s1_dates["fei_norm"].dropna(),
+        df_s1_dates["end_date_dt"].dropna().dt.strftime("%Y-%m-%d"),
+    )
+)
+# keep only rows where both are present
+_valid = df_s1_dates["fei_norm"].notna() & df_s1_dates["end_date_dt"].notna()
+s1_event_set = set(
+    zip(
+        df_s1_dates.loc[_valid, "fei_norm"],
+        df_s1_dates.loc[_valid, "end_date_dt"].dt.strftime("%Y-%m-%d"),
+    )
+)
 df_redica["No 483"] = (1 - df_redica["483"]).clip(0, 1)
 df_redica["NAI"]    = (df_redica["Classification"] == "NAI").astype(int)
 df_redica["VAI"]    = (df_redica["Classification"] == "VAI").astype(int)
@@ -449,9 +470,36 @@ panel["Year"] = panel["EventYear"]
 # =============================================================================
 panel["Dataset"] = panel["In Sheet1"].map({True: "old", False: "new"})
 
+# Flag 1: FEI_in_old — True if this FEI appeared in the original Sheet1 analysis.
+# Captures whether the FACILITY was part of the original dataset, independent of
+# which NDC is being looked at (e.g., a new NDC at an old FEI gets FEI_in_old=True).
+panel["FEI_in_old"] = panel["FEI"].isin(sheet1_feis)
+
+# Flag 2: Insp_coverage — per inspection-event, where it comes from:
+#   "both"     — event is in both current Redica and original Sheet1
+#   "new only" — event is in current Redica but was NOT in Sheet1
+#   "old only" — event is in Sheet1 only (FEI dropped from Redica coverage)
+#   null       — no inspection event (blank row for NDCs with no coverage)
+def _insp_coverage(row):
+    src = row.get("Insp Source")
+    if src == "Sheet1":
+        return "old only"
+    if src == "Redica":
+        end = row.get("Event End Date")
+        fei = row.get("FEI")
+        if pd.isna(end) or pd.isna(fei):
+            return "new only"
+        key = (str(fei).replace(".0", ""),
+               str(pd.to_datetime(end))[:10])
+        return "both" if key in s1_event_set else "new only"
+    return None
+
+panel["Insp_coverage"] = panel.apply(_insp_coverage, axis=1)
+
 FINAL_COLS = [
     # NDC identity
-    "Dataset", "Insp Source", "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
+    "Dataset", "FEI_in_old", "Insp Source", "Insp_coverage",
+    "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
     # Facility
     "FEI", "Site Display Name",
     # Valisure context
