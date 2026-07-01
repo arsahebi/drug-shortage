@@ -95,6 +95,7 @@ xls24 = pd.ExcelFile(RAW24)
 df20_raw = xls24.parse('2020 Testing Data')
 df20_raw['ndc11'] = df20_raw['NDC'].apply(clean11)
 
+lots20 = df20_raw.dropna(subset=['ndc11']).groupby('ndc11').size().rename('n_lots_2020')
 df20 = (
     df20_raw.dropna(subset=['ndc11'])
     .groupby('ndc11', as_index=False)
@@ -120,6 +121,7 @@ df22_raw['ndc11'] = df22_raw['NDC13'].apply(clean11).fillna(
     df22_raw['NDC'].apply(clean11)
 )
 
+lots22 = df22_raw.dropna(subset=['ndc11']).groupby('ndc11').size().rename('n_lots_2022')
 df22 = (
     df22_raw.dropna(subset=['ndc11'])
     .groupby('ndc11', as_index=False)
@@ -143,6 +145,7 @@ df24_raw = xls24.parse('2024 Testing Data', header=1)
 df24_raw['ndc11']      = df24_raw['NDC11'].apply(clean11)
 df24_raw['dmf_ng_day'] = df24_raw['DMF (ng/DAY) Valisure'].apply(parse_qual)
 
+lots24 = df24_raw.dropna(subset=['ndc11']).drop_duplicates('ndc11')['ndc11'].value_counts().rename('n_lots_2024')
 df24 = (
     df24_raw.dropna(subset=['ndc11'])
     [['ndc11', 'dmf_ng_day']]
@@ -173,6 +176,27 @@ qual['ndc11'] = qual['ndc11'].astype(str)
 # Round to 1 decimal place — matching Sheet1
 for c in ['dmf_ng_day', 'ndma_ng_day']:
     qual[c] = qual[c].round(1)
+
+# ── NDC-level summary: which years tested + lot counts ──────────────────────
+# valisure_tested_years : "2020+2022+2024" or "2020+2024" etc.
+# n_lots_2020/2022/2024 : number of lots tested that year (0 if not tested)
+tested_years = (
+    qual.groupby('ndc11')['valisure_year']
+    .apply(lambda s: '+'.join(str(y) for y in sorted(s)))
+    .rename('valisure_tested_years')
+    .reset_index()
+)
+lots_all = (
+    pd.DataFrame({'ndc11': qual['ndc11'].unique()})
+    .merge(lots20.reset_index().rename(columns={'ndc11':'ndc11'}), on='ndc11', how='left')
+    .merge(lots22.reset_index().rename(columns={'ndc11':'ndc11'}), on='ndc11', how='left')
+    .merge(lots24.reset_index().rename(columns={'ndc11':'ndc11'}), on='ndc11', how='left')
+    .fillna(0)
+)
+lots_all[['n_lots_2020','n_lots_2022','n_lots_2024']] = (
+    lots_all[['n_lots_2020','n_lots_2022','n_lots_2024']].astype(int)
+)
+ndc_meta = tested_years.merge(lots_all, on='ndc11', how='left')
 
 print(f"\nQuality table: {len(qual)} rows")
 print(qual.groupby('valisure_year')[['dmf_ng_day','ndma_ng_day','diff_factor']].describe().T)
@@ -242,6 +266,14 @@ annual = annual.rename(columns={'ndc11': 'ndc11_bare', 'year': 'ValisureYear'})
 
 v2 = v2.merge(annual, on=['ndc11_bare', 'ValisureYear'], how='left')
 print(f"After volume join: {len(v2):,} rows")
+
+# Join NDC-level Valisure metadata (tested years + lot counts)
+v2 = v2.merge(
+    ndc_meta.rename(columns={'ndc11': 'ndc11_bare'}),
+    on='ndc11_bare', how='left'
+)
+for c in ['n_lots_2020', 'n_lots_2022', 'n_lots_2024']:
+    v2[c] = v2[c].fillna(0).astype(int)
 print(f"  iqvia_trx populated: {v2['iqvia_trx'].notna().sum():,}")
 print(f"  nadac_price populated: {v2['nadac_price'].notna().sum():,}")
 
@@ -254,6 +286,8 @@ FINAL_COLS = [
     # Identity
     'Firm', 'Year', 'NDC', 'NDC11', 'NDC8', 'Strength', 'CountryCode',
     'FEI', 'Site Display Name', 'Valisure Years',
+    # Valisure sweep coverage (NDC-level, constant across all rows for an NDC)
+    'valisure_tested_years', 'n_lots_2020', 'n_lots_2022', 'n_lots_2024',
     # Valisure quality
     'dmf_ng_day', 'ndma_ng_day', 'diff_factor',
     # Inspection event
