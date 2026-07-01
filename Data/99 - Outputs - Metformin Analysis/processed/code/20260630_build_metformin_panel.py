@@ -408,19 +408,21 @@ panel["Insp_coverage"] = panel["Insp_coverage"].map({         # per row
     "Valisure14 only":    "new only",
 })
 
-# NDC_origin: per-NDC provenance — where did this NDC/FEI pairing come from?
-#   "Old NDC"             — in original Sheet1 paper analysis
-#   "New NDC – known FEI" — Amir found the NDC; FEI was already in old METFORMIN data
-#   "New NDC – new FEI"   — Amir found the NDC; FEI is genuinely new (not in old Redica)
-#   "No FEI"              — no facility mapping found for this NDC
+# NDC_origin: per-NDC provenance — how was the FEI mapping obtained?
+# All 112 NDCs were always in Valisure's testing data; what differs is whether
+# the NDC→FEI match was in the original Sheet1 or newly resolved by Amir.
+#   "Originally matched"        — FEI was in the original Sheet1 analysis
+#   "Newly matched – known FEI" — Amir found the FEI; facility already in old METFORMIN data
+#   "Newly matched – new FEI"   — Amir found the FEI; facility not in old Redica data at all
+#   "Unmatched"                 — no FEI mapping found
 def _ndc_origin(row):
     if pd.isna(row.get("FEI")):
-        return "No FEI"
+        return "Unmatched"
     if row.get("In Sheet1", False):
-        return "Old NDC"
+        return "Originally matched"
     if row.get("FEI_in_old_Redica", False):
-        return "New NDC – known FEI"
-    return "New NDC – new FEI"
+        return "Newly matched – known FEI"
+    return "Newly matched – new FEI"
 
 panel["NDC_origin"] = panel.apply(_ndc_origin, axis=1)
 
@@ -466,11 +468,11 @@ print("\n── NDC & FEI counts by origin ────────────�
 origin_summary = (
     ndc_level.groupby("NDC_origin", dropna=False)
     .agg(n_NDCs=("NDC11", "count"), n_FEIs=("FEI", "nunique"))
-    .reindex(["Old NDC", "New NDC – known FEI", "New NDC – new FEI", "No FEI"])
+    .reindex(["Originally matched", "Newly matched – known FEI", "Newly matched – new FEI", "Unmatched"])
     .fillna(0).astype(int)
 )
 origin_summary["n_FEIs"] = origin_summary["n_FEIs"].where(
-    origin_summary.index != "No FEI", 0
+    origin_summary.index != "Unmatched", 0
 )
 print(origin_summary.to_string())
 
