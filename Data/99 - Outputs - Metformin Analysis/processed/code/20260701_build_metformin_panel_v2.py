@@ -190,6 +190,8 @@ ALL_VAL_YEARS = pd.DataFrame({'ValisureYear': pd.array([2020, 2022, 2024], dtype
 
 v2 = v1.rename(columns={'Year': 'InspYear'}).merge(ALL_VAL_YEARS, how='cross')
 v2['Year'] = v2['ValisureYear']
+# Each row is one test year — replace the combined "2020+2022" string with the single year
+v2['Valisure Years'] = v2['ValisureYear'].astype(str)
 
 print(f"v1 rows: {len(v1):,}  →  v2 after expansion: {len(v2):,}")
 print("Rows per Valisure year:")
