@@ -10,9 +10,9 @@ Reconstructs a Sheet1-style panel for ALL 112 Valisure-tested metformin NDCs
 
 Output columns
 --------------
-  FEI_in_old                — True if this FEI was in the original Sheet1 analysis (18 FEIs)
-  Insp Source               — "Valisure14" | "METFORMIN_old" (FEI dropped from current Redica) | null
-  Insp_coverage             — "both" | "Valisure14 only" | "METFORMIN_old only" | null (per inspection event)
+  FEI_in_old_Redica         — True if FEI appears in METFORMIN_old Redica export (old source)
+  FEI_in_new_Redica         — True if FEI appears in Valisure14 Redica export (current source)
+  Insp_coverage             — per inspection row: "both" | "old only" | "new only" | null
   NDC, NDC11, NDC8          — three NDC formats
   Firm                      — manufacturer name
   Strength                  — dosage strength
@@ -20,9 +20,8 @@ Output columns
   FEI                       — facility establishment identifier
   Site Display Name         — Redica site label
   Valisure Years            — which sweeps tested this NDC (e.g. "2020+2022")
-  In Sheet1                 — was this NDC in the original paper?
-  Event Start Date          — FDA inspection start date (from Sheet1 for old NDCs; null for new)
-  Event End Date            — Redica/FDA inspection end date (available for all NDCs)
+  Event Start Date          — FDA inspection start date (from METFORMIN_old; null for new-only events)
+  Event End Date            — inspection end date (from both sources)
   EventYear                 — calendar year of inspection
   Classification            — NAI / VAI / OAI
   NAI, VAI, OAI             — binary flags
@@ -341,6 +340,14 @@ hist_stats["Inspections per Year"] = hist_stats["total_events"] / (
     hist_stats["max_year"] - hist_stats["min_year"] + 1
 )
 
+# Per-FEI membership: which Redica source contains each FEI?
+_fei_in_old = set(
+    df_hist.loc[df_hist["Insp_coverage"].isin(["both", "METFORMIN_old only"]), "FEI"].unique()
+)
+_fei_in_new = set(
+    df_hist.loc[df_hist["Insp_coverage"].isin(["both", "Valisure14 only"]), "FEI"].unique()
+)
+
 # =============================================================================
 # 8. BUILD PANEL: NDC × inspection event
 # =============================================================================
@@ -390,40 +397,33 @@ panel["Year"] = panel["EventYear"]
 # =============================================================================
 # 9. SELECT AND ORDER FINAL COLUMNS
 # =============================================================================
-panel["Dataset"] = panel["In Sheet1"].map({True: "old", False: "new"})
 
-# FEI_in_old — True if this FEI was in the original 18-FEI Sheet1 analysis.
-# Reflects whether the FACILITY was known before, regardless of which NDC is
-# being looked at (e.g., a new NDC at an old FEI still gets FEI_in_old=True).
-panel["FEI_in_old"] = panel["FEI"].isin(sheet1_feis)
-
-# Insp_coverage — per inspection-event origin (set during history file construction):
-#   "both"               — event in both METFORMIN_old and current Valisure14
-#   "Valisure14 only"    — event in current Valisure14 only (not in old METFORMIN export)
-#   "METFORMIN_old only" — event in old METFORMIN data only (FEI dropped from Valisure14)
-#   null                 — no inspection event (NDC with no history coverage)
-# Already populated from df_hist merge; no further computation needed.
+# Three coverage flags replacing the old five (Dataset, FEI_in_old, Insp Source,
+# Insp_coverage with long names, In Sheet1):
+panel["FEI_in_old_Redica"] = panel["FEI"].isin(_fei_in_old)  # per FEI
+panel["FEI_in_new_Redica"] = panel["FEI"].isin(_fei_in_new)  # per FEI
+panel["Insp_coverage"] = panel["Insp_coverage"].map({         # per row
+    "both":               "both",
+    "METFORMIN_old only": "old only",
+    "Valisure14 only":    "new only",
+})
 
 FINAL_COLS = [
-    # Origin flags
-    "Dataset",        # "old" = NDC was in Sheet1; "new" = found via Amir's col H
-    "FEI_in_old",     # True if FEI was in original 18-facility Sheet1 analysis
-    "Insp Source",    # "Valisure14" | "METFORMIN_old" | null
-    "Insp_coverage",  # "both" | "Valisure14 only" | "METFORMIN_old only" | null
+    # Coverage flags
+    "FEI_in_old_Redica",  # FEI in METFORMIN_old Redica export?
+    "FEI_in_new_Redica",  # FEI in current Valisure14 Redica export?
+    "Insp_coverage",      # per row: "both" | "old only" | "new only" | null
     # NDC identity
     "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
     # Facility
     "FEI", "Site Display Name",
     # Valisure context
-    "Valisure Years", "In Sheet1",
+    "Valisure Years",
     # Inspection event
-    # Start date: from METFORMIN_old (has FDA OASIS start dates); null for Valisure14-only events
-    # End date: from both sources
     "Event Start Date", "Event End Date", "EventYear", "Classification",
     "NAI", "VAI", "OAI", "483", "No 483",
     "483 critical", "483 major", "483 other", "Warning Letter",
-    # Site-level aggregates (from Redica Data Availability; OAI Rate / Inspections per Year
-    # computed from FDA-sole filtered history)
+    # Site-level aggregates
     "Total Inspections", "FDA Inspections", "483s Issued",
     "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
     "OAI Rate", "Inspections per Year",
@@ -445,8 +445,9 @@ print(f"  Rows           : {len(panel_out):,}")
 print(f"  Unique NDC11s  : {panel_out['NDC11'].nunique()}")
 print(f"  Unique FEIs    : {panel_out['FEI'].nunique()}")
 print(f"  NDCs with no FEI      : {panel_out[panel_out['FEI'].isna()]['NDC11'].nunique()}")
-print(f"  NDCs in Sheet1        : {panel_out[panel_out['In Sheet1']]['NDC11'].nunique()}")
-print(f"  NDCs new (not Sheet1) : {panel_out[~panel_out['In Sheet1']]['NDC11'].nunique()}")
+print(f"  FEIs in old Redica    : {panel_out['FEI_in_old_Redica'].sum() if 'FEI_in_old_Redica' in panel_out else 'n/a'}")
+print(f"  FEIs in new Redica    : {panel_out['FEI_in_new_Redica'].sum() if 'FEI_in_new_Redica' in panel_out else 'n/a'}")
+print(f"  Insp_coverage: {panel_out['Insp_coverage'].value_counts(dropna=False).to_dict()}")
 print()
 print("  Sample:")
 print(panel_out[["NDC11", "Firm", "CountryCode", "FEI", "EventYear",
