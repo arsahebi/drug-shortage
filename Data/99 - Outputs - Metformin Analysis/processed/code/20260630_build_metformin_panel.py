@@ -227,6 +227,12 @@ new_fei_map = (
 # =============================================================================
 print("Building NDC→FEI mapping...")
 
+# Load Redica Site List early — used for authoritative firm names keyed by FEI
+_sl = pd.read_excel(SITE_LIST, dtype=str)
+_sl["FEI"] = _sl["FEI"].astype(str).str.strip()
+_sl["redica_firm"] = _sl["Site Display Name"].str.split("[").str[0].str.strip()
+FEI_TO_REDICA_FIRM = _sl.set_index("FEI")["redica_firm"].to_dict()
+
 # Start with all 112 Valisure NDC11s
 ndc_master = val_df.copy()
 
@@ -243,9 +249,24 @@ ndc_master = ndc_master.merge(
 ndc_master.loc[no_fei_mask, "FEI"] = ndc_master.loc[no_fei_mask, "FEI_H"]
 ndc_master.drop(columns=["FEI_H"], inplace=True)
 
-# Firm: prefer Sheet1, fall back to Valisure
-ndc_master["Firm"] = ndc_master["s1_firm"].fillna(ndc_master["val_firm"])
+# Firm: Sheet1 (manually curated) → Redica Site List by FEI (authoritative mfr) → Valisure raw
+ndc_master["redica_firm"] = ndc_master["FEI"].map(FEI_TO_REDICA_FIRM)
+ndc_master["Firm"] = (
+    ndc_master["s1_firm"]
+    .fillna(ndc_master["redica_firm"])
+    .fillna(ndc_master["val_firm"])
+)
 ndc_master["Strength"] = ndc_master["s1_strength"].fillna(ndc_master["val_strength"])
+
+# firm_valisure_mismatch: 1 when Valisure raw Firm ≠ Redica firm (both present, different)
+def _is_mismatch(row):
+    vf = str(row["val_firm"]).strip().lower() if pd.notna(row["val_firm"]) else None
+    rf = str(row["redica_firm"]).strip().lower() if pd.notna(row["redica_firm"]) else None
+    if not vf or vf in ("nan", "0", "") or not rf:
+        return 0
+    return int(vf != rf)
+
+ndc_master["firm_valisure_mismatch"] = ndc_master.apply(_is_mismatch, axis=1)
 
 # =============================================================================
 # 5. COUNTRY CODE FOR NEW NDCs (from FDA Inspection Details by FEI)
@@ -267,13 +288,12 @@ if new_feis:
     ndc_master.loc[mask, "CountryCode"] = ndc_master.loc[mask, "CountryCode_new"]
     ndc_master.drop(columns=["CountryCode_new"], inplace=True)
 
-# For NDCs still missing Firm or CountryCode but with a known FEI,
-# fill from another NDC sharing the same FEI (same facility → same country/firm)
-fei_firm    = ndc_master.dropna(subset=["FEI", "Firm"]).drop_duplicates("FEI").set_index("FEI")["Firm"]
+# For NDCs still missing CountryCode but with a known FEI,
+# fill from another NDC sharing the same FEI.
+# (Firm is now resolved via Redica site list by FEI, so no propagation needed there.)
 fei_country = ndc_master.dropna(subset=["FEI", "CountryCode"]).drop_duplicates("FEI").set_index("FEI")["CountryCode"]
-for col, lookup in [("Firm", fei_firm), ("CountryCode", fei_country)]:
-    mask = ndc_master[col].isna() & ndc_master["FEI"].notna()
-    ndc_master.loc[mask, col] = ndc_master.loc[mask, "FEI"].map(lookup)
+mask = ndc_master["CountryCode"].isna() & ndc_master["FEI"].notna()
+ndc_master.loc[mask, "CountryCode"] = ndc_master.loc[mask, "FEI"].map(fei_country)
 
 # =============================================================================
 # 6. ADD NDC DISPLAY FORMATS
@@ -304,9 +324,8 @@ print(f"  NDC master rows: {len(ndc_master)}  (all 112 Valisure NDCs)")
 # 7. INSPECTION HISTORY + REDICA SITE AGGREGATES
 # =============================================================================
 print("Loading inspection history and Redica aggregate stats...")
-df_site = pd.read_excel(SITE_LIST)
-df_site["FEI"] = df_site["FEI"].astype(str).str.strip()
-site_name_map = df_site.set_index("FEI")["Site Display Name"].to_dict()
+# _sl already loaded in step 4; just build the site name lookup here
+site_name_map = _sl.set_index("FEI")["Site Display Name"].to_dict()
 
 # Site-level aggregate totals (Total Inspections, FDA Inspections, etc.)
 # from the full Redica export; used for site-profile columns only.
@@ -433,7 +452,7 @@ FINAL_COLS = [
     "FEI_in_new_Redica",  # per FEI: in current Valisure14 Redica export?
     "Insp_coverage",      # per row: "both" | "old only" | "new only" | null
     # NDC identity
-    "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
+    "Firm", "firm_valisure_mismatch", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
     # Facility
     "FEI", "Site Display Name",
     # Valisure context

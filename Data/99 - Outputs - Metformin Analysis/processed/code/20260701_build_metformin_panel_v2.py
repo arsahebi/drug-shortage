@@ -284,7 +284,7 @@ FINAL_COLS = [
     # Provenance
     'NDC_origin', 'FEI_in_old_Redica', 'FEI_in_new_Redica', 'Insp_coverage',
     # Identity
-    'Firm', 'Year', 'NDC', 'NDC11', 'NDC8', 'Strength', 'CountryCode',
+    'Firm', 'firm_valisure_mismatch', 'Year', 'NDC', 'NDC11', 'NDC8', 'Strength', 'CountryCode',
     'FEI', 'Site Display Name', 'Valisure Years',
     # Valisure sweep coverage (NDC-level, constant across all rows for an NDC)
     'valisure_tested_years', 'n_lots_2020', 'n_lots_2022', 'n_lots_2024',
