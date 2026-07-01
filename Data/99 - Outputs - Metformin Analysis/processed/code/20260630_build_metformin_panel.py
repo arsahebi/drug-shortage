@@ -408,10 +408,27 @@ panel["Insp_coverage"] = panel["Insp_coverage"].map({         # per row
     "Valisure14 only":    "new only",
 })
 
+# NDC_origin: per-NDC provenance — where did this NDC/FEI pairing come from?
+#   "Old NDC"             — in original Sheet1 paper analysis
+#   "New NDC – known FEI" — Amir found the NDC; FEI was already in old METFORMIN data
+#   "New NDC – new FEI"   — Amir found the NDC; FEI is genuinely new (not in old Redica)
+#   "No FEI"              — no facility mapping found for this NDC
+def _ndc_origin(row):
+    if pd.isna(row.get("FEI")):
+        return "No FEI"
+    if row.get("In Sheet1", False):
+        return "Old NDC"
+    if row.get("FEI_in_old_Redica", False):
+        return "New NDC – known FEI"
+    return "New NDC – new FEI"
+
+panel["NDC_origin"] = panel.apply(_ndc_origin, axis=1)
+
 FINAL_COLS = [
-    # Coverage flags
-    "FEI_in_old_Redica",  # FEI in METFORMIN_old Redica export?
-    "FEI_in_new_Redica",  # FEI in current Valisure14 Redica export?
+    # Provenance / coverage flags
+    "NDC_origin",         # per NDC: where NDC/FEI came from
+    "FEI_in_old_Redica",  # per FEI: in METFORMIN_old Redica export?
+    "FEI_in_new_Redica",  # per FEI: in current Valisure14 Redica export?
     "Insp_coverage",      # per row: "both" | "old only" | "new only" | null
     # NDC identity
     "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
@@ -440,17 +457,41 @@ panel_out = panel[FINAL_COLS].sort_values(
 # =============================================================================
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 panel_out.to_csv(OUT_FILE, index=False)
-print(f"\nSaved: {OUT_FILE}")
-print(f"  Rows           : {len(panel_out):,}")
-print(f"  Unique NDC11s  : {panel_out['NDC11'].nunique()}")
-print(f"  Unique FEIs    : {panel_out['FEI'].nunique()}")
-print(f"  NDCs with no FEI      : {panel_out[panel_out['FEI'].isna()]['NDC11'].nunique()}")
-print(f"  FEIs in old Redica    : {panel_out['FEI_in_old_Redica'].sum() if 'FEI_in_old_Redica' in panel_out else 'n/a'}")
-print(f"  FEIs in new Redica    : {panel_out['FEI_in_new_Redica'].sum() if 'FEI_in_new_Redica' in panel_out else 'n/a'}")
-print(f"  Insp_coverage: {panel_out['Insp_coverage'].value_counts(dropna=False).to_dict()}")
-print()
-print("  Sample:")
-print(panel_out[["NDC11", "Firm", "CountryCode", "FEI", "EventYear",
-                 "Classification", "483", "OAI Rate"]].head(10).to_string())
+print(f"\nSaved: {OUT_FILE}  ({len(panel_out):,} rows)")
+
+# ── Summary stats ─────────────────────────────────────────────────────────────
+ndc_level = panel_out.drop_duplicates("NDC11")
+
+print("\n── NDC & FEI counts by origin ──────────────────────────────────────────")
+origin_summary = (
+    ndc_level.groupby("NDC_origin", dropna=False)
+    .agg(n_NDCs=("NDC11", "count"), n_FEIs=("FEI", "nunique"))
+    .reindex(["Old NDC", "New NDC – known FEI", "New NDC – new FEI", "No FEI"])
+    .fillna(0).astype(int)
+)
+origin_summary["n_FEIs"] = origin_summary["n_FEIs"].where(
+    origin_summary.index != "No FEI", 0
+)
+print(origin_summary.to_string())
+
+print("\n── FEI Redica membership (unique FEIs with mapping) ────────────────────")
+fei_level = panel_out.dropna(subset=["FEI"]).drop_duplicates("FEI")
+both_redica  = (fei_level["FEI_in_old_Redica"] &  fei_level["FEI_in_new_Redica"]).sum()
+old_only     = (fei_level["FEI_in_old_Redica"] & ~fei_level["FEI_in_new_Redica"]).sum()
+new_only     = (~fei_level["FEI_in_old_Redica"] &  fei_level["FEI_in_new_Redica"]).sum()
+neither      = (~fei_level["FEI_in_old_Redica"] & ~fei_level["FEI_in_new_Redica"]).sum()
+print(f"  In both old & new Redica : {both_redica}")
+print(f"  Old Redica only          : {old_only}")
+print(f"  New Redica only          : {new_only}")
+print(f"  Neither (no Redica data) : {neither}")
+
+print("\n── Inspection event coverage (rows with an event) ──────────────────────")
+ev = panel_out[panel_out["Insp_coverage"].notna()]
+cov_by_origin = (
+    ev.groupby(["NDC_origin", "Insp_coverage"])
+    .size().unstack(fill_value=0)
+)
+col_order = [c for c in ["both", "new only", "old only"] if c in cov_by_origin.columns]
+print(cov_by_origin[col_order].to_string())
 
 # %%
