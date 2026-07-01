@@ -463,37 +463,46 @@ print(f"\nSaved: {OUT_FILE}  ({len(panel_out):,} rows)")
 
 # ── Summary stats ─────────────────────────────────────────────────────────────
 ndc_level = panel_out.drop_duplicates("NDC11")
+ROW_ORDER = ["Originally matched", "Newly matched – known FEI",
+             "Newly matched – new FEI", "Unmatched"]
 
-print("\n── NDC & FEI counts by origin ──────────────────────────────────────────")
-origin_summary = (
+# NDC & FEI counts per origin
+origin_counts = (
     ndc_level.groupby("NDC_origin", dropna=False)
     .agg(n_NDCs=("NDC11", "count"), n_FEIs=("FEI", "nunique"))
-    .reindex(["Originally matched", "Newly matched – known FEI", "Newly matched – new FEI", "Unmatched"])
-    .fillna(0).astype(int)
+    .reindex(ROW_ORDER).fillna(0).astype(int)
 )
-origin_summary["n_FEIs"] = origin_summary["n_FEIs"].where(
-    origin_summary.index != "Unmatched", 0
-)
-print(origin_summary.to_string())
+origin_counts.loc["Unmatched", "n_FEIs"] = 0
 
-print("\n── FEI Redica membership (unique FEIs with mapping) ────────────────────")
-fei_level = panel_out.dropna(subset=["FEI"]).drop_duplicates("FEI")
-both_redica  = (fei_level["FEI_in_old_Redica"] &  fei_level["FEI_in_new_Redica"]).sum()
-old_only     = (fei_level["FEI_in_old_Redica"] & ~fei_level["FEI_in_new_Redica"]).sum()
-new_only     = (~fei_level["FEI_in_old_Redica"] &  fei_level["FEI_in_new_Redica"]).sum()
-neither      = (~fei_level["FEI_in_old_Redica"] & ~fei_level["FEI_in_new_Redica"]).sum()
-print(f"  In both old & new Redica : {both_redica}")
-print(f"  Old Redica only          : {old_only}")
-print(f"  New Redica only          : {new_only}")
-print(f"  Neither (no Redica data) : {neither}")
-
-print("\n── Inspection event coverage (rows with an event) ──────────────────────")
+# Inspection-event coverage per origin
 ev = panel_out[panel_out["Insp_coverage"].notna()]
-cov_by_origin = (
+cov = (
     ev.groupby(["NDC_origin", "Insp_coverage"])
     .size().unstack(fill_value=0)
+    .reindex(ROW_ORDER, fill_value=0)
 )
-col_order = [c for c in ["both", "new only", "old only"] if c in cov_by_origin.columns]
-print(cov_by_origin[col_order].to_string())
+cov.columns.name = None
+for col in ["both", "new only", "old only"]:
+    if col not in cov.columns:
+        cov[col] = 0
+
+summary = origin_counts.join(cov[["both", "new only", "old only"]])
+summary.loc["Total"] = summary.sum()
+summary.index.name = "NDC_origin"
+
+print("\n── Panel summary ───────────────────────────────────────────────────────")
+print("  Inspection rows: 'both'=in old & new data  'new only'=new data only  'old only'=old data only")
+print()
+print(summary.rename(columns={
+    "n_NDCs": "NDCs", "n_FEIs": "FEIs",
+    "both": "insp_both", "new only": "insp_new_only", "old only": "insp_old_only"
+}).to_string())
+
+print("\n── FEI Redica membership (unique FEIs with a mapping) ──────────────────")
+fei_level = panel_out.dropna(subset=["FEI"]).drop_duplicates("FEI")
+print(f"  In both old & new Redica : {(fei_level['FEI_in_old_Redica'] &  fei_level['FEI_in_new_Redica']).sum()}")
+print(f"  Old Redica only          : {(fei_level['FEI_in_old_Redica'] & ~fei_level['FEI_in_new_Redica']).sum()}")
+print(f"  New Redica only          : {(~fei_level['FEI_in_old_Redica'] &  fei_level['FEI_in_new_Redica']).sum()}")
+print(f"  Neither (no Redica data) : {(~fei_level['FEI_in_old_Redica'] & ~fei_level['FEI_in_new_Redica']).sum()}")
 
 # %%
