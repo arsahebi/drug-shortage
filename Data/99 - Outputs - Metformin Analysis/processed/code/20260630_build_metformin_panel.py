@@ -11,8 +11,8 @@ Reconstructs a Sheet1-style panel for ALL 112 Valisure-tested metformin NDCs
 Output columns
 --------------
   FEI_in_old                — True if this FEI was in the original Sheet1 analysis (18 FEIs)
-  Insp Source               — "Redica" | "Sheet1" (legacy, FEI no longer in Redica) | null
-  Insp_coverage             — "both" | "new only" | "old only" | null (per inspection event)
+  Insp Source               — "Valisure14" | "METFORMIN_old" (FEI dropped from current Redica) | null
+  Insp_coverage             — "both" | "Valisure14 only" | "METFORMIN_old only" | null (per inspection event)
   NDC, NDC11, NDC8          — three NDC formats
   Firm                      — manufacturer name
   Strength                  — dosage strength
@@ -40,7 +40,10 @@ Sources
   Valisure raw : Data/08 - Valisure/raw/Valisure_2024_raw.xlsx
   Sheet1       : Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx
   Amir sheet   : same file, sheet "Amir-Unique NDC from Valisure ("
-  Redica       : Data/07 - Redica/processed/redica_all_drugs_combined.csv
+  Insp history : Data/07 - Redica/processed/valisure_fei_inspection_history.csv
+                   (FDA-sole + DQA filtered; combines METFORMIN_old + Valisure14)
+  Redica agg   : Data/07 - Redica/processed/redica_all_drugs_combined.csv
+                   (site-level aggregate stats only: Total Inspections etc.)
                  Data/07 - Redica/raw/Site List.xlsx
   FDA Insp     : Data/14 - FDA - Inspection/raw/Inspections Details.xlsx
 """
@@ -57,13 +60,14 @@ BASE      = Path(
     "/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/"
     "My Drive/North Carolina State University/Project - Drug Shortage"
 )
-VAL_RAW   = BASE / "Data/08 - Valisure/raw/Valisure_2024_raw.xlsx"
-QA_FILE   = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
-SITE_LIST = BASE / "Data/07 - Redica/raw/Site List.xlsx"
-REDICA_CSV= BASE / "Data/07 - Redica/processed/redica_all_drugs_combined.csv"
-FDA_INSP  = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
-OUT_DIR   = BASE / "Data/99 - Outputs - Metformin Analysis/processed"
-OUT_FILE  = OUT_DIR / "metformin_panel_v1.csv"
+VAL_RAW      = BASE / "Data/08 - Valisure/raw/Valisure_2024_raw.xlsx"
+QA_FILE      = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
+SITE_LIST    = BASE / "Data/07 - Redica/raw/Site List.xlsx"
+REDICA_CSV   = BASE / "Data/07 - Redica/processed/redica_all_drugs_combined.csv"
+INSP_HISTORY = BASE / "Data/07 - Redica/processed/valisure_fei_inspection_history.csv"
+FDA_INSP     = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
+OUT_DIR      = BASE / "Data/99 - Outputs - Metformin Analysis/processed"
+OUT_FILE     = OUT_DIR / "metformin_panel_v1.csv"
 
 # =============================================================================
 # HELPERS
@@ -298,171 +302,89 @@ ndc_master["Strength"] = ndc_master["Strength"].replace({"0": None, "nan": None,
 print(f"  NDC master rows: {len(ndc_master)}  (all 112 Valisure NDCs)")
 
 # =============================================================================
-# 7. REDICA SITE INFO AND INSPECTION EVENTS
+# 7. INSPECTION HISTORY + REDICA SITE AGGREGATES
 # =============================================================================
-print("Loading Redica data...")
-df_site   = pd.read_excel(SITE_LIST)
+print("Loading inspection history and Redica aggregate stats...")
+df_site = pd.read_excel(SITE_LIST)
 df_site["FEI"] = df_site["FEI"].astype(str).str.strip()
 site_name_map = df_site.set_index("FEI")["Site Display Name"].to_dict()
 
+# Site-level aggregate totals (Total Inspections, FDA Inspections, etc.)
+# from the full Redica export; used for site-profile columns only.
 df_redica = pd.read_csv(REDICA_CSV)
 df_redica["FEI"] = df_redica["FEI"].astype(str).str.strip()
-df_redica["Event Date"] = pd.to_datetime(df_redica["Event Date"])
-df_redica["EventYear"]  = df_redica["Event Date"].dt.year
-
-# Build (FEI, Event End Date) → Event Start Date lookup from Sheet1.
-# Sheet1's Event End Date = Redica Event Date (confirmed); start dates come
-# from the original FDA OASIS export that Sheet1 was built from.
-df_s1_dates = pd.read_excel(QA_FILE, sheet_name="Sheet1")
-df_s1_dates["ndc11_norm"]   = df_s1_dates["NDC11"].apply(to_ndc11)
-df_s1_dates["fei_norm"]     = df_s1_dates["FEI"].apply(clean_fei)
-df_s1_dates["end_date_dt"]  = pd.to_datetime(df_s1_dates["Event End Date"], errors="coerce")
-df_s1_dates["start_date_dt"]= pd.to_datetime(df_s1_dates["Event Start Date"], errors="coerce")
-# One (FEI, end_date) → start_date mapping (deduplicated)
-s1_date_map = (
-    df_s1_dates[df_s1_dates["end_date_dt"].notna() & df_s1_dates["start_date_dt"].notna()]
-    [["fei_norm", "end_date_dt", "start_date_dt"]]
-    .drop_duplicates(["fei_norm", "end_date_dt"])
-    .rename(columns={"fei_norm": "FEI", "end_date_dt": "Event End Date",
-                     "start_date_dt": "Event Start Date"})
+site_agg = (
+    df_redica[["FEI", "Total Inspections", "FDA Inspections", "483s Issued",
+               "Total Observations", "Warning Letters Issued", "Import Alerts Issued"]]
+    .drop_duplicates("FEI")
 )
 
-# Sheet1 inspection events for FEIs no longer in current Redica coverage.
-# Deduplicated to unique (FEI, Event End Date) events.
-def _cls_from_binary(row):
-    if row.get("OAI") == 1: return "OAI"
-    if row.get("VAI") == 1: return "VAI"
-    if row.get("NAI") == 1: return "NAI"
-    return None
+# Per-inspection history: FDA-sole + DQA filtered, METFORMIN_old and Valisure14 combined.
+# "Insp_coverage" and "Source" columns are set during history file construction.
+df_hist = pd.read_csv(INSP_HISTORY)
+df_hist["FEI"]             = df_hist["FEI"].astype(str).str.strip()
+df_hist["Event End Date"]  = pd.to_datetime(df_hist["Event End Date"],  errors="coerce")
+df_hist["Event Start Date"]= pd.to_datetime(df_hist["Event Start Date"], errors="coerce")
+df_hist["EventYear"]       = df_hist["EventYear"].astype(pd.Int64Dtype())
 
-s1_legacy_events = (
-    df_s1_dates[df_s1_dates["end_date_dt"].notna() & df_s1_dates["fei_norm"].notna()]
-    [["fei_norm", "end_date_dt", "start_date_dt", "EventYear",
-      "483", "No 483", "NAI", "VAI", "OAI"]]
-    .drop_duplicates(["fei_norm", "end_date_dt"])
-    .copy()
-)
-s1_legacy_events["Classification"] = s1_legacy_events.apply(_cls_from_binary, axis=1)
-s1_legacy_events = s1_legacy_events.rename(columns={
-    "fei_norm":      "FEI",
-    "end_date_dt":   "Event End Date",
-    "start_date_dt": "Event Start Date",
-})
-# Pre-compute OAI Rate and Inspections per Year from Sheet1 data per FEI
-_legacy_stats = (
-    s1_legacy_events.groupby("FEI").agg(
+# OAI Rate and Inspections per Year computed from the filtered history.
+hist_stats = (
+    df_hist.groupby("FEI").agg(
         oai_count    = ("Classification", lambda x: (x == "OAI").sum()),
         total_events = ("Classification", "count"),
         min_year     = ("EventYear", "min"),
         max_year     = ("EventYear", "max"),
     ).reset_index()
 )
-_legacy_stats["OAI Rate"] = _legacy_stats["oai_count"] / _legacy_stats["total_events"]
-_legacy_stats["Inspections per Year"] = _legacy_stats["total_events"] / (
-    _legacy_stats["max_year"] - _legacy_stats["min_year"] + 1
+hist_stats["OAI Rate"] = hist_stats["oai_count"] / hist_stats["total_events"]
+hist_stats["Inspections per Year"] = hist_stats["total_events"] / (
+    hist_stats["max_year"] - hist_stats["min_year"] + 1
 )
-s1_legacy_events = s1_legacy_events.merge(
-    _legacy_stats[["FEI", "OAI Rate", "Inspections per Year"]], on="FEI", how="left"
-)
-
-# Site-level OAI rate and inspections per year
-site_stats = (
-    df_redica.groupby("FEI").agg(
-        oai_count    = ("Classification", lambda x: (x == "OAI").sum()),
-        total_events = ("Classification", "count"),
-        min_year     = ("EventYear", "min"),
-        max_year     = ("EventYear", "max"),
-    ).reset_index()
-)
-site_stats["OAI Rate"]           = site_stats["oai_count"] / site_stats["total_events"]
-site_stats["Inspections per Year"] = site_stats["total_events"] / (
-    site_stats["max_year"] - site_stats["min_year"] + 1
-)
-
-df_redica = df_redica.merge(site_stats[["FEI", "OAI Rate", "Inspections per Year"]], on="FEI", how="left")
-
-# Derive No483, NAI/VAI/OAI binary columns
-# Sheet1 event set keyed by (FEI, event_end_date as YYYY-MM-DD string).
-# Sheet1 Event End Date == Redica Event Date (exact match; both trace to FDA end date),
-# so we can do a precise set lookup when classifying Insp_coverage.
-s1_event_set = set(
-    zip(
-        df_s1_dates["fei_norm"].dropna(),
-        df_s1_dates["end_date_dt"].dropna().dt.strftime("%Y-%m-%d"),
-    )
-)
-# keep only rows where both are present
-_valid = df_s1_dates["fei_norm"].notna() & df_s1_dates["end_date_dt"].notna()
-s1_event_set = set(
-    zip(
-        df_s1_dates.loc[_valid, "fei_norm"],
-        df_s1_dates.loc[_valid, "end_date_dt"].dt.strftime("%Y-%m-%d"),
-    )
-)
-df_redica["No 483"] = (1 - df_redica["483"]).clip(0, 1)
-df_redica["NAI"]    = (df_redica["Classification"] == "NAI").astype(int)
-df_redica["VAI"]    = (df_redica["Classification"] == "VAI").astype(int)
-df_redica["OAI"]    = (df_redica["Classification"] == "OAI").astype(int)
 
 # =============================================================================
 # 8. BUILD PANEL: NDC × inspection event
 # =============================================================================
 print("Building panel (NDC × inspection event)...")
 
-# NDC rows that have a Redica FEI
-ndc_with_redica = ndc_master[ndc_master["FEI"].isin(df_redica["FEI"].unique())].copy()
-ndc_without     = ndc_master[~ndc_master["FEI"].isin(df_redica["FEI"].unique())].copy()
+hist_feis        = set(df_hist["FEI"].unique())
+ndc_with_hist    = ndc_master[ndc_master["FEI"].isin(hist_feis)].copy()
+ndc_without_hist = ndc_master[~ndc_master["FEI"].isin(hist_feis)].copy()
 
-# Join: each NDC gets all inspection events for its FEI
-# Redica Event Date = inspection end date; merge Sheet1 start dates by (FEI, end_date)
-panel_with = ndc_with_redica.merge(
-    df_redica.rename(columns={"Event Date": "Event End Date"}),
-    on="FEI", how="left"
+# Drop history columns that overlap with ndc_master (Firm, CountryCode, FEI_in_old
+# are already set from NDC master; prefer those values).
+_hist_merge = df_hist.drop(
+    columns=[c for c in ["Firm", "CountryCode", "FEI_in_old"] if c in df_hist.columns]
 )
-panel_with = panel_with.merge(
-    s1_date_map, on=["FEI", "Event End Date"], how="left"
-)
-panel_with["Insp Source"] = "Redica"
 
-# NDCs not in Redica: old ones use Sheet1 legacy events; new ones get blank rows
-old_without = ndc_without[ndc_without["In Sheet1"]].copy()
-new_without = ndc_without[~ndc_without["In Sheet1"]].copy()
+# Each NDC × all inspection events for its FEI from the history file.
+# History columns: Event Start Date, Event End Date, EventYear, Classification,
+# NAI, VAI, OAI, 483, No 483, Warning Letter, 483 critical/major/other,
+# Site Display Name, Source, Insp_coverage.
+panel_with = ndc_with_hist.merge(_hist_merge, on="FEI", how="left")
+panel_with["Insp Source"] = panel_with["Source"]
 
-# Old NDCs not in Redica: fan out to their Sheet1 inspection events
-if len(old_without):
-    panel_legacy = old_without.merge(s1_legacy_events, on="FEI", how="left")
-    panel_legacy["Insp Source"] = "Sheet1"
-    # Redica-specific aggregate columns not available from Sheet1
-    for col in ["483 critical", "483 major", "483 other", "Warning Letter",
-                "Total Inspections", "FDA Inspections", "483s Issued",
-                "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
-                "Site Redica Id", "Site Display Name"]:
-        if col not in panel_legacy.columns:
-            panel_legacy[col] = None
-else:
-    panel_legacy = pd.DataFrame()
-
-# New NDCs with no Redica and no Sheet1: one blank row each
-panel_without = new_without.copy()
+# NDCs with no history coverage: one blank row each
+panel_without = ndc_without_hist.copy()
 for col in ["Event Start Date", "Event End Date", "EventYear", "Classification",
-            "483", "No 483", "NAI", "VAI", "OAI",
+            "NAI", "VAI", "OAI", "483", "No 483",
             "483 critical", "483 major", "483 other", "Warning Letter",
-            "Total Inspections", "FDA Inspections", "483s Issued",
-            "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
-            "OAI Rate", "Inspections per Year", "Site Redica Id", "Site Display Name"]:
+            "Site Display Name", "Source", "Insp_coverage"]:
     panel_without[col] = None
 panel_without["Insp Source"] = None
 
-panel = pd.concat([panel_with, panel_legacy, panel_without], ignore_index=True)
+panel = pd.concat([panel_with, panel_without], ignore_index=True)
 
-# Add site display name
+# Fill Site Display Name from Site List where history has no entry (METFORMIN-only FEIs).
 panel["Site Display Name"] = panel.apply(
-    lambda r: r.get("Site Display Name", None)
-    or site_name_map.get(str(r["FEI"]) if pd.notna(r["FEI"]) else "", None),
+    lambda r: r.get("Site Display Name") or
+              site_name_map.get(str(r["FEI"]) if pd.notna(r.get("FEI")) else "", None),
     axis=1,
 )
 
-# Year = EventYear
+# Merge site aggregate stats and computed rates.
+panel = panel.merge(site_agg, on="FEI", how="left")
+panel = panel.merge(hist_stats[["FEI", "OAI Rate", "Inspections per Year"]], on="FEI", how="left")
+
 panel["Year"] = panel["EventYear"]
 
 # =============================================================================
@@ -470,45 +392,38 @@ panel["Year"] = panel["EventYear"]
 # =============================================================================
 panel["Dataset"] = panel["In Sheet1"].map({True: "old", False: "new"})
 
-# Flag 1: FEI_in_old — True if this FEI appeared in the original Sheet1 analysis.
-# Captures whether the FACILITY was part of the original dataset, independent of
-# which NDC is being looked at (e.g., a new NDC at an old FEI gets FEI_in_old=True).
+# FEI_in_old — True if this FEI was in the original 18-FEI Sheet1 analysis.
+# Reflects whether the FACILITY was known before, regardless of which NDC is
+# being looked at (e.g., a new NDC at an old FEI still gets FEI_in_old=True).
 panel["FEI_in_old"] = panel["FEI"].isin(sheet1_feis)
 
-# Flag 2: Insp_coverage — per inspection-event, where it comes from:
-#   "both"     — event is in both current Redica and original Sheet1
-#   "new only" — event is in current Redica but was NOT in Sheet1
-#   "old only" — event is in Sheet1 only (FEI dropped from Redica coverage)
-#   null       — no inspection event (blank row for NDCs with no coverage)
-def _insp_coverage(row):
-    src = row.get("Insp Source")
-    if src == "Sheet1":
-        return "old only"
-    if src == "Redica":
-        end = row.get("Event End Date")
-        fei = row.get("FEI")
-        if pd.isna(end) or pd.isna(fei):
-            return "new only"
-        key = (str(fei).replace(".0", ""),
-               str(pd.to_datetime(end))[:10])
-        return "both" if key in s1_event_set else "new only"
-    return None
-
-panel["Insp_coverage"] = panel.apply(_insp_coverage, axis=1)
+# Insp_coverage — per inspection-event origin (set during history file construction):
+#   "both"               — event in both METFORMIN_old and current Valisure14
+#   "Valisure14 only"    — event in current Valisure14 only (not in old METFORMIN export)
+#   "METFORMIN_old only" — event in old METFORMIN data only (FEI dropped from Valisure14)
+#   null                 — no inspection event (NDC with no history coverage)
+# Already populated from df_hist merge; no further computation needed.
 
 FINAL_COLS = [
+    # Origin flags
+    "Dataset",        # "old" = NDC was in Sheet1; "new" = found via Amir's col H
+    "FEI_in_old",     # True if FEI was in original 18-facility Sheet1 analysis
+    "Insp Source",    # "Valisure14" | "METFORMIN_old" | null
+    "Insp_coverage",  # "both" | "Valisure14 only" | "METFORMIN_old only" | null
     # NDC identity
-    "Dataset", "FEI_in_old", "Insp Source", "Insp_coverage",
     "Firm", "Year", "NDC", "NDC11", "NDC8", "Strength", "CountryCode",
     # Facility
     "FEI", "Site Display Name",
     # Valisure context
     "Valisure Years", "In Sheet1",
-    # Inspection event (start date from Sheet1/FDA for old NDCs; end date from Redica/Sheet1)
+    # Inspection event
+    # Start date: from METFORMIN_old (has FDA OASIS start dates); null for Valisure14-only events
+    # End date: from both sources
     "Event Start Date", "Event End Date", "EventYear", "Classification",
     "NAI", "VAI", "OAI", "483", "No 483",
     "483 critical", "483 major", "483 other", "Warning Letter",
-    # Site-level aggregates (from Redica for Redica rows; computed from Sheet1 for legacy rows)
+    # Site-level aggregates (from Redica Data Availability; OAI Rate / Inspections per Year
+    # computed from FDA-sole filtered history)
     "Total Inspections", "FDA Inspections", "483s Issued",
     "Total Observations", "Warning Letters Issued", "Import Alerts Issued",
     "OAI Rate", "Inspections per Year",
