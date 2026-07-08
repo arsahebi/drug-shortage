@@ -1,4 +1,5 @@
 # %%
+from __future__ import annotations
 """
 Step 6 (July 2026 refresh) — Analysis Graphs + Statistical Models
 ==================================================================
@@ -360,7 +361,7 @@ def plot_fig2_volume_by_outcome() -> None:
         # box plot data
         vals = d_out[VOL_COL].values
         if len(vals) > 0:
-            bp = ax.boxplot(vals, positions=[xi], widths=0.45,
+            ax.boxplot(vals, positions=[xi], widths=0.45,
                             patch_artist=True, showfliers=False,
                             boxprops=dict(facecolor="#e0e7ff", color="#4f46e5"),
                             medianprops=dict(color="#1e1b4b", linewidth=2),
@@ -410,22 +411,75 @@ def plot_fig2_volume_by_outcome() -> None:
 
 
 def print_fig2_stats(sub: pd.DataFrame) -> None:
-    print("\n── Figure 2 statistics ──")
+    from scipy.stats import mannwhitneyu
+    print("\n" + "=" * 90)
+    print("Figure 2 summary stats (by Prior Inspection Outcome)")
+    print("=" * 90)
     groups = {out: sub.loc[sub["prior_outcome"] == out, VOL_COL].dropna().values
               for out in OUTCOME_ORDER}
     p = _kruskal_p(groups)
-    print(f"  Kruskal-Wallis p = {p:.4f}" if p is not None else "  KW n/a")
+
+    print("\nMARKET VOLUME — IQVIA Extended Units:")
+    print(f"  {'Outcome':>8s}  {'n':>5s}  {'mean':>15s}  {'median':>15s}  {'p25':>15s}  {'p75':>15s}")
+    print(f"  {'-'*75}")
     for out in OUTCOME_ORDER:
         vals = groups[out]
         if len(vals):
-            print(f"  {out}: n={len(vals)}  median={np.median(vals):,.0f}  mean={np.mean(vals):,.0f}")
-    print("  Pairwise Mann-Whitney:")
+            print(f"  {out:>8s}  {len(vals):>5d}  {np.mean(vals):>15,.0f}  "
+                  f"{np.median(vals):>15,.0f}  "
+                  f"{np.percentile(vals,25):>15,.0f}  {np.percentile(vals,75):>15,.0f}")
+    print(f"\n  Kruskal-Wallis  p = {p:.5f}" if p is not None else "  KW n/a")
+
+    print("  Pairwise Mann-Whitney (two-sided):")
     for a, b in combinations(OUTCOME_ORDER, 2):
-        va, vb = groups.get(a, []), groups.get(b, [])
+        va, vb = groups.get(a, np.array([])), groups.get(b, np.array([]))
         if len(va) >= 2 and len(vb) >= 2:
-            from scipy.stats import mannwhitneyu
             _, p_mw = mannwhitneyu(va, vb, alternative="two-sided")
-            print(f"    {a} vs {b}: p={p_mw:.4f}")
+            sig = " *" if p_mw < 0.05 else ""
+            print(f"    {a} vs {b}: p={p_mw:.5f}{sig}")
+    print("=" * 90)
+
+
+def _add_trend_line(ax, x: np.ndarray, y: np.ndarray,
+                    xscale: str, linthresh: float = 1.0) -> None:
+    """
+    Fit log10(y) ~ f(x) and draw a red dashed trend line.
+    For symlog x-scale, transform x to linear symlog space before fitting.
+    Matches old JAMA graph code exactly.
+    """
+    mask = np.isfinite(x) & np.isfinite(y) & (y > 0)
+    xf, yf = x[mask], y[mask]
+    if len(xf) < 3:
+        return
+
+    if xscale == "symlog":
+        def T(u):
+            u = np.asarray(u, dtype=float)
+            out = u.copy()
+            big = u >= linthresh
+            out[big] = linthresh * (1.0 + np.log10(u[big] / linthresh))
+            return out
+        def Tinv(t):
+            t = np.asarray(t, dtype=float)
+            out = t.copy()
+            big = t >= linthresh
+            out[big] = linthresh * 10 ** (t[big] / linthresh - 1.0)
+            return out
+        Xfit = T(xf)
+    else:
+        def T(u):    return np.asarray(u, dtype=float)
+        def Tinv(t): return np.asarray(t, dtype=float)
+        Xfit = xf
+
+    try:
+        Yfit = np.log10(yf)
+        b, a = np.polyfit(Xfit, Yfit, 1)
+        t_line = np.linspace(np.nanmin(Xfit), np.nanmax(Xfit), 200)
+        x_line = Tinv(t_line)
+        y_line = 10 ** (a + b * t_line)
+        ax.plot(x_line, y_line, "r--", alpha=0.55, linewidth=2, zorder=2)
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -473,6 +527,12 @@ def plot_fig3_quality_vs_volume() -> None:
                            s=55, alpha=0.70,
                            c=COUNTRY_COLORS[cc],
                            edgecolor="white", linewidth=0.4, zorder=3)
+
+            # trend line (red dashed, log10(y) ~ f(x))
+            _add_trend_line(ax, sub[qcol].values.astype(float),
+                            sub[VOL_COL].values.astype(float),
+                            xscale=xscale,
+                            linthresh=linthresh if linthresh is not None else 1.0)
 
             # axes scale
             if xscale == "symlog" and linthresh is not None:
