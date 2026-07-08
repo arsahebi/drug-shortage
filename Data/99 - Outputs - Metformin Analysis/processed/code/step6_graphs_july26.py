@@ -311,27 +311,54 @@ def plot_fig1_quality_by_country() -> None:
     print_fig1_stats(d_core)
 
 
+def _bootstrap_pairwise(sub: pd.DataFrame, val_col: str, group_col: str,
+                         cluster_col: str, groups: list, n_boot: int = 2000) -> None:
+    """Print NDC-cluster bootstrap pairwise comparisons between group pairs."""
+    sub = sub[[val_col, group_col, cluster_col]].dropna().copy()
+    for g1, g2 in combinations(groups, 2):
+        d1 = sub[sub[group_col] == g1]
+        d2 = sub[sub[group_col] == g2]
+        if len(d1) < 3 or len(d2) < 3:
+            print(f"    {g1} vs {g2}: insufficient data (n1={len(d1)}, n2={len(d2)})")
+            continue
+        combined = pd.concat([d1[[val_col, cluster_col]], d2[[val_col, cluster_col]]])
+        dummy = np.array([0] * len(d1) + [1] * len(d2), dtype=float)
+        res = _block_bootstrap_spearman(
+            combined[val_col].values.astype(float), dummy,
+            combined[cluster_col].values, n_boot=n_boot)
+        sig = " **" if res["p_boot"] < 0.01 else (" *" if res["p_boot"] < 0.05 else "")
+        print(f"    {g1} vs {g2}:  n_obs={res['n_obs']}  n_clusters={res['n_clusters']}  "
+              f"p_naive={res['p_naive']:.4f}  p_boot_clustered={res['p_boot']:.4f}{sig}")
+
+
 def print_fig1_stats(d_core: pd.DataFrame) -> None:
-    print("\n── Figure 1 statistics ──")
+    print("\n" + "=" * 80)
+    print("FIGURE 1 – Quality by Country")
+    print("=" * 80)
     for col, label, years in [
         (DMF_COL,  "DMF",              [2020, 2022, 2024]),
         (NDMA_COL, "NDMA",             [2020, 2022]),
         (DIFF_COL, "Difference Factor", [2024]),
     ]:
         sub = d_core[d_core["TestYear"].isin(years) & d_core[col].notna()]
+        print(f"\n  [{label}  years={years}]")
         groups = {cc: sub.loc[sub["CountryCode"] == cc, col].dropna().values
                   for cc in COUNTRY_ORDER if (sub["CountryCode"] == cc).any()}
-        p = _kruskal_p(groups)
-        print(f"  {label}: KW p={p:.4f}" if p is not None else f"  {label}: KW n/a")
         for cc in COUNTRY_ORDER:
             vals = sub.loc[sub["CountryCode"] == cc, col].dropna()
             if len(vals):
-                print(f"    {cc}: n={len(vals)}  mean={vals.mean():.2f}  median={vals.median():.2f}")
+                print(f"    {cc}:  n={len(vals)}  mean={vals.mean():.3g}  median={vals.median():.3g}")
+
+        print(f"\n  [Approach 1: Independent – Kruskal-Wallis + Dunn (Bonferroni)]")
+        p = _kruskal_p(groups)
+        print(f"    Kruskal-Wallis: p={p:.5f}" if p is not None else "    KW n/a")
         if p is not None and len(groups) >= 2:
             dunn = _dunn_posthoc(groups)
             if not dunn.empty:
-                print(f"    Dunn post-hoc (Bonferroni):")
                 print(dunn[["group1","group2","z","p_raw","p_adj","sig"]].to_string(index=False, col_space=10))
+
+        print(f"\n  [Approach 2: Cluster-robust Bootstrap by NDC11]")
+        _bootstrap_pairwise(sub.copy(), col, "CountryCode", "NDC11", COUNTRY_ORDER)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -411,10 +438,9 @@ def plot_fig2_volume_by_outcome() -> None:
 
 
 def print_fig2_stats(sub: pd.DataFrame) -> None:
-    from scipy.stats import mannwhitneyu
-    print("\n" + "=" * 90)
-    print("Figure 2 summary stats (by Prior Inspection Outcome)")
-    print("=" * 90)
+    print("\n" + "=" * 80)
+    print("FIGURE 2 – Volume by Prior Inspection Outcome")
+    print("=" * 80)
     groups = {out: sub.loc[sub["prior_outcome"] == out, VOL_COL].dropna().values
               for out in OUTCOME_ORDER}
     p = _kruskal_p(groups)
@@ -428,16 +454,25 @@ def print_fig2_stats(sub: pd.DataFrame) -> None:
             print(f"  {out:>8s}  {len(vals):>5d}  {np.mean(vals):>15,.0f}  "
                   f"{np.median(vals):>15,.0f}  "
                   f"{np.percentile(vals,25):>15,.0f}  {np.percentile(vals,75):>15,.0f}")
-    print(f"\n  Kruskal-Wallis  p = {p:.5f}" if p is not None else "  KW n/a")
 
-    print("  Pairwise Mann-Whitney (two-sided):")
-    for a, b in combinations(OUTCOME_ORDER, 2):
-        va, vb = groups.get(a, np.array([])), groups.get(b, np.array([]))
-        if len(va) >= 2 and len(vb) >= 2:
-            _, p_mw = mannwhitneyu(va, vb, alternative="two-sided")
-            sig = " *" if p_mw < 0.05 else ""
-            print(f"    {a} vs {b}: p={p_mw:.5f}{sig}")
-    print("=" * 90)
+    print(f"\n  [Approach 1: Independent – Kruskal-Wallis + Dunn (Bonferroni)]")
+    print(f"    Kruskal-Wallis: p={p:.5f}" if p is not None else "    KW n/a")
+    if p is not None and len([k for k, v in groups.items() if len(v) >= 2]) >= 2:
+        dunn = _dunn_posthoc({k: v for k, v in groups.items() if len(v) >= 2})
+        if not dunn.empty:
+            print(dunn[["group1","group2","z","p_raw","p_adj","sig"]].to_string(index=False, col_space=10))
+
+    print(f"\n  [Approach 2: Cluster-robust Bootstrap by NDC11]")
+    _bootstrap_pairwise(sub.copy(), VOL_COL, "prior_outcome", "NDC11", OUTCOME_ORDER)
+
+    print(f"\n  [Approach 3: Cluster-robust Bootstrap by FEI (prior_fei)]")
+    if "prior_fei" in sub.columns:
+        sub_fei = sub[sub["prior_fei"].notna()].copy()
+        _bootstrap_pairwise(sub_fei, VOL_COL, "prior_outcome", "prior_fei", OUTCOME_ORDER)
+    else:
+        print("    prior_fei column not available")
+
+    print("=" * 80)
 
 
 def _add_trend_line(ax, x: np.ndarray, y: np.ndarray,
@@ -567,36 +602,46 @@ def plot_fig3_quality_vs_volume() -> None:
 
 
 def print_fig3_stats(d_core: pd.DataFrame) -> None:
-    print("\n── Figure 3 Spearman ρ (NDC-cluster bootstrap, 2000 resamples) ──")
+    print("\n" + "=" * 80)
+    print("FIGURE 3 – Quality vs Volume  (Spearman ρ, NDC-cluster bootstrap, 2000 resamples)")
+    print("=" * 80)
     metric_rows = [
         (DMF_COL,  "DMF",              [2020, 2022, 2024]),
         (NDMA_COL, "NDMA",             [2020, 2022]),
         (DIFF_COL, "Difference Factor", [2024]),
     ]
+    sub_all = d_core[d_core[VOL_COL].notna() & (d_core[VOL_COL] > 0)].copy()
+
+    print(f"\n  Y = volume (IQVIA extended units)")
     for qcol, label, years in metric_rows:
-        sub = d_core[d_core["TestYear"].isin(years) & d_core[qcol].notna() & d_core[VOL_COL].notna()].copy()
+        sub = sub_all[sub_all["TestYear"].isin(years) & sub_all[qcol].notna()].copy()
+        print(f"    {label}:")
+        # all years pooled
         x = sub[qcol].values.astype(float)
         y = sub[VOL_COL].values.astype(float)
-        mask = np.isfinite(x) & np.isfinite(y)
-        if mask.sum() >= 5:
+        if np.isfinite(x).sum() >= 5:
             res = _block_bootstrap_spearman(x, y, sub["NDC11"].values)
-            sig = "**" if (np.isfinite(res["p_boot"]) and res["p_boot"] < 0.01) else (
-                  "*"  if (np.isfinite(res["p_boot"]) and res["p_boot"] < 0.05) else "")
-            print(f"  {label} (all years pooled): "
-                  f"ρ={res['rho']:+.3f} [{res['ci_lo']:+.3f},{res['ci_hi']:+.3f}]  "
-                  f"p_boot={res['p_boot']:.4f}{sig}  p_naive={res['p_naive']:.4f}  "
-                  f"n={res['n_obs']} (k={res['n_clusters']} NDCs)")
+            print(f"      [all years pooled]")
+            print(f"      Naive Spearman: rho={res['rho']:+.4f}  p={res['p_naive']:.5f}  n={res['n_obs']}")
+            if np.isfinite(res["p_boot"]):
+                print(f"      Clustered (NDC bootstrap): rho={res['rho']:+.4f}  "
+                      f"p_boot={res['p_boot']:.5f}  "
+                      f"95%CI=[{res['ci_lo']:+.4f}, {res['ci_hi']:+.4f}]  "
+                      f"n_ndcs={res['n_clusters']}")
+        # per year
         for yr in years:
             sy = sub[sub["TestYear"] == yr]
             xyr = sy[qcol].values.astype(float)
             yyr = sy[VOL_COL].values.astype(float)
-            m = np.isfinite(xyr) & np.isfinite(yyr)
-            if m.sum() >= 5:
+            if np.isfinite(xyr).sum() >= 5:
                 res = _block_bootstrap_spearman(xyr, yyr, sy["NDC11"].values)
-                sig = "**" if (np.isfinite(res["p_boot"]) and res["p_boot"] < 0.01) else (
-                      "*"  if (np.isfinite(res["p_boot"]) and res["p_boot"] < 0.05) else "")
-                print(f"    {yr}: ρ={res['rho']:+.3f} [{res['ci_lo']:+.3f},{res['ci_hi']:+.3f}]  "
-                      f"p_boot={res['p_boot']:.4f}{sig}  n={res['n_obs']} (k={res['n_clusters']} NDCs)")
+                print(f"      [{yr}]")
+                print(f"      Naive Spearman: rho={res['rho']:+.4f}  p={res['p_naive']:.5f}  n={res['n_obs']}")
+                if np.isfinite(res["p_boot"]):
+                    print(f"      Clustered (NDC bootstrap): rho={res['rho']:+.4f}  "
+                          f"p_boot={res['p_boot']:.5f}  "
+                          f"95%CI=[{res['ci_lo']:+.4f}, {res['ci_hi']:+.4f}]  "
+                          f"n_ndcs={res['n_clusters']}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -680,7 +725,9 @@ def plot_fig4_outcome_vs_quality() -> None:
 
 
 def print_fig4_stats(d_core: pd.DataFrame) -> None:
-    print("\n── Figure 4 Kruskal-Wallis ──")
+    print("\n" + "=" * 80)
+    print("FIGURE 4 – Quality by Prior Inspection Outcome")
+    print("=" * 80)
     for qcol, label, years in [
         (DMF_COL,  "DMF",              [2020, 2022, 2024]),
         (NDMA_COL, "NDMA",             [2020, 2022]),
@@ -690,16 +737,21 @@ def print_fig4_stats(d_core: pd.DataFrame) -> None:
         groups = {out: sub.loc[sub["prior_outcome"] == out, qcol].dropna().values
                   for out in OUTCOME_ORDER}
         p = _kruskal_p(groups)
-        print(f"  {label}: KW p={p:.4f}" if p is not None else f"  {label}: KW n/a")
+        print(f"\n  [{label}  years={years}]")
         for out in OUTCOME_ORDER:
             vals = groups[out]
             if len(vals):
                 print(f"    {out}: n={len(vals)}  mean={np.mean(vals):.2f}  median={np.median(vals):.2f}")
+
+        print(f"\n  [Approach 1: Independent – Kruskal-Wallis + Dunn (Bonferroni)]")
+        print(f"    Kruskal-Wallis: p={p:.5f}" if p is not None else "    KW n/a")
         if p is not None:
             dunn = _dunn_posthoc({k: v for k, v in groups.items() if len(v) >= 2})
             if not dunn.empty:
-                print(f"    Dunn post-hoc (Bonferroni):")
                 print(dunn[["group1","group2","z","p_raw","p_adj","sig"]].to_string(index=False, col_space=10))
+
+        print(f"\n  [Approach 2: Cluster-robust Bootstrap by NDC11]")
+        _bootstrap_pairwise(sub.copy(), qcol, "prior_outcome", "NDC11", OUTCOME_ORDER)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -761,6 +813,16 @@ def _print_coef_table(names: list, params: np.ndarray, se: np.ndarray,
         ci = f"[{lo[i]:+.4f}, {hi[i]:+.4f}]"
         print(f"  {name:>14s}  {params[i]:>10.4f}  {se[i]:>8.4f}  "
               f"{t_vals[i]:>7.3f}  {p_vals[i]:>8.4f}  {ci:>24s}  {sig}")
+    # compact inline format (skip intercept)
+    print(f"  {'─'*55}")
+    for i, name in enumerate(names):
+        if name == "const" or np.isnan(params[i]):
+            continue
+        sig = "**" if p_vals[i] < 0.01 else ("*" if p_vals[i] < 0.05 else ("." if p_vals[i] < 0.10 else ""))
+        p_str = f"p={p_vals[i]:.3f}" if p_vals[i] >= 0.001 else "p<0.001"
+        sig_str = f" {sig}" if sig else ""
+        print(f"    {name}: β={params[i]:+.3f}, SE={se[i]:.3f}, "
+              f"95% CI [{lo[i]:+.3f}, {hi[i]:+.3f}], {p_str}{sig_str}")
 
 
 def _modelB_re_twoway(sub: pd.DataFrame, y_col: str, dummy_names: list,
