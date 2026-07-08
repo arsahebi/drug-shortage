@@ -1,7 +1,7 @@
 # %%
 """
-Step 6 (July 2026 refresh) — Analysis Graphs
-=============================================
+Step 6 (July 2026 refresh) — Analysis Graphs + Statistical Models
+==================================================================
 Reads step5_analysis_panel_july26.csv (336 rows: NDC11 × TestYear).
 
 Figures produced
@@ -17,13 +17,22 @@ Figures produced
   Figure 3  Quality vs Volume scatter
               Rows: DMF | NDMA | Difference Factor
               Columns: one per year (2020 | 2022 | 2024)
-              Color = country; Spearman ρ annotation
+              Color = country; NDC-cluster bootstrap Spearman ρ
 
-Figures saved to ~/Desktop/MetforminFigures_July26/
+  Figure 4  Quality by Prior Inspection Outcome
+              Box + jitter; DMF | NDMA | Difference Factor
+
+Statistical models (after figures)
+-----------------------------------
+  Country (Fig 1): log(metric) ~ IND + CHN + (1|NDC11)
+                   Random NDC intercept (MixedLM) + CGM two-way clustered SE (NDC × FEI)
+  Inspection outcome (Fig 2/4): log(DMF) ~ VAI + OAI + (1|NDC11)
+                   Same approach; reference = NAI; additional test OAI vs VAI
+
+Figures and model outputs saved to:
+  Data/99 - Outputs - Metformin Analysis/processed/outputs/
 """
 
-import re
-import sys
 import warnings
 import numpy as np
 import pandas as pd
@@ -43,7 +52,7 @@ matplotlib.rcParams["font.size"]    = 11
 # ── paths ─────────────────────────────────────────────────────────────────────
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 STEP5   = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step5_analysis_panel_july26.csv"
-OUT_DIR = Path.home() / "Desktop" / "MetforminFigures_July26"
+OUT_DIR = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── constants ──────────────────────────────────────────────────────────────────
@@ -634,12 +643,272 @@ def print_fig4_stats(d_core: pd.DataFrame) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Statistical Models — Model B (Primary): RE + Two-Way Clustered SE
+#
+# Adapted from old statistical_tests_advanced_models.py.
+# Column mapping vs old code:
+#   Year → TestYear  |  FEI → prior_fei  |  DMF/NDMA/Dissolution → full col names
+#   volume → iqvia_extended_units  |  PriorScore_cat → prior_outcome (NAI/VAI/OAI)
+# ═══════════════════════════════════════════════════════════════════════════════
+try:
+    import statsmodels.formula.api as smf
+    import statsmodels.api as sm
+    HAS_STATSMODELS = True
+except ImportError:
+    HAS_STATSMODELS = False
+    print("statsmodels not installed — statistical models skipped")
+
+
+def _cgm_vcov(y: np.ndarray, X: np.ndarray,
+              c1: np.ndarray, c2: np.ndarray,
+              beta: np.ndarray | None = None) -> np.ndarray:
+    """Cameron-Gelbach-Miller (2011) two-way clustered variance-covariance."""
+    n, k = X.shape
+    b = np.asarray(beta) if beta is not None else np.linalg.lstsq(X, y, rcond=None)[0]
+    e = y - X @ b
+    bread = np.linalg.inv(X.T @ X)
+
+    def _v(clusters):
+        g = len(np.unique(clusters))
+        dfc = (g / (g - 1)) * (n / (n - k))
+        meat = np.zeros((k, k))
+        for c in np.unique(clusters):
+            idx = clusters == c
+            sc = X[idx].T @ e[idx]
+            meat += np.outer(sc, sc)
+        return bread @ (dfc * meat) @ bread
+
+    inter = np.array([f"{a}__{b}" for a, b in zip(c1, c2)])
+    return _v(c1) + _v(c2) - _v(inter)
+
+
+def _print_coef_table(names: list, params: np.ndarray, se: np.ndarray,
+                      dof: int, header: str = "") -> None:
+    from scipy.stats import t as t_dist
+    t_vals = params / np.where(se > 0, se, np.nan)
+    p_vals = 2 * t_dist.sf(np.abs(t_vals), df=max(dof, 1))
+    lo = params - 1.96 * se
+    hi = params + 1.96 * se
+    if header:
+        print(f"\n  {header}")
+    print(f"  {'Var':>14s}  {'Coef':>10s}  {'SE':>8s}  {'t':>7s}  {'p':>8s}  {'95% CI':>24s}  sig")
+    print(f"  {'-'*85}")
+    for i, name in enumerate(names):
+        if np.isnan(params[i]):
+            print(f"  {name:>14s}  (dropped)")
+            continue
+        sig = "**" if p_vals[i] < 0.01 else ("*" if p_vals[i] < 0.05 else ("." if p_vals[i] < 0.10 else ""))
+        ci = f"[{lo[i]:+.4f}, {hi[i]:+.4f}]"
+        print(f"  {name:>14s}  {params[i]:>10.4f}  {se[i]:>8.4f}  "
+              f"{t_vals[i]:>7.3f}  {p_vals[i]:>8.4f}  {ci:>24s}  {sig}")
+
+
+def _modelB_re_twoway(sub: pd.DataFrame, y_col: str, dummy_names: list,
+                      ndc_col: str, fei_col: str, tag: str) -> None:
+    """
+    Run Model B: MixedLM with random NDC intercept + CGM two-way SE (NDC × FEI).
+    Prints results. Reference category is the omitted dummy (see dummy_names).
+    """
+    if not HAS_STATSMODELS:
+        return
+
+    sub = sub.copy()
+    y = sub[y_col].values.astype(float)
+    X = sm.add_constant(sub[dummy_names].values.astype(float))
+    n_obs = len(sub)
+    n_ndc = sub[ndc_col].nunique()
+    n_fei = sub[fei_col].nunique() if fei_col in sub.columns else 0
+    dof   = max(n_obs - len(dummy_names) - 1, 1)
+
+    print(f"\n  n_obs={n_obs}  n_NDC={n_ndc}  n_FEI={n_fei}")
+
+    # Step 1: MixedLM (random NDC intercept)
+    beta_re = None
+    try:
+        formula = f"{y_col} ~ " + " + ".join(dummy_names)
+        mlm = smf.mixedlm(formula, data=sub, groups=sub[ndc_col]).fit(reml=True)
+        var_re  = float(mlm.cov_re.iloc[0, 0]) if hasattr(mlm, "cov_re") else 0
+        var_res = float(mlm.scale)
+        icc = var_re / (var_re + var_res) if (var_re + var_res) > 0 else 0
+        print(f"  MixedLM: ICC={icc:.4f}  Var(NDC)={var_re:.4f}  Var(resid)={var_res:.4f}")
+        beta_re = np.array([mlm.params.get("Intercept", np.nan)] +
+                            [mlm.params.get(d, np.nan) for d in dummy_names])
+    except Exception as exc:
+        print(f"  MixedLM error: {exc} — falling back to OLS beta")
+
+    # Step 2: CGM two-way SE on RE beta (PRIMARY)
+    has_fei = fei_col in sub.columns and n_fei >= 2
+    has_ndc = n_ndc >= 2
+    if beta_re is not None and not np.any(np.isnan(beta_re)) and has_ndc and has_fei:
+        try:
+            V2  = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values, beta=beta_re)
+            se2 = np.sqrt(np.diag(V2))
+            _print_coef_table(["const"] + dummy_names, beta_re, se2, dof,
+                              header=f"★ RE + TWO-WAY clustered SE (NDC×FEI)  [{tag}]  — PRIMARY:")
+        except Exception as exc:
+            print(f"  CGM error: {exc}")
+            beta_re = None
+
+    # Fallback: OLS + two-way clustered SE
+    if beta_re is None and has_ndc and has_fei:
+        ols = sm.OLS(y, X).fit()
+        try:
+            V2  = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values)
+            se2 = np.sqrt(np.diag(V2))
+            _print_coef_table(["const"] + dummy_names, ols.params, se2, dof,
+                              header=f"OLS + TWO-WAY clustered SE  [{tag}]:")
+        except Exception as exc:
+            print(f"  OLS+CGM error: {exc}")
+
+
+def run_statistical_models() -> None:
+    """
+    Model B (Primary) for Figure 1 (quality ~ country) and Figure 4 (quality ~ inspection outcome).
+    Reference groups: USA (country), NAI (inspection outcome).
+    """
+    if not HAS_STATSMODELS:
+        return
+
+    print("\n" + "═" * 80)
+    print("  STATISTICAL MODELS — Model B (RE + Two-Way Clustered SE)")
+    print("  Random NDC intercept (MixedLM) + CGM (2011) SE clustered on NDC × prior_fei")
+    print("═" * 80)
+
+    d_core = df[df["CountryCode"].isin(COUNTRY_ORDER)].copy()
+    d_core["IND"] = (d_core["CountryCode"] == "IND").astype(float)
+    d_core["CHN"] = (d_core["CountryCode"] == "CHN").astype(float)
+
+    # ── Figure 1: quality ~ country (reference = USA) ───────────────────────────
+    print("\n" + "─" * 80)
+    print("  FIGURE 1 — Quality by Country  (reference = USA)")
+    print("  model: log1p(metric) ~ IND + CHN + (1|NDC11)")
+    print("─" * 80)
+
+    fig1_metrics = [
+        (DMF_COL,  "DMF",              [2020, 2022, 2024]),
+        (NDMA_COL, "NDMA",             [2020, 2022]),
+        (DIFF_COL, "Difference Factor", [2024]),
+    ]
+    for qcol, label, years in fig1_metrics:
+        print(f"\n  [{label}  years={years}]")
+        sub = d_core[d_core["TestYear"].isin(years) & d_core[qcol].notna()].copy()
+        sub = sub[sub["prior_fei"].notna()].copy()  # need FEI for clustering
+        sub["_y"] = np.log1p(sub[qcol].astype(float))
+        is_xs = (label == "Difference Factor")  # cross-section: 2024 only
+        if is_xs:
+            print("  (Cross-section: 2024 only — FEI-only SE; NDC clustering N/A)")
+            if not sub.empty and HAS_STATSMODELS:
+                y = sub["_y"].values
+                X = sm.add_constant(sub[["IND", "CHN"]].values.astype(float))
+                try:
+                    r = sm.OLS(y, X).fit(cov_type="cluster",
+                                          cov_kwds={"groups": sub["prior_fei"].values})
+                    _print_coef_table(["const", "IND", "CHN"],
+                                      r.params, r.bse, max(len(y) - 3, 1),
+                                      header=f"★ FEI-clustered SE  [{label}]  — PRIMARY (cross-section):")
+                except Exception as exc:
+                    print(f"  FEI-clustered error: {exc}")
+        else:
+            _modelB_re_twoway(sub, "_y", ["IND", "CHN"],
+                              ndc_col="NDC11", fei_col="prior_fei", tag=label)
+
+        # CHN vs IND: re-parameterize with IND as reference
+        sub2 = sub.copy()
+        sub2["USA"] = (sub2["CountryCode"] == "USA").astype(float)
+        sub2["CHN"] = (sub2["CountryCode"] == "CHN").astype(float)
+        if not sub2.empty and sub2["prior_fei"].notna().sum() >= 4:
+            if is_xs:
+                y2 = sub2["_y"].values
+                X2 = sm.add_constant(sub2[["USA", "CHN"]].values.astype(float))
+                try:
+                    r2 = sm.OLS(y2, X2).fit(cov_type="cluster",
+                                              cov_kwds={"groups": sub2["prior_fei"].values})
+                    _print_coef_table(["const", "USA_vs_IND", "CHN_vs_IND"],
+                                      r2.params, r2.bse, max(len(y2) - 3, 1),
+                                      header=f"★ CHN vs IND  [{label}]:")
+                except Exception as exc:
+                    print(f"  CHN vs IND error: {exc}")
+            else:
+                _modelB_re_twoway(sub2, "_y", ["USA", "CHN"],
+                                  ndc_col="NDC11", fei_col="prior_fei",
+                                  tag=f"{label} CHN_vs_IND")
+
+    # ── Figure 4: quality ~ inspection outcome (reference = NAI) ────────────────
+    print("\n" + "─" * 80)
+    print("  FIGURE 4 — Quality by Inspection Outcome  (reference = NAI)")
+    print("  model: log1p(metric) ~ VAI + OAI + (1|NDC11)")
+    print("─" * 80)
+
+    d_insp = df[
+        df["CountryCode"].isin(COUNTRY_ORDER) &
+        df["prior_outcome"].notna() &
+        df["prior_fei"].notna()
+    ].copy()
+    d_insp["VAI"] = (d_insp["prior_outcome"] == "VAI").astype(float)
+    d_insp["OAI"] = (d_insp["prior_outcome"] == "OAI").astype(float)
+
+    for qcol, label, years in fig1_metrics:
+        print(f"\n  [{label}  years={years}]")
+        sub = d_insp[d_insp["TestYear"].isin(years) & d_insp[qcol].notna()].copy()
+        sub["_y"] = np.log1p(sub[qcol].astype(float))
+        is_xs = (label == "Difference Factor")
+        if is_xs:
+            if not sub.empty and HAS_STATSMODELS:
+                y = sub["_y"].values
+                X = sm.add_constant(sub[["VAI", "OAI"]].values.astype(float))
+                try:
+                    r = sm.OLS(y, X).fit(cov_type="cluster",
+                                          cov_kwds={"groups": sub["prior_fei"].values})
+                    _print_coef_table(["const", "VAI", "OAI"],
+                                      r.params, r.bse, max(len(y) - 3, 1),
+                                      header=f"★ FEI-clustered SE  [{label}]  (cross-section):")
+                except Exception as exc:
+                    print(f"  error: {exc}")
+        else:
+            _modelB_re_twoway(sub, "_y", ["VAI", "OAI"],
+                              ndc_col="NDC11", fei_col="prior_fei", tag=label)
+            # OAI vs VAI: re-parameterize with VAI as reference
+            sub3 = sub.copy()
+            sub3["NAI_d"] = (sub3["prior_outcome"] == "NAI").astype(float)
+            sub3["OAI_d"] = (sub3["prior_outcome"] == "OAI").astype(float)
+            _modelB_re_twoway(sub3, "_y", ["NAI_d", "OAI_d"],
+                              ndc_col="NDC11", fei_col="prior_fei",
+                              tag=f"{label} OAI_vs_VAI")
+
+    # ── Figure 2: volume ~ inspection outcome (reference = NAI) ─────────────────
+    print("\n" + "─" * 80)
+    print("  FIGURE 2 — Volume by Inspection Outcome  (reference = NAI)")
+    print("  model: log(iqvia_extended_units) ~ VAI + OAI + (1|NDC11)")
+    print("─" * 80)
+
+    d_vol = df[
+        df["CountryCode"].isin(COUNTRY_ORDER) &
+        df["prior_outcome"].notna() &
+        df["prior_fei"].notna() &
+        df[VOL_COL].notna() &
+        (df[VOL_COL] > 0)
+    ].copy()
+    d_vol["VAI"] = (d_vol["prior_outcome"] == "VAI").astype(float)
+    d_vol["OAI"] = (d_vol["prior_outcome"] == "OAI").astype(float)
+    d_vol["_y"]  = np.log(d_vol[VOL_COL].astype(float))
+    print(f"\n  [log(IQVIA Extended Units)]")
+    _modelB_re_twoway(d_vol, "_y", ["VAI", "OAI"],
+                      ndc_col="NDC11", fei_col="prior_fei", tag="log(Volume)")
+
+    print("\n" + "═" * 80)
+    print("  DONE")
+    print("═" * 80)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # RUN ALL
 # ═══════════════════════════════════════════════════════════════════════════════
 plot_fig1_quality_by_country()
 plot_fig2_volume_by_outcome()
 plot_fig3_quality_vs_volume()
 plot_fig4_outcome_vs_quality()
+
+run_statistical_models()
 
 print(f"\nAll figures saved to: {OUT_DIR}")
 # %%
