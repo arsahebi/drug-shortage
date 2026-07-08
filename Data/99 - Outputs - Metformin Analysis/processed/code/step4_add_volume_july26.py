@@ -42,6 +42,13 @@ OUT    = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step4_panel_ju
 
 TEST_YEARS = [2020, 2022, 2024]
 
+# 50 US states + DC only; excludes XX (national aggregate duplicate) and territories
+VALID_STATES = {
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
+    'LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND',
+    'OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC',
+}
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 def to_ndc11_bare(x) -> Optional[str]:
     if pd.isna(x):
@@ -146,6 +153,9 @@ for yr in TEST_YEARS:
 
     # Normalize NDC to 11-digit bare (SDUD NDC is already 11 digits, no dashes)
     df['ndc11_bare'] = df['NDC'].apply(to_ndc11_bare)
+
+    # Drop XX (national aggregate duplicate) and territories; keep 50 states + DC
+    df = df[df['State'].str.upper().isin(VALID_STATES)]
 
     # Filter to step3 NDCs
     df = df[df['ndc11_bare'].isin(step3_ndcs)]
