@@ -120,13 +120,18 @@ Manufacturing Quality Risk Index. Current version: `20260408_v02_mqri_pipeline.p
 
 Solo project — commit directly to `main`. No feature branches or PRs.
 
-### Commits
-- One logical change per commit
-- Message format: `<verb> <what>` in imperative mood, e.g.:
+### Commits and push — automatic after every code change
+After writing or modifying any code file, always commit and push without being asked:
+1. Stage only the files changed for the current task (never `git add -A`)
+2. Write a descriptive commit message: one-line summary under 72 chars, blank line, then bullet-point detail explaining what each file does and why
+3. Push immediately: `git push` using the SSH remote `git@github-personal:arsahebi/drug-shortage.git`
+
+Message format: `<verb> <what>` in imperative mood, e.g.:
   - `Add FAERS monthly aggregation pipeline`
   - `Fix FEI deduplication in 483 extraction`
   - `Refactor Redica loader to handle all 14 drugs`
-- Keep messages under 72 characters; add a blank line + detail if needed
+
+Do NOT add a `Co-Authored-By` trailer.
 
 ### Reviewing changes
 Use VS Code's built-in diff view — zero token cost:
