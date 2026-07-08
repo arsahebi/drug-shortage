@@ -60,15 +60,16 @@ df['_outcome_rank'] = df['_outcome'].map(OUTCOME_RANK)
 # ── 3. Find prior inspection per (NDC11, TestYear) ────────────────────────────
 print("Finding prior inspection per (NDC11, TestYear)...")
 
-# Inspection-eligible rows only: non-null FEI, EventYear <= TestYear, classified
+# Inspection-eligible rows only: non-null FEI, EventYear strictly < TestYear, classified
+# Strict < rule: prior inspection must be from a year before the test year
 insp = df[
     df['FEI'].notna() &
     df['EventYear'].notna() &
-    (df['EventYear'] <= df['TestYear']) &
+    (df['EventYear'] < df['TestYear']) &
     df['_outcome'].notna()
 ].copy()
 
-print(f"  Eligible inspection rows (EventYear <= TestYear, classified): {len(insp):,}")
+print(f"  Eligible inspection rows (EventYear < TestYear, classified): {len(insp):,}")
 
 # Within each (NDC11, TestYear), select most recent; tie-break: worst outcome
 insp_sorted = insp.sort_values(
