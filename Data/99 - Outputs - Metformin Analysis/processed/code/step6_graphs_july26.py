@@ -243,77 +243,104 @@ print(f"  {len(df):,} rows | {df['NDC11'].nunique()} NDC11s")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Figure 1 — Quality by Country (bar chart, IND / CHN / USA)
-# Panels: DMF | NDMA | Difference Factor
-# Each bar = mean across tested NDC11s in that country
+# Figure 1 — Market Outcomes by Prior Inspection Outcome (2 panels)
+# Left:  NADAC price per unit (blank — not yet in current pipeline)
+# Right: IQVIA annual volume (box + jitter by country, log scale)
 # ═══════════════════════════════════════════════════════════════════════════════
-def plot_fig1_quality_by_country() -> None:
-    print("\nPlotting Figure 1 — Quality by Country...")
+def plot_fig1_market_by_outcome() -> None:
+    print("\nPlotting Figure 1 — Market Outcomes by Prior Inspection Outcome...")
 
-    metrics = [
-        (DMF_COL,  "DMF (ng/day)",          "{:,.0f}", [2020, 2022, 2024]),
-        (NDMA_COL, "NDMA (ng/day)",         "{:,.1f}", [2020, 2022]),
-        (DIFF_COL, "Difference Factor",      "{:.3f}",  [2024]),
+    sub = df[
+        df["prior_outcome"].notna() &
+        df[VOL_COL].notna() &
+        (df[VOL_COL] > 0) &
+        df["CountryCode"].isin(COUNTRY_ORDER)
+    ].copy()
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+
+    # ── Left panel: NADAC Price (not in pipeline) ─────────────────────────────
+    ax_price = axes[0]
+    ax_price.set_xlim(-0.5, 2.5)
+    ax_price.set_ylim(0.01, 100)
+    ax_price.set_yscale("log")
+    ax_price.set_xticks([0, 1, 2])
+    ax_price.set_xticklabels(["NAI (0)", "VAI (1.5)", "OAI (3.5)"])
+    ax_price.text(0.5, 0.5,
+                  "NADAC price data\nnot available\nin current pipeline",
+                  transform=ax_price.transAxes, ha="center", va="center",
+                  fontsize=12, color="#9ca3af",
+                  bbox=dict(boxstyle="round,pad=0.4", facecolor="#f9fafb",
+                            edgecolor="#e5e7eb", alpha=0.9))
+    ax_price.set_xlabel("Prior Inspection Outcome (prior_score)")
+    ax_price.set_ylabel("Price per Unit ($/unit)")
+    ax_price.set_title("Market Price by FDA Inspection Outcome", fontsize=11, fontweight="bold")
+    ax_price.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
+
+    # ── Right panel: IQVIA Volume ─────────────────────────────────────────────
+    ax_vol = axes[1]
+    x_pos  = {out: i for i, out in enumerate(OUTCOME_ORDER)}
+    n_vals = []
+    rng    = np.random.default_rng(42)
+
+    for out in OUTCOME_ORDER:
+        d_out = sub[sub["prior_outcome"] == out]
+        n_vals.append(len(d_out))
+        xi   = x_pos[out]
+        vals = d_out[VOL_COL].values
+        if len(vals) > 0:
+            ax_vol.boxplot(vals, positions=[xi], widths=0.45,
+                           patch_artist=True, showfliers=False,
+                           boxprops=dict(facecolor="#e0e7ff", color="#4f46e5"),
+                           medianprops=dict(color="#1e1b4b", linewidth=2),
+                           whiskerprops=dict(color="#4f46e5"),
+                           capprops=dict(color="#4f46e5"))
+        for cc in COUNTRY_ORDER:
+            d_cc = d_out[d_out["CountryCode"] == cc]
+            if d_cc.empty:
+                continue
+            jitter = rng.uniform(-0.15, 0.15, size=len(d_cc))
+            ax_vol.scatter(xi + jitter, d_cc[VOL_COL].values,
+                           c=COUNTRY_COLORS[cc], s=40, alpha=0.75,
+                           edgecolor="white", linewidth=0.4, zorder=3)
+
+    ax_vol.set_yscale("log")
+    ax_vol.set_xticks(list(x_pos.values()))
+    ax_vol.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
+    ax_vol.set_xlabel("Prior Inspection Outcome (prior_score)")
+    ax_vol.set_ylabel("IQVIA Extended Units (log scale)")
+    ax_vol.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
+    ax_vol.set_axisbelow(True)
+    _n_label(ax_vol, list(x_pos.values()), n_vals, y_frac=0.01)
+
+    groups = {out: sub.loc[sub["prior_outcome"] == out, VOL_COL].dropna().values
+              for out in OUTCOME_ORDER}
+    p = _kruskal_p(groups)
+    if p is not None:
+        p_str = f"KW p={p:.3f}" if p >= 0.001 else "KW p<0.001"
+        ax_vol.set_title(f"Market Volume by FDA Inspection Outcome  ({p_str})",
+                         fontsize=11, fontweight="bold")
+
+    legend_handles = [
+        Line2D([0], [0], marker="o", linestyle="",
+               color=COUNTRY_COLORS[cc], label=COUNTRY_LABELS[cc],
+               markeredgecolor="white", markeredgewidth=0.5, markersize=8)
+        for cc in COUNTRY_ORDER
     ]
+    ax_vol.legend(handles=legend_handles, title="Country", loc="upper right")
 
-    bar_color  = "#93c5fd"
-    edge_color = "#2563eb"
-    fig, axes  = plt.subplots(1, 3, figsize=(14, 4.8))
-
-    d_core = df[df["CountryCode"].isin(COUNTRY_ORDER)].copy()
-
-    for ax, (col, ylabel, fmt, years) in zip(axes, metrics):
-        sub = d_core[d_core["TestYear"].isin(years) & d_core[col].notna()].copy()
-
-        g = (
-            sub.groupby("CountryCode", as_index=False)
-            .agg(mean=(col, "mean"), n=(col, "count"))
-        )
-        g["CountryCode"] = pd.Categorical(g["CountryCode"], categories=COUNTRY_ORDER, ordered=True)
-        g = g.sort_values("CountryCode").reset_index(drop=True)
-
-        x = np.arange(len(g))
-        bars = ax.bar(x, g["mean"], color=bar_color, edgecolor=edge_color,
-                      linewidth=1.0, zorder=2)
-
-        # value labels on top of bars
-        for bar, val in zip(bars, g["mean"]):
-            ax.text(bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() * 1.02,
-                    fmt.format(val),
-                    ha="center", va="bottom", fontsize=9)
-
-        ax.set_xticks(x)
-        ax.set_xticklabels([COUNTRY_LABELS.get(c, c) for c in g["CountryCode"]])
-        ax.set_ylabel(ylabel)
-        ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
-        ax.set_axisbelow(True)
-
-        # n= labels below x-axis ticks
-        _n_label(ax, x, g["n"], y_frac=0.02)
-
-        # Kruskal-Wallis p
-        groups = {cc: sub.loc[sub["CountryCode"] == cc, col].dropna().values
-                  for cc in COUNTRY_ORDER}
-        p = _kruskal_p(groups)
-        if p is not None:
-            p_str = f"KW p={p:.3f}" if p >= 0.001 else "KW p<0.001"
-            ax.set_title(f"{p_str}", fontsize=9, color="#374151")
-
-        years_str = "+".join(str(y) for y in years)
-        ax.set_xlabel(f"Manufacturing Country  (years tested: {years_str})")
-
-    plt.suptitle("Figure 1 — Mean Contamination by Manufacturing Country",
-                 fontsize=12, fontweight="bold", y=1.01)
+    fig.suptitle(
+        "Figure 1 — Relationship between Market Outcomes and Prior FDA Inspection Outcome",
+        fontsize=11, fontweight="bold", y=1.01)
     plt.tight_layout()
-    _save(fig, "Figure1_Quality_by_Country")
+    _save(fig, "Figure1_Market_by_Outcome")
     plt.close(fig)
-    print_fig1_stats(d_core)
+    print_fig1_stats(sub)
 
 
 def _bootstrap_pairwise(sub: pd.DataFrame, val_col: str, group_col: str,
                          cluster_col: str, groups: list, n_boot: int = 2000) -> None:
-    """Print NDC-cluster bootstrap pairwise comparisons between group pairs."""
+    """Print cluster-bootstrap pairwise comparisons between group pairs."""
     sub = sub[[val_col, group_col, cluster_col]].dropna().copy()
     for g1, g2 in combinations(groups, 2):
         d1 = sub[sub[group_col] == g1]
@@ -331,115 +358,9 @@ def _bootstrap_pairwise(sub: pd.DataFrame, val_col: str, group_col: str,
               f"p_naive={res['p_naive']:.4f}  p_boot_clustered={res['p_boot']:.4f}{sig}")
 
 
-def print_fig1_stats(d_core: pd.DataFrame) -> None:
+def print_fig1_stats(sub: pd.DataFrame) -> None:
     print("\n" + "=" * 80)
-    print("FIGURE 1 – Quality by Country")
-    print("=" * 80)
-    for col, label, years in [
-        (DMF_COL,  "DMF",              [2020, 2022, 2024]),
-        (NDMA_COL, "NDMA",             [2020, 2022]),
-        (DIFF_COL, "Difference Factor", [2024]),
-    ]:
-        sub = d_core[d_core["TestYear"].isin(years) & d_core[col].notna()]
-        print(f"\n  [{label}  years={years}]")
-        groups = {cc: sub.loc[sub["CountryCode"] == cc, col].dropna().values
-                  for cc in COUNTRY_ORDER if (sub["CountryCode"] == cc).any()}
-        for cc in COUNTRY_ORDER:
-            vals = sub.loc[sub["CountryCode"] == cc, col].dropna()
-            if len(vals):
-                print(f"    {cc}:  n={len(vals)}  mean={vals.mean():.3g}  median={vals.median():.3g}")
-
-        print(f"\n  [Approach 1: Independent – Kruskal-Wallis + Dunn (Bonferroni)]")
-        p = _kruskal_p(groups)
-        print(f"    Kruskal-Wallis: p={p:.5f}" if p is not None else "    KW n/a")
-        if p is not None and len(groups) >= 2:
-            dunn = _dunn_posthoc(groups)
-            if not dunn.empty:
-                print(dunn[["group1","group2","z","p_raw","p_adj","sig"]].to_string(index=False, col_space=10))
-
-        print(f"\n  [Approach 2: Cluster-robust Bootstrap by NDC11]")
-        _bootstrap_pairwise(sub.copy(), col, "CountryCode", "NDC11", COUNTRY_ORDER)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Figure 2 — Volume by Prior Inspection Outcome
-# Box plot (log scale) with jittered points colored by country
-# ═══════════════════════════════════════════════════════════════════════════════
-def plot_fig2_volume_by_outcome() -> None:
-    print("\nPlotting Figure 2 — Volume by Prior Inspection Outcome...")
-
-    sub = df[
-        df["prior_outcome"].notna() &
-        df[VOL_COL].notna() &
-        (df[VOL_COL] > 0) &
-        df["CountryCode"].isin(COUNTRY_ORDER)
-    ].copy()
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-
-    x_pos = {out: i for i, out in enumerate(OUTCOME_ORDER)}
-    n_vals = []
-
-    for out in OUTCOME_ORDER:
-        d_out = sub[sub["prior_outcome"] == out]
-        n_vals.append(len(d_out))
-        xi = x_pos[out]
-
-        # box plot data
-        vals = d_out[VOL_COL].values
-        if len(vals) > 0:
-            ax.boxplot(vals, positions=[xi], widths=0.45,
-                            patch_artist=True, showfliers=False,
-                            boxprops=dict(facecolor="#e0e7ff", color="#4f46e5"),
-                            medianprops=dict(color="#1e1b4b", linewidth=2),
-                            whiskerprops=dict(color="#4f46e5"),
-                            capprops=dict(color="#4f46e5"))
-
-        # jittered points by country
-        rng = np.random.default_rng(42)
-        for cc in COUNTRY_ORDER:
-            d_cc = d_out[d_out["CountryCode"] == cc]
-            if d_cc.empty:
-                continue
-            jitter = rng.uniform(-0.15, 0.15, size=len(d_cc))
-            ax.scatter(xi + jitter, d_cc[VOL_COL].values,
-                       c=COUNTRY_COLORS[cc], s=40, alpha=0.75,
-                       edgecolor="white", linewidth=0.4, zorder=3)
-
-    ax.set_yscale("log")
-    ax.set_xticks(list(x_pos.values()))
-    ax.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
-    ax.set_xlabel("Prior Inspection Outcome (prior_score)")
-    ax.set_ylabel("IQVIA Extended Units (log scale)")
-    ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
-    ax.set_axisbelow(True)
-    _n_label(ax, list(x_pos.values()), n_vals, y_frac=0.01)
-
-    # Kruskal-Wallis p
-    groups = {out: sub.loc[sub["prior_outcome"] == out, VOL_COL].dropna().values
-              for out in OUTCOME_ORDER}
-    p = _kruskal_p(groups)
-    if p is not None:
-        p_str = f"KW p={p:.3f}" if p >= 0.001 else "KW p<0.001"
-        ax.set_title(f"Market Volume by FDA Inspection Outcome  ({p_str})",
-                     fontsize=11, fontweight="bold")
-
-    legend_handles = [
-        Line2D([0], [0], marker="o", linestyle="",
-               color=COUNTRY_COLORS[cc], label=COUNTRY_LABELS[cc],
-               markeredgecolor="white", markeredgewidth=0.5, markersize=8)
-        for cc in COUNTRY_ORDER
-    ]
-    ax.legend(handles=legend_handles, title="Country", loc="upper right")
-    plt.tight_layout()
-    _save(fig, "Figure2_Volume_by_Outcome")
-    plt.close(fig)
-    print_fig2_stats(sub)
-
-
-def print_fig2_stats(sub: pd.DataFrame) -> None:
-    print("\n" + "=" * 80)
-    print("FIGURE 2 – Volume by Prior Inspection Outcome")
+    print("FIGURE 1 – Volume by Prior Inspection Outcome")
     print("=" * 80)
     groups = {out: sub.loc[sub["prior_outcome"] == out, VOL_COL].dropna().values
               for out in OUTCOME_ORDER}
@@ -472,118 +393,79 @@ def print_fig2_stats(sub: pd.DataFrame) -> None:
     else:
         print("    prior_fei column not available")
 
+    print("  [PRICE: NADAC data not yet in pipeline — price statistics pending]")
     print("=" * 80)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Figure 2 — Market Volume vs Tested Drug Quality (3 panels, all years pooled)
+# Panels: DMF | NDMA | Difference Factor
+# Color = country; NDC-cluster bootstrap Spearman ρ; red dashed trend line
+# ═══════════════════════════════════════════════════════════════════════════════
 def _add_trend_line(ax, x: np.ndarray, y: np.ndarray,
                     xscale: str, linthresh: float = 1.0) -> None:
-    """
-    Fit log10(y) ~ f(x) and draw a red dashed trend line.
-    For symlog x-scale, transform x to linear symlog space before fitting.
-    Matches old JAMA graph code exactly.
-    """
+    """Fit log10(y) ~ f(x) and draw a red dashed trend line (matches old JAMA code)."""
     mask = np.isfinite(x) & np.isfinite(y) & (y > 0)
     xf, yf = x[mask], y[mask]
     if len(xf) < 3:
         return
-
     if xscale == "symlog":
         def T(u):
-            u = np.asarray(u, dtype=float)
-            out = u.copy()
-            big = u >= linthresh
-            out[big] = linthresh * (1.0 + np.log10(u[big] / linthresh))
+            u = np.asarray(u, dtype=float); out = u.copy()
+            big = u >= linthresh; out[big] = linthresh * (1.0 + np.log10(u[big] / linthresh))
             return out
         def Tinv(t):
-            t = np.asarray(t, dtype=float)
-            out = t.copy()
-            big = t >= linthresh
-            out[big] = linthresh * 10 ** (t[big] / linthresh - 1.0)
+            t = np.asarray(t, dtype=float); out = t.copy()
+            big = t >= linthresh; out[big] = linthresh * 10 ** (t[big] / linthresh - 1.0)
             return out
         Xfit = T(xf)
     else:
         def T(u):    return np.asarray(u, dtype=float)
         def Tinv(t): return np.asarray(t, dtype=float)
         Xfit = xf
-
     try:
         Yfit = np.log10(yf)
         b, a = np.polyfit(Xfit, Yfit, 1)
         t_line = np.linspace(np.nanmin(Xfit), np.nanmax(Xfit), 200)
-        x_line = Tinv(t_line)
-        y_line = 10 ** (a + b * t_line)
-        ax.plot(x_line, y_line, "r--", alpha=0.55, linewidth=2, zorder=2)
+        ax.plot(Tinv(t_line), 10 ** (a + b * t_line), "r--", alpha=0.55, linewidth=2, zorder=2)
     except Exception:
         pass
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Figure 3 — Quality vs Volume scatter
-# Rows: DMF | NDMA | Difference Factor
-# Columns: by test year (only years where that metric is non-null)
-# Color: manufacturing country
-# ═══════════════════════════════════════════════════════════════════════════════
-def plot_fig3_quality_vs_volume() -> None:
-    print("\nPlotting Figure 3 — Quality vs Volume scatter...")
-
-    metric_rows = [
-        (DMF_COL,  "DMF (ng/day)",          [2020, 2022, 2024], "symlog", 1.0),
-        (NDMA_COL, "NDMA (ng/day)",         [2020, 2022],       "symlog", 1.0),
-        (DIFF_COL, "Difference Factor",      [2024],             "linear", None),
-    ]
-
-    n_rows = len(metric_rows)
-    # one column per year across all metrics
-    all_years = sorted({yr for _, _, years, _, _ in metric_rows for yr in years})
-    n_cols = len(all_years)
-
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.5 * n_cols, 4.2 * n_rows),
-                             squeeze=False)
+def plot_fig2_volume_vs_quality() -> None:
+    print("\nPlotting Figure 2 — Market Volume vs Tested Drug Quality (all years pooled)...")
 
     d_core = df[df["CountryCode"].isin(COUNTRY_ORDER) & df[VOL_COL].notna() & (df[VOL_COL] > 0)].copy()
 
-    for row_i, (qcol, ylabel, years, xscale, linthresh) in enumerate(metric_rows):
-        for col_j, yr in enumerate(all_years):
-            ax = axes[row_i][col_j]
-            if yr not in years:
-                ax.axis("off")
+    metrics = [
+        (DMF_COL,  "DMF (ng/day)",       [2020, 2022, 2024], "symlog", 1.0),
+        (NDMA_COL, "NDMA (ng/day)",      [2020, 2022],       "symlog", 1.0),
+        (DIFF_COL, "Difference Factor",   [2024],             "linear", None),
+    ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    for ax, (qcol, xlabel, years, xscale, linthresh) in zip(axes, metrics):
+        sub = d_core[d_core["TestYear"].isin(years) & d_core[qcol].notna()].copy()
+        for cc in COUNTRY_ORDER:
+            d_cc = sub[sub["CountryCode"] == cc]
+            if d_cc.empty:
                 continue
+            ax.scatter(d_cc[qcol].values, d_cc[VOL_COL].values,
+                       s=55, alpha=0.65, c=COUNTRY_COLORS[cc],
+                       edgecolor="white", linewidth=0.4, zorder=3)
+        _add_trend_line(ax, sub[qcol].values.astype(float), sub[VOL_COL].values.astype(float),
+                        xscale=xscale, linthresh=linthresh if linthresh is not None else 1.0)
+        if xscale == "symlog" and linthresh is not None:
+            ax.set_xscale("symlog", linthresh=linthresh)
+        ax.set_yscale("log")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("IQVIA Extended Units")
+        ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
+        _spearman_annotation(ax, sub[qcol].values.astype(float),
+                             sub[VOL_COL].values.astype(float),
+                             ndc_clusters=sub["NDC11"].values)
 
-            sub = d_core[
-                (d_core["TestYear"] == yr) &
-                d_core[qcol].notna()
-            ].copy()
-
-            for cc in COUNTRY_ORDER:
-                d_cc = sub[sub["CountryCode"] == cc]
-                if d_cc.empty:
-                    continue
-                ax.scatter(d_cc[qcol].values, d_cc[VOL_COL].values,
-                           s=55, alpha=0.70,
-                           c=COUNTRY_COLORS[cc],
-                           edgecolor="white", linewidth=0.4, zorder=3)
-
-            # trend line (red dashed, log10(y) ~ f(x))
-            _add_trend_line(ax, sub[qcol].values.astype(float),
-                            sub[VOL_COL].values.astype(float),
-                            xscale=xscale,
-                            linthresh=linthresh if linthresh is not None else 1.0)
-
-            # axes scale
-            if xscale == "symlog" and linthresh is not None:
-                ax.set_xscale("symlog", linthresh=linthresh)
-            ax.set_yscale("log")
-
-            ax.set_xlabel(ylabel)
-            ax.set_ylabel("IQVIA Extended Units" if col_j == 0 else "")
-            ax.set_title(f"Year {yr}", fontsize=10)
-            ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
-
-            _spearman_annotation(ax, sub[qcol].values.astype(float),
-                                 sub[VOL_COL].values.astype(float),
-                                 ndc_clusters=sub["NDC11"].values)
-
-    # shared legend
     legend_handles = [
         Line2D([0], [0], marker="o", linestyle="",
                color=COUNTRY_COLORS[cc], label=COUNTRY_LABELS[cc],
@@ -591,167 +473,173 @@ def plot_fig3_quality_vs_volume() -> None:
         for cc in COUNTRY_ORDER
     ]
     fig.legend(handles=legend_handles, title="Country",
-               loc="lower center", bbox_to_anchor=(0.5, -0.02),
-               ncol=3, framealpha=0.9)
-    fig.suptitle("Figure 3 — Quality Metrics vs Market Volume",
+               loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=3, framealpha=0.9)
+    fig.suptitle("Figure 2 — Market Volume vs Tested Drug Quality",
                  fontsize=12, fontweight="bold", y=1.01)
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
-    _save(fig, "Figure3_Quality_vs_Volume")
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
+    _save(fig, "Figure2_Volume_vs_Quality")
     plt.close(fig)
-    print_fig3_stats(d_core)
+    print_fig2_stats(d_core)
 
 
-def print_fig3_stats(d_core: pd.DataFrame) -> None:
+def print_fig2_stats(d_core: pd.DataFrame) -> None:
     print("\n" + "=" * 80)
-    print("FIGURE 3 – Quality vs Volume  (Spearman ρ, NDC-cluster bootstrap, 2000 resamples)")
+    print("FIGURE 2 – Volume vs Quality  (Spearman ρ, NDC-cluster bootstrap, 2000 resamples)")
     print("=" * 80)
-    metric_rows = [
+    metrics = [
         (DMF_COL,  "DMF",              [2020, 2022, 2024]),
         (NDMA_COL, "NDMA",             [2020, 2022]),
         (DIFF_COL, "Difference Factor", [2024]),
     ]
     sub_all = d_core[d_core[VOL_COL].notna() & (d_core[VOL_COL] > 0)].copy()
-
     print(f"\n  Y = volume (IQVIA extended units)")
-    for qcol, label, years in metric_rows:
+    for qcol, label, years in metrics:
         sub = sub_all[sub_all["TestYear"].isin(years) & sub_all[qcol].notna()].copy()
         print(f"    {label}:")
-        # all years pooled
         x = sub[qcol].values.astype(float)
         y = sub[VOL_COL].values.astype(float)
         if np.isfinite(x).sum() >= 5:
             res = _block_bootstrap_spearman(x, y, sub["NDC11"].values)
-            print(f"      [all years pooled]")
             print(f"      Naive Spearman: rho={res['rho']:+.4f}  p={res['p_naive']:.5f}  n={res['n_obs']}")
             if np.isfinite(res["p_boot"]):
                 print(f"      Clustered (NDC bootstrap): rho={res['rho']:+.4f}  "
                       f"p_boot={res['p_boot']:.5f}  "
                       f"95%CI=[{res['ci_lo']:+.4f}, {res['ci_hi']:+.4f}]  "
                       f"n_ndcs={res['n_clusters']}")
-        # per year
-        for yr in years:
-            sy = sub[sub["TestYear"] == yr]
-            xyr = sy[qcol].values.astype(float)
-            yyr = sy[VOL_COL].values.astype(float)
-            if np.isfinite(xyr).sum() >= 5:
-                res = _block_bootstrap_spearman(xyr, yyr, sy["NDC11"].values)
-                print(f"      [{yr}]")
-                print(f"      Naive Spearman: rho={res['rho']:+.4f}  p={res['p_naive']:.5f}  n={res['n_obs']}")
-                if np.isfinite(res["p_boot"]):
-                    print(f"      Clustered (NDC bootstrap): rho={res['rho']:+.4f}  "
-                          f"p_boot={res['p_boot']:.5f}  "
-                          f"95%CI=[{res['ci_lo']:+.4f}, {res['ci_hi']:+.4f}]  "
-                          f"n_ndcs={res['n_clusters']}")
+        else:
+            print(f"      n < 5 — skipped")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Figure 4 — Prior Outcome vs Quality (box + jitter by country)
-# Rows: DMF | NDMA | Difference Factor
-# Shows distribution of quality metric within NAI / VAI / OAI groups
+# Figure 3 — Price vs Tested Drug Quality (3 panels — NADAC pending)
 # ═══════════════════════════════════════════════════════════════════════════════
-def plot_fig4_outcome_vs_quality() -> None:
-    print("\nPlotting Figure 4 — Prior Inspection Outcome vs Quality...")
+def plot_fig3_price_vs_quality() -> None:
+    print("\nPlotting Figure 3 — Price vs Quality (NADAC data not in pipeline)...")
+
+    labels = ["DMF (ng/day)", "NDMA (ng/day)", "Difference Factor"]
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    for ax, xlabel in zip(axes, labels):
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+        ax.text(0.5, 0.5,
+                "NADAC price data\nnot available\nin current pipeline",
+                transform=ax.transAxes, ha="center", va="center",
+                fontsize=12, color="#9ca3af",
+                bbox=dict(boxstyle="round,pad=0.4", facecolor="#f9fafb",
+                          edgecolor="#e5e7eb", alpha=0.9))
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("Price per Unit ($/unit)")
+        ax.grid(True, alpha=0.2, linestyle="--", linewidth=0.5)
+
+    fig.suptitle("Figure 3 — Price vs Tested Drug Quality  [NADAC data pending]",
+                 fontsize=12, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    _save(fig, "Figure3_Price_vs_Quality")
+    plt.close(fig)
+    print_fig3_stats()
+
+
+def print_fig3_stats() -> None:
+    print("\n" + "=" * 80)
+    print("FIGURE 3 – Price vs Quality")
+    print("=" * 80)
+    print("  NADAC price data not yet integrated into step5 pipeline.")
+    print("  Statistics pending. When available, results should include:")
+    print("    - Spearman ρ (naive + NDC-cluster bootstrap) for price vs DMF, NDMA, DiffFactor")
+    print("    - Old result: NDMA vs price ρ=+0.282, NDC-clustered p=0.013, 95% CI [+0.056, +0.490]")
+    print("=" * 80)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Figure 4 — Drug Quality by Country of Manufacture (3 bar chart panels)
+# Panels: DMF | NDMA | Difference Factor
+# Each bar = mean across tested NDC11s in that country
+# ═══════════════════════════════════════════════════════════════════════════════
+def plot_fig4_quality_by_country() -> None:
+    print("\nPlotting Figure 4 — Drug Quality by Country of Manufacture...")
 
     metrics = [
-        (DMF_COL,  "DMF (ng/day)",           [2020, 2022, 2024], "symlog", 1.0),
-        (NDMA_COL, "NDMA (ng/day)",          [2020, 2022],       "symlog", 1.0),
-        (DIFF_COL, "Difference Factor",       [2024],             "linear", None),
+        (DMF_COL,  "DMF (ng/day)",       "{:,.0f}", [2020, 2022, 2024]),
+        (NDMA_COL, "NDMA (ng/day)",      "{:,.1f}", [2020, 2022]),
+        (DIFF_COL, "Difference Factor",   "{:.3f}",  [2024]),
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=False)
-    d_core = df[df["CountryCode"].isin(COUNTRY_ORDER) & df["prior_outcome"].notna()].copy()
-    rng = np.random.default_rng(42)
+    bar_color  = "#93c5fd"
+    edge_color = "#2563eb"
+    fig, axes  = plt.subplots(1, 3, figsize=(14, 4.8))
+    d_core     = df[df["CountryCode"].isin(COUNTRY_ORDER)].copy()
 
-    for ax, (qcol, ylabel, years, yscale, linthresh) in zip(axes, metrics):
-        sub = d_core[d_core["TestYear"].isin(years) & d_core[qcol].notna()].copy()
+    for ax, (col, ylabel, fmt, years) in zip(axes, metrics):
+        sub = d_core[d_core["TestYear"].isin(years) & d_core[col].notna()].copy()
+        g = (
+            sub.groupby("CountryCode", as_index=False)
+            .agg(mean=(col, "mean"), n=(col, "count"))
+        )
+        g["CountryCode"] = pd.Categorical(g["CountryCode"], categories=COUNTRY_ORDER, ordered=True)
+        g = g.sort_values("CountryCode").reset_index(drop=True)
 
-        n_vals = []
-        for xi, out in enumerate(OUTCOME_ORDER):
-            d_out = sub[sub["prior_outcome"] == out]
-            n_vals.append(len(d_out))
-            vals = d_out[qcol].dropna().values
-            if len(vals) == 0:
-                continue
+        x    = np.arange(len(g))
+        bars = ax.bar(x, g["mean"], color=bar_color, edgecolor=edge_color,
+                      linewidth=1.0, zorder=2)
+        for bar, val in zip(bars, g["mean"]):
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() * 1.02,
+                    fmt.format(val),
+                    ha="center", va="bottom", fontsize=9)
 
-            ax.boxplot(vals, positions=[xi], widths=0.45,
-                       patch_artist=True, showfliers=False,
-                       boxprops=dict(facecolor="#e0e7ff", color="#4f46e5"),
-                       medianprops=dict(color="#1e1b4b", linewidth=2),
-                       whiskerprops=dict(color="#4f46e5"),
-                       capprops=dict(color="#4f46e5"))
-
-            for cc in COUNTRY_ORDER:
-                d_cc = d_out[d_out["CountryCode"] == cc]
-                if d_cc.empty:
-                    continue
-                jitter = rng.uniform(-0.15, 0.15, size=len(d_cc))
-                ax.scatter(xi + jitter, d_cc[qcol].values,
-                           c=COUNTRY_COLORS[cc], s=40, alpha=0.75,
-                           edgecolor="white", linewidth=0.4, zorder=3)
-
-        if yscale == "symlog" and linthresh is not None:
-            ax.set_yscale("symlog", linthresh=linthresh)
-
-        ax.set_xticks(range(len(OUTCOME_ORDER)))
-        ax.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
+        ax.set_xticks(x)
+        ax.set_xticklabels([COUNTRY_LABELS.get(c, c) for c in g["CountryCode"]])
         ax.set_ylabel(ylabel)
-        ax.set_xlabel("Prior Inspection Outcome")
         ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
         ax.set_axisbelow(True)
-        _n_label(ax, range(len(OUTCOME_ORDER)), n_vals, y_frac=0.01)
+        _n_label(ax, x, g["n"], y_frac=0.02)
 
-        # Kruskal-Wallis p
-        groups = {out: sub.loc[sub["prior_outcome"] == out, qcol].dropna().values
-                  for out in OUTCOME_ORDER}
+        groups = {cc: sub.loc[sub["CountryCode"] == cc, col].dropna().values
+                  for cc in COUNTRY_ORDER}
         p = _kruskal_p(groups)
         if p is not None:
             p_str = f"KW p={p:.3f}" if p >= 0.001 else "KW p<0.001"
-            ax.set_title(f"{ylabel}\n{p_str}", fontsize=10)
+            ax.set_title(p_str, fontsize=9, color="#374151")
 
-    legend_handles = [
-        Line2D([0], [0], marker="o", linestyle="",
-               color=COUNTRY_COLORS[cc], label=COUNTRY_LABELS[cc],
-               markeredgecolor="white", markeredgewidth=0.5, markersize=8)
-        for cc in COUNTRY_ORDER
-    ]
-    fig.legend(handles=legend_handles, title="Country",
-               loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=3, framealpha=0.9)
-    fig.suptitle("Figure 4 — Quality Metrics by Prior Inspection Outcome",
+        years_str = "+".join(str(y) for y in years)
+        ax.set_xlabel(f"Manufacturing Country  (years tested: {years_str})")
+
+    plt.suptitle("Figure 4 — Drug Quality by Country of Manufacture",
                  fontsize=12, fontweight="bold", y=1.01)
-    plt.tight_layout(rect=[0, 0.06, 1, 1])
-    _save(fig, "Figure4_Outcome_vs_Quality")
+    plt.tight_layout()
+    _save(fig, "Figure4_Quality_by_Country")
     plt.close(fig)
     print_fig4_stats(d_core)
 
 
 def print_fig4_stats(d_core: pd.DataFrame) -> None:
     print("\n" + "=" * 80)
-    print("FIGURE 4 – Quality by Prior Inspection Outcome")
+    print("FIGURE 4 – Quality by Country")
     print("=" * 80)
-    for qcol, label, years in [
+    for col, label, years in [
         (DMF_COL,  "DMF",              [2020, 2022, 2024]),
         (NDMA_COL, "NDMA",             [2020, 2022]),
         (DIFF_COL, "Difference Factor", [2024]),
     ]:
-        sub = d_core[d_core["TestYear"].isin(years) & d_core[qcol].notna()]
-        groups = {out: sub.loc[sub["prior_outcome"] == out, qcol].dropna().values
-                  for out in OUTCOME_ORDER}
-        p = _kruskal_p(groups)
+        sub = d_core[d_core["TestYear"].isin(years) & d_core[col].notna()]
         print(f"\n  [{label}  years={years}]")
-        for out in OUTCOME_ORDER:
-            vals = groups[out]
+        groups = {cc: sub.loc[sub["CountryCode"] == cc, col].dropna().values
+                  for cc in COUNTRY_ORDER if (sub["CountryCode"] == cc).any()}
+        for cc in COUNTRY_ORDER:
+            vals = sub.loc[sub["CountryCode"] == cc, col].dropna()
             if len(vals):
-                print(f"    {out}: n={len(vals)}  mean={np.mean(vals):.2f}  median={np.median(vals):.2f}")
+                print(f"    {cc}:  n={len(vals)}  mean={vals.mean():.3g}  median={vals.median():.3g}")
 
         print(f"\n  [Approach 1: Independent – Kruskal-Wallis + Dunn (Bonferroni)]")
+        p = _kruskal_p(groups)
         print(f"    Kruskal-Wallis: p={p:.5f}" if p is not None else "    KW n/a")
-        if p is not None:
-            dunn = _dunn_posthoc({k: v for k, v in groups.items() if len(v) >= 2})
+        if p is not None and len(groups) >= 2:
+            dunn = _dunn_posthoc(groups)
             if not dunn.empty:
                 print(dunn[["group1","group2","z","p_raw","p_adj","sig"]].to_string(index=False, col_space=10))
 
         print(f"\n  [Approach 2: Cluster-robust Bootstrap by NDC11]")
-        _bootstrap_pairwise(sub.copy(), qcol, "prior_outcome", "NDC11", OUTCOME_ORDER)
+        _bootstrap_pairwise(sub.copy(), col, "CountryCode", "NDC11", COUNTRY_ORDER)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -885,7 +773,7 @@ def _modelB_re_twoway(sub: pd.DataFrame, y_col: str, dummy_names: list,
 
 def run_statistical_models() -> None:
     """
-    Model B (Primary) for Figure 1 (quality ~ country) and Figure 4 (quality ~ inspection outcome).
+    Model B (Primary) for Figure 4 (quality ~ country) and Figure 1 (volume ~ inspection outcome).
     Reference groups: USA (country), NAI (inspection outcome).
     """
     if not HAS_STATSMODELS:
@@ -902,7 +790,7 @@ def run_statistical_models() -> None:
 
     # ── Figure 1: quality ~ country (reference = USA) ───────────────────────────
     print("\n" + "─" * 80)
-    print("  FIGURE 1 — Quality by Country  (reference = USA)")
+    print("  FIGURE 4 — Quality by Country  (reference = USA)")
     print("  model: log1p(metric) ~ IND + CHN + (1|NDC11)")
     print("─" * 80)
 
@@ -957,7 +845,7 @@ def run_statistical_models() -> None:
 
     # ── Figure 4: quality ~ inspection outcome (reference = NAI) ────────────────
     print("\n" + "─" * 80)
-    print("  FIGURE 4 — Quality by Inspection Outcome  (reference = NAI)")
+    print("  QUALITY ~ INSPECTION OUTCOME  (reference = NAI; related to Fig 1 right panel)")
     print("  model: log1p(metric) ~ VAI + OAI + (1|NDC11)")
     print("─" * 80)
 
@@ -999,7 +887,7 @@ def run_statistical_models() -> None:
 
     # ── Figure 2: volume ~ inspection outcome (reference = NAI) ─────────────────
     print("\n" + "─" * 80)
-    print("  FIGURE 2 — Volume by Inspection Outcome  (reference = NAI)")
+    print("  FIGURE 1 (right panel) — Volume by Inspection Outcome  (reference = NAI)")
     print("  model: log(iqvia_extended_units) ~ VAI + OAI + (1|NDC11)")
     print("─" * 80)
 
@@ -1025,10 +913,10 @@ def run_statistical_models() -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUN ALL
 # ═══════════════════════════════════════════════════════════════════════════════
-plot_fig1_quality_by_country()
-plot_fig2_volume_by_outcome()
-plot_fig3_quality_vs_volume()
-plot_fig4_outcome_vs_quality()
+plot_fig1_market_by_outcome()   # Fig 1: Price (blank) + Volume by inspection outcome
+plot_fig2_volume_vs_quality()   # Fig 2: Volume vs DMF | NDMA | DiffFactor (pooled)
+plot_fig3_price_vs_quality()    # Fig 3: Price vs Quality (blank — NADAC pending)
+plot_fig4_quality_by_country()  # Fig 4: Quality by Country (bar charts)
 
 run_statistical_models()
 
