@@ -81,11 +81,12 @@ We build a panel linking every Metformin NDC ever independently tested by Valisu
 
 **Expansion:** step2 × {2020, 2022, 2024} via cross-join → 3,393 rows.
 
-**Valisure raw sources** (NOT the Q&A Sheet1 compilation):
-- 2020: `Vlaisure_2020.xlsx`, sheet "2020 Testing Data" (header row 1)
-- 2022: `Valisure_2022.xlsx`, sheet "2022 Testing Data - Actual" (header row 1)
-- 2024: `Valisure_2024_raw.xlsx`, sheet "2024 Testing Data" (header row 1)
-- Difference Factor: `Testing Data_DoD First 13 Drug Scores with ANDAs & NDCs.xlsx`, sheet "Metformin" (header row 1)
+**Valisure raw sources — all sheets come from a single file:**
+- File: `Data/08 - Valisure/raw/Valisure_2024_raw.xlsx`
+  - Sheet `"2020 Testing Data"` → 2020 NDMA + DMF (multiple lots → MAX)
+  - Sheet `"2022 Testing Data - Actual"` → 2022 NDMA + DMF (multiple lots → MAX)
+  - Sheet `"2024 Testing Data"` → 2024 DMF only (no NDMA in 2024)
+- Difference Factor: `Data/08 - Valisure/raw/Testing Data_DoD First 13 Drug Scores with ANDAs & NDCs.xlsx`, sheet `"Metformin"`
 
 **NDC matching:** NDC11 bare (11-digit, no hyphens) join between step2 NDCs and Valisure NDCs.
 
@@ -145,14 +146,14 @@ We build a panel linking every Metformin NDC ever independently tested by Valisu
 
 **Goal:** Collapse to one row per **(NDC11 × TestYear)** for estimation. Attach the "prior inspection" outcome for each NDC as of each test year.
 
-### Prior inspection logic (bug-fixed vs old code)
+### Prior inspection logic
 
 **For each (NDC11, TestYear):**
 1. Take all inspection rows for this NDC11 where:
    - FEI is not null
-   - EventYear ≤ TestYear (inspection happened before or during the test year)
+   - EventYear **strictly < TestYear** (inspection happened before the test year; same-year inspections are excluded)
    - NAI + VAI + OAI == 1 (classified inspection — excludes unclassified/future rows)
-2. Among qualifying rows, select the row with the **maximum EventYear** (most recent inspection)
+2. Among qualifying rows, select the row with the **maximum EventYear** (most recent prior inspection)
 3. Tie-break (same EventYear across FEIs): take the **worst outcome** (OAI > VAI > NAI)
 4. Result columns: `prior_outcome` (NAI/VAI/OAI), `prior_score` (0.0/1.5/3.5), `prior_event_year`, `prior_fei`, `prior_site`
 
@@ -164,27 +165,56 @@ We build a panel linking every Metformin NDC ever independently tested by Valisu
 
 **`prior_score` mapping:** NAI → 0.0, VAI → 1.5, OAI → 3.5 (same as old paper convention).
 
-### Old code bugs fixed
-1. **Sort-order mismatch (critical):** old `build_ndc_year_table` computed `agg` with `sort=True` (pandas default) but built the `prior_raw` list with `d.groupby(keys, sort=False)`, so PriorScore values were assigned to wrong NDC-Year rows. Fixed by computing prior inspection within a single properly-ordered operation.
-2. **Cross-FEI incoherence:** old code assigned `FEI = ("FEI", "first")` but computed score from the most-recent inspection across all FEIs — the stored FEI and score were from potentially different facilities. Fixed by recording the FEI that actually provided the prior inspection.
-3. **Not applicable to new data:** old code used pre-aggregated Q&A Sheet1 where DMF was averaged across multiple inspection rows of the same (NDC11, Year). New panel has clean separation: quality columns are NDC-level (constant across all inspection rows of the same NDC×Year), volume columns are NDC-level, inspection columns are FEI×event-level.
-
 ### Country assignment
 Country (IND / CHN / USA / other) is taken from the Redica `CountryCode` field, which reflects the manufacturing facility location, not the labeler. This is the authoritative classification.
 
 For multi-FEI NDCs where the FEIs are in different countries: CountryCode is assigned from the FEI whose inspection was most recently prior to the test year (the `prior_fei`). If no prior inspection exists, the first non-null CountryCode is used.
 
 ### What is excluded from the (NDC11 × TestYear) table
-- Inspection rows where EventYear > TestYear (future inspections — still in step4 but filtered here)
+- Inspection rows where EventYear ≥ TestYear (current-year or future inspections — still in step4 for completeness)
 - Inspection rows with NAI = VAI = OAI = 0 (unclassified; typically recent Redica entries pending outcome assignment)
-- These rows are kept in step4 for completeness and potential future use
+
+---
+
+## Step 6 — Analysis graphs + statistical models (`step6_graphs_july26.py`)
+
+**Input:** `step5_analysis_panel_july26.csv` (336 rows: 112 NDC11s × 3 TestYears).
+
+**Figures produced** (saved as PDF + PNG to `processed/outputs/`):
+
+| Figure | File | Description |
+|--------|------|-------------|
+| Figure 1 | `Figure1_Market_by_Outcome` | Left: NADAC price by inspection outcome (blank — NADAC not in pipeline). Right: IQVIA annual volume box + jitter, colored by country (log scale). |
+| Figure 2 | `Figure2_Volume_vs_Quality` | Scatter of IQVIA volume vs DMF / NDMA / Difference Factor (all available years pooled per metric). Red dashed trend line. NDC-cluster bootstrap Spearman ρ annotated. |
+| Figure 3 | `Figure3_Price_vs_Quality` | Scatter of NADAC price vs DMF / NDMA / Difference Factor (all three panels blank — NADAC pending). |
+| Figure 4 | `Figure4_Quality_by_Country` | Bar chart of mean DMF / NDMA / Difference Factor by manufacturing country (IND / CHN / USA). |
+
+**Statistical approach:**
+
+All primary regression models use **Model B: MixedLM random NDC intercept + Cameron-Gelbach-Miller (2011) two-way clustered SE (NDC × prior_fei)**. This accounts for repeated observations of the same NDC across test years (random intercept) and correlation within NDC and within FEI clusters simultaneously (two-way CGM SE).
+
+| Analysis | Outcome | Predictors | Reference |
+|----------|---------|------------|-----------|
+| Figure 4 — quality by country | log1p(DMF / NDMA / Diff Factor) | IND, CHN dummies | USA |
+| Figure 4 — CHN vs IND | same | USA, CHN dummies | IND |
+| Figure 1 (right) — volume by outcome | log(IQVIA extended units) | VAI, OAI dummies | NAI |
+| Quality by outcome (supplemental) | log1p(DMF / NDMA / Diff Factor) | VAI, OAI dummies | NAI |
+
+*Special case:* Difference Factor (2024 only, cross-section) uses FEI-only clustered SE (NDC clustering not applicable when n_years = 1).
+
+**Sensitivity / alternative approaches** (printed to console alongside Model B):
+- Approach 1: Kruskal-Wallis + Dunn post-hoc (Bonferroni) — assumes independence across observations
+- Approach 2: NDC-cluster block bootstrap pairwise — clusters at NDC level only
+- Approach 3: FEI-cluster block bootstrap pairwise — clusters at FEI level only
+
+These are diagnostic outputs; Model B is the primary model reported in the paper.
 
 ---
 
 ## Analysis design
 
 ### Unit of analysis
-One row per (NDC11 × TestYear). N = up to 112 × 3 = 336 rows, minus NDCs not tested by Valisure in a given year.
+One row per (NDC11 × TestYear). The July 2026 Valisure file covers all three test years for all 112 NDC11s, giving N = 336 rows. Of these, 252 are in the IND/CHN/USA analysis set (84 NDC11s × 3 years), and 243 have a prior classified Redica inspection. The Figure 1 regression panel uses 221 rows after requiring non-null IQVIA volume.
 
 ### Primary outcome
 `DMF (ng/DAY) Valisure` — DMF contamination level at the NDC level. Log-transformed (log1p) for regression.
@@ -192,7 +222,7 @@ One row per (NDC11 × TestYear). N = up to 112 × 3 = 336 rows, minus NDCs not t
 Secondary outcomes: `NDMA (ng/DAY) Valisure` (2020 and 2022 only), `Difference Factor` (2024 only).
 
 ### Primary predictor
-`prior_outcome` (NAI / VAI / OAI) — most recent classified FDA inspection outcome for the NDC's manufacturer, as of the test year.
+`prior_outcome` (NAI / VAI / OAI) — most recent classified FDA inspection outcome for the NDC's manufacturing facility, strictly before the test year.
 
 ### Covariates
 - `iqvia_extended_units` — market volume (log-transformed)
@@ -200,9 +230,9 @@ Secondary outcomes: `NDMA (ng/DAY) Valisure` (2020 and 2022 only), `Difference F
 - `TestYear` — fixed effect for temporal trends
 
 ### Statistical approach
-- Main: Kruskal-Wallis + Dunn post-hoc for inspection outcome groups
-- Scatter: Spearman ρ with NDC-clustered block bootstrap (same NDC appears in up to 3 years)
-- Regression: random-effects or GEE to account for repeated NDC observations across years (planned; design TBD)
+**Primary:** Model B — MixedLM random NDC intercept + CGM (2011) two-way clustered SE on NDC × FEI. Implemented in step6; accounts for repeated NDC observations across years and FEI-level correlation simultaneously.
+
+**Scatter correlations:** Spearman ρ with NDC-cluster block bootstrap (2,000 resamples). Resamples whole NDC clusters with replacement to obtain cluster-robust p-values and 95% CI.
 
 ---
 

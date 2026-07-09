@@ -7,17 +7,12 @@ Collapses step4_panel_july26.csv from
 to the estimation unit:
   (NDC11 × TestYear) — one row per NDC per Valisure test year
 
-Prior inspection logic (bug-fixed vs old pre-revision code):
+Prior inspection logic:
   For each (NDC11, TestYear):
-    1. Keep rows where FEI is non-null, EventYear ≤ TestYear, NAI+VAI+OAI == 1
+    1. Keep rows where FEI is non-null, EventYear strictly < TestYear, NAI+VAI+OAI == 1
     2. Select the row with maximum EventYear (most recent classified inspection)
     3. Tie-break on same EventYear: worst outcome wins (OAI > VAI > NAI)
   CountryCode / CountryName: from the FEI that provided the prior inspection
-
-Bugs fixed vs old build_ndc_year_table():
-  - sort-order mismatch: old agg used sort=True, prior-score loop used sort=False
-    → PriorScore was assigned to wrong (NDC11, Year) rows
-  - FEI column stored "first" FEI but score came from a different FEI's inspection
 
 Output: step5_analysis_panel_july26.csv
 """
