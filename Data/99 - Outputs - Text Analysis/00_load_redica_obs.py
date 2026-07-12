@@ -134,7 +134,7 @@ def main() -> None:
     # ── QSL → violation_category ────────────────────────────────────────────
     obs["redica_vc"] = obs["QSL Area"].map(QSL_TO_VC)
     mat_mask = obs["QSL Area"] == "Materials"
-    obs.loc[mat_mask, "redica_vc"] = obs.loc[mat_mask, "obs_summary"].apply(_map_materials_vc)
+    obs.loc[mat_mask, "redica_vc"] = obs.loc[mat_mask, "Observation/Deficiency Summary"].apply(_map_materials_vc)
     obs["redica_vc"] = obs["redica_vc"].fillna("Other")
 
     # ── build output ────────────────────────────────────────────────────────
