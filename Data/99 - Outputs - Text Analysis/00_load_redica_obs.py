@@ -5,9 +5,9 @@ Loads and standardizes Redica 483 observation data into the same
 observation schema used by the PDF+LLM pipeline (Step 1).
 
 Inputs
-  Data/07 - Redica/Raw/FDA-483s Observations + WL Deficiencies_OSU.xlsx
+  Data/07 - Redica/Raw/Valisure14_FDA_483_Observations_WL_Deficiencies_OSU.xlsx
       sheet: FDA-483s Obs + WL Deficiencies
-  Data/07 - Redica/Raw/Site List.xlsx
+  Data/07 - Redica/Raw/Valisure14_Site_List.xlsx
       columns: Site Redica Id, Site Display Name, FEI
 
 Output
@@ -33,7 +33,8 @@ QSL Area → violation_category mapping
   Facilities and Equipment → BuildingsEquipment
   Quality Unit             → QualitySystem
   Packaging and Labeling   → PackagingLabeling
-  Materials                → ProductionControls  (no exact match; closest domain)
+  Materials (storage/temp) → BuildingsEquipment  (keyword split on obs_summary)
+  Materials (testing/samp) → LabControls         (keyword split on obs_summary)
   NaN / unlisted           → Other
 
 Note: Redica severity uses 3 tiers (Critical / Major / Other).
@@ -53,8 +54,8 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 DATA = HERE.parent  # Data/
 
-REDICA_OBS_XLSX = DATA / "07 - Redica" / "Raw" / "FDA-483s Observations + WL Deficiencies_OSU.xlsx"
-SITE_LIST_XLSX  = DATA / "07 - Redica" / "Raw" / "Site List.xlsx"
+REDICA_OBS_XLSX = DATA / "07 - Redica" / "Raw" / "Valisure14_FDA_483_Observations_WL_Deficiencies_OSU.xlsx"
+SITE_LIST_XLSX  = DATA / "07 - Redica" / "Raw" / "Valisure14_Site_List.xlsx"
 SHEET_NAME      = "FDA-483s Obs + WL Deficiencies"
 OUT_CSV         = HERE / "redica_483_observations.csv"
 
@@ -64,8 +65,24 @@ QSL_TO_VC: dict[str, str] = {
     "Facilities and Equipment": "BuildingsEquipment",
     "Quality Unit":             "QualitySystem",
     "Packaging and Labeling":   "PackagingLabeling",
-    "Materials":                "ProductionControls",
+    # "Materials" is handled separately in _map_materials_vc() below
 }
+
+# Keywords that indicate a storage/warehousing concern within Materials observations
+_STORAGE_KEYWORDS = ("temperature", "humidity", "warehousing procedure", "temperature mapping", "temperature condition")
+
+
+def _map_materials_vc(text: str) -> str:
+    """
+    Split Redica 'Materials' QSL into BuildingsEquipment (storage/temperature)
+    or LabControls (incoming testing, sampling, supplier qualification).
+    Manual review of all 33 Materials observations confirmed two themes:
+      ~12 rows: storage conditions, temperature/humidity warehousing → BuildingsEquipment
+      ~21 rows: component testing, sampling, supplier qualification → LabControls
+    """
+    if any(kw in str(text).lower() for kw in _STORAGE_KEYWORDS):
+        return "BuildingsEquipment"
+    return "LabControls"
 
 
 def _parse_di_labels(val) -> list[str]:
@@ -115,7 +132,10 @@ def main() -> None:
     obs["redica_di_labels"] = obs["_di_list"].apply(lambda x: "; ".join(x))
 
     # ── QSL → violation_category ────────────────────────────────────────────
-    obs["redica_vc"] = obs["QSL Area"].map(QSL_TO_VC).fillna("Other")
+    obs["redica_vc"] = obs["QSL Area"].map(QSL_TO_VC)
+    mat_mask = obs["QSL Area"] == "Materials"
+    obs.loc[mat_mask, "redica_vc"] = obs.loc[mat_mask, "obs_summary"].apply(_map_materials_vc)
+    obs["redica_vc"] = obs["redica_vc"].fillna("Other")
 
     # ── build output ────────────────────────────────────────────────────────
     out = pd.DataFrame({
