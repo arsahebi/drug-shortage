@@ -994,9 +994,9 @@ if _RUNNING_AS_SCRIPT:
     parser.add_argument("--source",   choices=["pdf", "redica"], default="pdf",
                         help="Input source: 'pdf' (default, 483_observations.csv) or "
                              "'redica' (redica_483_observations.csv).")
-    parser.add_argument("--provider", choices=["openai", "anthropic"], default="openai",
-                        help="LLM provider: 'openai' (default, gpt-5-mini) or "
-                             "'anthropic' (claude-haiku-4-5-20251001).")
+    parser.add_argument("--provider", choices=["openai", "anthropic"], default="anthropic",
+                        help="LLM provider: 'anthropic' (default, claude-haiku-4-5-20251001) or "
+                             "'openai' (gpt-5-mini, legacy).")
     parser.add_argument("--output",   type=str, default=None,
                         help="Override output CSV path (default: source-dependent).")
     args = parser.parse_args()

@@ -89,15 +89,19 @@ import pandas as pd
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 HERE        = Path(__file__).parent
-SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
-OUT_CSV     = HERE / "483_fei_text_features_timeseries.csv"   # time-aware (primary)
-OUT_STATIC  = HERE / "483_fei_context_features.csv"           # static / legacy
 
-# Combined (PDF + Redica) paths — used when --source combined
+# PDF pipeline (--source pdf)
+SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
+OUT_CSV     = HERE / "483_fei_text_features_timeseries.csv"
+OUT_STATIC  = HERE / "483_fei_context_features.csv"
+
+# Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
+REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals_anthropic_v2.csv"
+OUT_REDICA_CSV     = HERE / "483_fei_text_features_timeseries_redica.csv"
+
+# Combined pipeline (--source combined) — requires step 04 first
 COMBINED_CSV     = HERE / "483_combined_obs_universe.csv"
 OUT_COMBINED_CSV = HERE / "483_fei_text_features_timeseries_combined.csv"
-# Redica-only paths — used when --source redica (preferred for modeling)
-OUT_REDICA_CSV   = HERE / "483_fei_text_features_timeseries_redica.csv"
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
@@ -493,10 +497,11 @@ def main() -> None:
     parser.add_argument(
         "--source", choices=["pdf", "combined", "redica"], default="pdf",
         help=(
-            "'pdf'      — 483_observation_context_signals.csv (38 FEIs, PDF pipeline).\n"
-            "'combined' — 483_combined_obs_universe.csv (all sources, 99 FEIs).\n"
-            "'redica'   — 483_combined_obs_universe.csv filtered to source==redica "
-            "(98 FEIs, current LLM pipeline; use this for modeling)."
+            "'pdf'      — reads 483_observation_context_signals.csv (38 FEIs, PDF pipeline).\n"
+            "'redica'   — reads redica_483_obs_llm_signals_anthropic_v2.csv directly "
+            "(98 FEIs, current pipeline; use this for modeling). No step 04 needed.\n"
+            "'combined' — reads 483_combined_obs_universe.csv (all sources). "
+            "Requires 04_build_combined_obs_universe.py to run first."
         ),
     )
     args = parser.parse_args()
@@ -513,17 +518,14 @@ def main() -> None:
         return
 
     if args.source == "redica":
-        if not COMBINED_CSV.exists():
-            sys.exit(f"\n[ERROR] Combined obs universe not found:\n  {COMBINED_CSV}\n"
-                     "Run 04_build_combined_obs_universe.py first.\n")
-        df = pd.read_csv(COMBINED_CSV)
-        df = df[df["source"] == "redica"].copy()
+        if not REDICA_SIGNALS_CSV.exists():
+            sys.exit(f"\n[ERROR] Redica LLM signals not found:\n  {REDICA_SIGNALS_CSV}\n"
+                     "Run 01_extract_observation_signals.py --source redica --provider anthropic first.\n")
+        df = pd.read_csv(REDICA_SIGNALS_CSV)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
-        print(f"  Filtered to source=redica: {len(df):,} observations, "
-              f"{df['fei'].nunique()} FEIs")
         _run_aggregation(df, OUT_REDICA_CSV, out_static=None,
-                         label="Redica-only (current LLM pipeline) — 98 FEIs")
+                         label="Redica pipeline (claude-haiku, 98 FEIs)")
         return
 
     # Default: PDF-only pipeline
