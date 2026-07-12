@@ -78,6 +78,8 @@ DENOMINATOR RULES
   Failed rows      : excluded from LLM features; never become false/zero labels
 """
 
+from __future__ import annotations
+
 import argparse
 import re
 import sys
