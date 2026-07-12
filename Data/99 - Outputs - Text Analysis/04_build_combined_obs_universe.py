@@ -39,7 +39,7 @@ HERE = Path(__file__).resolve().parent
 
 OUR_CSV         = HERE / "483_observation_context_signals.csv"
 REDICA_CSV      = HERE / "redica_483_observations.csv"
-REDICA_LLM_CSV  = HERE / "redica_483_obs_llm_signals.csv"   # optional; created by 01 --source redica
+REDICA_LLM_CSV  = HERE / "redica_483_obs_llm_signals_anthropic_v2.csv"   # created by 01 --source redica --provider anthropic
 OUT_CSV         = HERE / "483_combined_obs_universe.csv"
 
 # Columns carried from the PDF+LLM pipeline

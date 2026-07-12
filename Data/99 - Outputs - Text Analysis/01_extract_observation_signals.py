@@ -14,19 +14,15 @@ PURPOSE
 
   The core combined dataset (01 → 03) does NOT need this script.
 
-INPUT
-  Data/12 - FDA - 483/processed/483_observations.csv
-    One row per observation. Required columns:
-      fei, filename, insp_date, obs_num, obs_text_clean, cfr_codes,
-      n_cfrs, n_examples, has_repeat, has_systemic, has_wl_ref,
-      has_data_integrity, has_contamination, has_oos_oot, has_patient_risk,
-      has_quality_unit, has_investigation, has_documentation,
-      has_laboratory, has_equipment_facility, has_process_control
+INPUT (current — --source redica --provider anthropic)
+  redica_483_observations.csv
+    One row per observation. Created by 00_load_redica_obs.py.
 
-OUTPUT (in this folder)
-  483_observation_context_signals.csv
-    One row per observation. Stable join key: (fei, filename, obs_num).
-    Carries all source metadata + renamed regex flags + LLM fields.
+OUTPUT (current — --source redica --provider anthropic)
+  redica_483_obs_llm_signals_anthropic_v2.csv
+    One row per observation. Stable join key: (fei, insp_date, obs_num).
+    Carries all source metadata + LLM fields.
+    Fed into 04_build_combined_obs_universe.py as the Redica LLM signal file.
 
 IDEMPOTENCY
   On re-run, already-scored rows (matched by fei + filename + obs_num) are

@@ -14,15 +14,25 @@ PURPOSE
   Downstream shortage model joins on fei and takes the most recent snapshot
   before the month being predicted.
 
-PIPELINE POSITION
-  Step 1  (01_extract_observation_signals.py)
-      Reads : Data/12 - FDA - 483/processed/483_observations.csv
-      Writes: 483_observation_context_signals.csv
-              one row per observation; regex flags + LLM semantic fields
+PIPELINE POSITION (current — Redica/Anthropic mode)
+  Step 0  (00_load_redica_obs.py)
+      Reads : Data/07 - Redica/Raw/...
+      Writes: redica_483_observations.csv
 
-  Step 2  (this script)
-      Reads : 483_observation_context_signals.csv
-      Writes: 483_fei_text_features_timeseries.csv
+  Step 1  (01_extract_observation_signals.py --source redica --provider anthropic)
+      Reads : redica_483_observations.csv
+      Writes: redica_483_obs_llm_signals_anthropic_v2.csv
+              one row per observation; LLM semantic fields
+
+  Step 4  (04_build_combined_obs_universe.py)
+      Reads : redica_483_observations.csv
+              redica_483_obs_llm_signals_anthropic_v2.csv
+      Writes: 483_combined_obs_universe.csv
+              one row per observation, all sources combined
+
+  Step 2  (this script --source redica)
+      Reads : 483_combined_obs_universe.csv
+      Writes: 483_fei_text_features_timeseries_redica.csv
               one row per (fei, snapshot_date)
 
 OUTPUT SCHEMA
