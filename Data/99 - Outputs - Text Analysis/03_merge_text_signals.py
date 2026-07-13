@@ -19,8 +19,8 @@ REQUIRED FOR COMBINED DATASET?
   but is not required to run the analytics dashboard.
 
 INPUTS
-  analytics/fei_node_summary.csv      ← produced by analytics/01 (all 129 FEIs)
-  483_fei_context_features.csv        ← produced by 02 (LLM-scored FEIs only)
+  analytics/fei_node_summary.csv           ← produced by analytics/01 (all 129 FEIs)
+  483_fei_text_features_static_fdapdf.csv ← produced by 02 --source pdf (LLM-scored FEIs only)
 
 OUTPUTS (in this folder)
   fei_node_summary_enriched.csv   ← left join: all 129 FEIs + LLM columns (NaN if unscored)
@@ -34,7 +34,7 @@ import pandas as pd
 # ── Paths ──────────────────────────────────────────────────────────────────
 HERE         = Path(__file__).parent
 NODES_CSV    = HERE / "analytics" / "fei_node_summary.csv"
-RISK_CSV     = HERE / "483_fei_context_features.csv"   # produced by 02
+RISK_CSV     = HERE / "483_fei_text_features_static_fdapdf.csv"   # produced by 02 --source pdf
 ENRICHED_CSV = HERE / "fei_node_summary_enriched.csv"
 
 

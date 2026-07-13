@@ -89,8 +89,8 @@ HERE        = Path(__file__).parent
 
 # PDF pipeline (--source pdf)
 SIGNALS_CSV = HERE / "fdapdf_483_obs_llm_signals_anthropic.csv"
-OUT_CSV     = HERE / "483_fei_text_features_timeseries.csv"
-OUT_STATIC  = HERE / "483_fei_context_features.csv"
+OUT_CSV     = HERE / "483_fei_text_features_timeseries_fdapdf.csv"
+OUT_STATIC  = HERE / "483_fei_text_features_static_fdapdf.csv"
 
 # Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
 REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals_anthropic.csv"
