@@ -11,25 +11,19 @@ PURPOSE
   that single inspection only (non-cumulative).  Temporal aggregation
   (rolling windows, lag features, decay weighting) is left to the model.
 
-PIPELINE POSITION (current — Redica/Anthropic mode)
+PIPELINE POSITION (Redica/Anthropic — primary modeling path)
   Step 0  (00_load_redica_obs.py)
       Reads : Data/07 - Redica/Raw/...
-      Writes: redica_483_observations.csv
+      Writes: step00_redica_483_observations.csv
 
   Step 1  (01_extract_observation_signals.py --source redica --provider anthropic)
-      Reads : redica_483_observations.csv
-      Writes: redica_483_obs_llm_signals_anthropic.csv
-              one row per observation; LLM semantic fields
-
-  Step 3  (03_build_combined_obs_universe.py)
       Reads : step00_redica_483_observations.csv
-              step01_redica_483_obs_llm_signals_anthropic.csv
-      Writes: step03_483_combined_obs_universe.csv
-              one row per observation, all sources combined
+      Writes: step01_redica_483_obs_llm_signals_anthropic.csv
+              one row per observation; LLM semantic fields
 
   Step 2  (this script --source redica)
       Reads : step01_redica_483_obs_llm_signals_anthropic.csv
-      Writes: 483_fei_text_features_timeseries_redica.csv
+      Writes: step02_483_fei_text_features_timeseries_redica.csv
               one row per (fei, snapshot_date)
 
 OUTPUT SCHEMA
@@ -95,9 +89,6 @@ OUT_CSV     = HERE / "step02_483_fei_text_features_timeseries_fdapdf.csv"
 REDICA_SIGNALS_CSV = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
 OUT_REDICA_CSV     = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
-# Combined pipeline (--source combined) — requires step 03 first
-COMBINED_CSV     = HERE / "step03_483_combined_obs_universe.csv"
-OUT_COMBINED_CSV = HERE / "step02_483_fei_text_features_timeseries_combined.csv"
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
@@ -519,26 +510,15 @@ def _run_aggregation(df: pd.DataFrame, out_csv: Path, label: str) -> pd.DataFram
 def main() -> None:
     parser = argparse.ArgumentParser(description="Aggregate FEI text features into time-series snapshots.")
     parser.add_argument(
-        "--source", choices=["pdf", "combined", "redica"], default="pdf",
+        "--source", choices=["pdf", "redica"], default="redica",
         help=(
-            "'pdf'      — reads fdapdf_483_obs_llm_signals_anthropic.csv (38 FEIs, PDF pipeline).\n"
-            "'redica'   — reads redica_483_obs_llm_signals_anthropic.csv directly "
-            "(98 FEIs, current pipeline; use this for modeling). No step 04 needed.\n"
-            "'combined' — reads 483_combined_obs_universe.csv (all sources). "
-            "Requires 03_build_combined_obs_universe.py to run first."
+            "'redica' — reads step01_redica_483_obs_llm_signals_anthropic.csv "
+            "(98 FEIs; primary modeling pipeline).\n"
+            "'pdf'    — reads step01_fdapdf_483_obs_llm_signals_anthropic.csv "
+            "(38 FEIs; kept for reference/comparison)."
         ),
     )
     args = parser.parse_args()
-
-    if args.source == "combined":
-        if not COMBINED_CSV.exists():
-            sys.exit(f"\n[ERROR] Combined obs universe not found:\n  {COMBINED_CSV}\n"
-                     "Run 03_build_combined_obs_universe.py first.\n")
-        df = pd.read_csv(COMBINED_CSV)
-        if "extraction_status" not in df.columns:
-            df["extraction_status"] = "ok"
-        _run_aggregation(df, OUT_COMBINED_CSV, label="Combined (PDF + Redica) — 99 FEIs")
-        return
 
     if args.source == "redica":
         if not REDICA_SIGNALS_CSV.exists():
