@@ -21,14 +21,14 @@ PIPELINE POSITION (current — Redica/Anthropic mode)
       Writes: redica_483_obs_llm_signals_anthropic.csv
               one row per observation; LLM semantic fields
 
-  Step 4  (04_build_combined_obs_universe.py)
-      Reads : redica_483_observations.csv
-              redica_483_obs_llm_signals_anthropic.csv
-      Writes: 483_combined_obs_universe.csv
+  Step 3  (03_build_combined_obs_universe.py)
+      Reads : step00_redica_483_observations.csv
+              step01_redica_483_obs_llm_signals_anthropic.csv
+      Writes: step03_483_combined_obs_universe.csv
               one row per observation, all sources combined
 
   Step 2  (this script --source redica)
-      Reads : 483_combined_obs_universe.csv
+      Reads : step01_redica_483_obs_llm_signals_anthropic.csv
       Writes: 483_fei_text_features_timeseries_redica.csv
               one row per (fei, snapshot_date)
 
@@ -90,14 +90,13 @@ HERE        = Path(__file__).parent
 # PDF pipeline (--source pdf)
 SIGNALS_CSV = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
 OUT_CSV     = HERE / "step02_483_fei_text_features_timeseries_fdapdf.csv"
-OUT_STATIC  = HERE / "step02_483_fei_text_features_static_fdapdf.csv"
 
 # Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
 REDICA_SIGNALS_CSV = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
 OUT_REDICA_CSV     = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
-# Combined pipeline (--source combined) — requires step 04 first
-COMBINED_CSV     = HERE / "step04_483_combined_obs_universe.csv"
+# Combined pipeline (--source combined) — requires step 03 first
+COMBINED_CSV     = HERE / "step03_483_combined_obs_universe.csv"
 OUT_COMBINED_CSV = HERE / "step02_483_fei_text_features_timeseries_combined.csv"
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
@@ -391,26 +390,6 @@ def _aggregate_snapshot(subset: pd.DataFrame) -> dict:
     return flat
 
 
-# ── Static (non-time) aggregation — one row per FEI ───────────────────────
-
-def _build_static(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate all observations per FEI with no time dimension.
-    Kept for MQRI pipeline and cross-sectional analyses.
-    Do NOT use for shortage prediction (leaks future information).
-    """
-    rows = []
-    for fei_val, grp in df.groupby("fei"):
-        agg        = _aggregate_snapshot(grp.copy())
-        agg["fei"] = int(fei_val)
-        rows.append(agg)
-    static_df = pd.DataFrame(rows)
-
-    ordered = ["fei"] + [c for c in _COL_ORDER if c in static_df.columns and c not in ("fei", "snapshot_date", "year_month")]
-    extras  = [c for c in static_df.columns if c not in set(ordered)]
-    static_df = static_df[ordered + extras].reset_index(drop=True)
-    return static_df
-
-
 # ── Column ordering ────────────────────────────────────────────────────────
 
 _COL_ORDER = [
@@ -469,8 +448,8 @@ _COL_ORDER = [
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def _run_aggregation(df: pd.DataFrame, out_csv: Path, out_static: Path | None, label: str) -> pd.DataFrame:
-    """Core aggregation logic shared by both PDF-only and combined modes."""
+def _run_aggregation(df: pd.DataFrame, out_csv: Path, label: str) -> pd.DataFrame:
+    """Core aggregation logic shared by all source modes."""
     sep = "=" * 70
     print(sep)
     print(f"02_aggregate_fei_features.py — {label}")
@@ -523,11 +502,6 @@ def _run_aggregation(df: pd.DataFrame, out_csv: Path, out_static: Path | None, l
     out_df  = out_df.sort_values(["fei", "snapshot_date"]).reset_index(drop=True)
     out_df.to_csv(out_csv, index=False)
 
-    if out_static is not None:
-        static_df = _build_static(df)
-        static_df.to_csv(out_static, index=False)
-        print(f"Static output: {out_static.name}  ({len(static_df)} FEIs, {len(static_df.columns)} columns)")
-
     print(sep)
     print(f"DONE -- {len(out_df)} snapshots across {out_df['fei'].nunique()} FEIs")
     print(f"Output: {out_csv.name}  ({len(out_df.columns)} columns)")
@@ -551,7 +525,7 @@ def main() -> None:
             "'redica'   — reads redica_483_obs_llm_signals_anthropic.csv directly "
             "(98 FEIs, current pipeline; use this for modeling). No step 04 needed.\n"
             "'combined' — reads 483_combined_obs_universe.csv (all sources). "
-            "Requires 04_build_combined_obs_universe.py to run first."
+            "Requires 03_build_combined_obs_universe.py to run first."
         ),
     )
     args = parser.parse_args()
@@ -559,12 +533,11 @@ def main() -> None:
     if args.source == "combined":
         if not COMBINED_CSV.exists():
             sys.exit(f"\n[ERROR] Combined obs universe not found:\n  {COMBINED_CSV}\n"
-                     "Run 04_build_combined_obs_universe.py first.\n")
+                     "Run 03_build_combined_obs_universe.py first.\n")
         df = pd.read_csv(COMBINED_CSV)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
-        _run_aggregation(df, OUT_COMBINED_CSV, out_static=None,
-                         label="Combined (PDF + Redica) — 99 FEIs")
+        _run_aggregation(df, OUT_COMBINED_CSV, label="Combined (PDF + Redica) — 99 FEIs")
         return
 
     if args.source == "redica":
@@ -574,8 +547,7 @@ def main() -> None:
         df = pd.read_csv(REDICA_SIGNALS_CSV)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
-        _run_aggregation(df, OUT_REDICA_CSV, out_static=None,
-                         label="Redica pipeline (claude-haiku, 98 FEIs)")
+        _run_aggregation(df, OUT_REDICA_CSV, label="Redica pipeline (claude-haiku, 98 FEIs)")
         return
 
     # Default: PDF-only pipeline
@@ -586,7 +558,7 @@ def main() -> None:
         )
 
     df = pd.read_csv(SIGNALS_CSV)
-    out_df = _run_aggregation(df, OUT_CSV, OUT_STATIC, label="PDF pipeline — 38 FEIs")
+    out_df = _run_aggregation(df, OUT_CSV, label="PDF pipeline — 38 FEIs")
 
     print("\n-- LLM lift at latest snapshot per FEI (mean across facilities) --")
     latest = out_df.sort_values("snapshot_date").groupby("fei").last().reset_index()

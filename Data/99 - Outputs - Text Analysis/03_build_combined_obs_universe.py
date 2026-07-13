@@ -1,12 +1,12 @@
 """
-04_build_combined_obs_universe.py
+03_build_combined_obs_universe.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Merges the PDF+LLM pipeline observations with Redica structured
 observations into a single master table covering 98 FEIs.
 
 Inputs
-  fdapdf_483_obs_llm_signals_anthropic.csv   (Step 1, source='pdf_llm')
-  redica_483_observations.csv           (Step 0, source='redica')
+  step01_fdapdf_483_obs_llm_signals_anthropic.csv   (Step 1, source='pdf_llm')
+  step00_redica_483_observations.csv                (Step 0, source='redica')
 
 Design
   Both sources are kept regardless of overlap — rows are NOT
@@ -40,7 +40,7 @@ HERE = Path(__file__).resolve().parent
 OUR_CSV         = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
 REDICA_CSV      = HERE / "step00_redica_483_observations.csv"
 REDICA_LLM_CSV  = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"   # created by 01 --source redica --provider anthropic
-OUT_CSV         = HERE / "step04_483_combined_obs_universe.csv"
+OUT_CSV         = HERE / "step03_483_combined_obs_universe.csv"
 
 # Columns carried from the PDF+LLM pipeline
 PDF_COLS = [
