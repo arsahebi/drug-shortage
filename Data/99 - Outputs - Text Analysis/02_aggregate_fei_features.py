@@ -6,13 +6,10 @@ PURPOSE
   Aggregates observation-level signals from Step 1 into time-stamped FEI-level
   snapshots suitable for shortage prediction.
 
-  Each output row is a cumulative feature profile of one facility (FEI) as of
-  a specific 483 inspection date.  Features are computed from all observations
-  of that FEI on or before snapshot_date, so the row captures everything the
-  model would know about the facility up to that point in time.
-
-  Downstream shortage model joins on fei and takes the most recent snapshot
-  before the month being predicted.
+  Each output row is a feature profile of one facility (FEI) for a specific
+  483 inspection date.  Features are computed from all observations within
+  that single inspection only (non-cumulative).  Temporal aggregation
+  (rolling windows, lag features, decay weighting) is left to the model.
 
 PIPELINE POSITION (current — Redica/Anthropic mode)
   Step 0  (00_load_redica_obs.py)
@@ -459,7 +456,7 @@ def _run_aggregation(df: pd.DataFrame, out_csv: Path, out_static: Path | None, l
     for _, snap in snapshots_index.iterrows():
         fei  = snap["fei"]
         date = snap["insp_date"]
-        subset = df[(df["fei"] == fei) & (df["insp_date"] <= date)].copy()
+        subset = df[(df["fei"] == fei) & (df["insp_date"] == date)].copy()
         agg = _aggregate_snapshot(subset)
         agg["fei"]           = int(fei)
         agg["snapshot_date"] = date.date().isoformat()
