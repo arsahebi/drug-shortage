@@ -1,5 +1,5 @@
 """
-03_validate_vs_redica.py
+validate_vs_redica.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Validates LLM-extracted features against Redica's pre-structured
 categorizations.
@@ -8,7 +8,7 @@ Two validation tracks
 ─────────────────────
 
   TRACK A — Observation-level (primary, most reliable)
-    Input: redica_483_obs_llm_signals.csv
+    Input: redica_483_obs_llm_signals_anthropic.csv
     The LLM was run on the SAME Redica observation text. Comparison
     is row-by-row — no matching problem, no ambiguity about which
     observations correspond. This directly answers: do our prompt
@@ -18,8 +18,8 @@ Two validation tracks
     before this script.
 
   TRACK B — Document-level cross-source (secondary)
-    Input: 483_observation_context_signals.csv  (PDF+LLM)
-           redica_483_observations.csv           (Redica structured)
+    Input: fdapdf_483_obs_llm_signals_anthropic.csv  (PDF+LLM)
+           redica_483_observations.csv               (Redica structured)
     Observations from the two sources for the same 483 (matched by
     FEI + date) cannot be aligned row-by-row. Comparison is at the
     document level (dominant tier, Crit+Major share, any-DI flag).
@@ -36,7 +36,7 @@ Fields with no Redica equivalent (not compared here):
   contamination_flag_llm, root_cause_type, remediation_signal,
   patient_risk_flag_llm, investigation_flag_llm, scope
 
-Outputs
+Outputs (written to this eval/ folder)
   redica_validation_obs_level.csv    Track A: per-observation comparison
   redica_validation_doc_level.csv    Track B: per-document comparison
   redica_validation_summary.csv      Aggregate metrics from both tracks
@@ -50,11 +50,12 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-HERE = Path(__file__).resolve().parent
+HERE    = Path(__file__).resolve().parent   # eval/
+PARENT  = HERE.parent                       # 99 - Outputs - Text Analysis/
 
-LLM_PDF_CSV    = HERE / "483_observation_context_signals.csv"
-LLM_REDICA_CSV = HERE / "redica_483_obs_llm_signals.csv"
-REDICA_CSV     = HERE / "redica_483_observations.csv"
+LLM_PDF_CSV    = PARENT / "fdapdf_483_obs_llm_signals_anthropic.csv"
+LLM_REDICA_CSV = PARENT / "redica_483_obs_llm_signals_anthropic.csv"
+REDICA_CSV     = PARENT / "redica_483_observations.csv"
 
 OUT_OBS  = HERE / "redica_validation_obs_level.csv"
 OUT_DOC  = HERE / "redica_validation_doc_level.csv"
@@ -95,7 +96,7 @@ def prf(y_true, y_pred):
 
 def track_a(redica: pd.DataFrame) -> list[dict]:
     if not LLM_REDICA_CSV.exists():
-        print("\n[Track A] redica_483_obs_llm_signals.csv not found.")
+        print("\n[Track A] redica_483_obs_llm_signals_anthropic.csv not found.")
         print("  Run: python3 01_extract_observation_signals.py --source redica")
         print("  Track A skipped.\n")
         return []
@@ -196,7 +197,7 @@ def track_a(redica: pd.DataFrame) -> list[dict]:
 
 def track_b(redica: pd.DataFrame) -> list[dict]:
     if not LLM_PDF_CSV.exists():
-        print("\n[Track B] 483_observation_context_signals.csv not found. Skipped.")
+        print("\n[Track B] fdapdf_483_obs_llm_signals_anthropic.csv not found. Skipped.")
         return []
 
     pdf = pd.read_csv(LLM_PDF_CSV)
