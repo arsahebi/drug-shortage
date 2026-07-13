@@ -19,7 +19,7 @@ INPUT (current — --source redica --provider anthropic)
     One row per observation. Created by 00_load_redica_obs.py.
 
 OUTPUT (current — --source redica --provider anthropic)
-  redica_483_obs_llm_signals_anthropic_v2.csv
+  redica_483_obs_llm_signals_anthropic.csv
     One row per observation. Stable join key: (fei, insp_date, obs_num).
     Carries all source metadata + LLM fields.
     Fed into 04_build_combined_obs_universe.py as the Redica LLM signal file.
@@ -68,7 +68,7 @@ import pandas as pd
 HERE       = Path(__file__).parent
 DATA       = HERE.parent                             # .../Data/
 OBS_CSV    = DATA / "12 - FDA - 483" / "processed" / "483_observations.csv"
-SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
+SIGNALS_CSV = HERE / "fdapdf_483_obs_llm_signals_anthropic.csv"
 
 # ── Source mode — set via --source argument (overrides below after argparse) ──
 # "pdf"    : read from 483_observations.csv, text col = obs_text_clean (default)
@@ -76,7 +76,7 @@ SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
 SOURCE = "pdf"
 _REDICA_OBS_CSV     = HERE / "redica_483_observations.csv"
 _REDICA_SIGNALS_CSV_OPENAI    = HERE / "redica_483_obs_llm_signals.csv"
-_REDICA_SIGNALS_CSV_ANTHROPIC = HERE / "redica_483_obs_llm_signals_anthropic_v2.csv"
+_REDICA_SIGNALS_CSV_ANTHROPIC = HERE / "redica_483_obs_llm_signals_anthropic.csv"
 _REDICA_SIGNALS_CSV = _REDICA_SIGNALS_CSV_OPENAI  # resolved after argparse
 
 # ── Provider / Model ───────────────────────────────────────────────────────
@@ -977,7 +977,7 @@ if _RUNNING_AS_SCRIPT:
     parser = argparse.ArgumentParser(
         description=(
             "Extract LLM context signals from 483 observations.\n"
-            "Reads 483_observations.csv; writes 483_observation_context_signals.csv."
+            "Reads 483_observations.csv; writes fdapdf_483_obs_llm_signals_anthropic.csv."
         )
     )
     parser.add_argument("--dry-run", action="store_true",

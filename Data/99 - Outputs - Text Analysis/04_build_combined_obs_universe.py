@@ -5,7 +5,7 @@ Merges the PDF+LLM pipeline observations with Redica structured
 observations into a single master table covering 98 FEIs.
 
 Inputs
-  483_observation_context_signals.csv   (Step 1, source='pdf_llm')
+  fdapdf_483_obs_llm_signals_anthropic.csv   (Step 1, source='pdf_llm')
   redica_483_observations.csv           (Step 0, source='redica')
 
 Design
@@ -37,9 +37,9 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 
-OUR_CSV         = HERE / "483_observation_context_signals.csv"
+OUR_CSV         = HERE / "fdapdf_483_obs_llm_signals_anthropic.csv"
 REDICA_CSV      = HERE / "redica_483_observations.csv"
-REDICA_LLM_CSV  = HERE / "redica_483_obs_llm_signals_anthropic_v2.csv"   # created by 01 --source redica --provider anthropic
+REDICA_LLM_CSV  = HERE / "redica_483_obs_llm_signals_anthropic.csv"   # created by 01 --source redica --provider anthropic
 OUT_CSV         = HERE / "483_combined_obs_universe.csv"
 
 # Columns carried from the PDF+LLM pipeline

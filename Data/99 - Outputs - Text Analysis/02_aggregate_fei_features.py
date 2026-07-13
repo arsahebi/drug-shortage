@@ -21,12 +21,12 @@ PIPELINE POSITION (current — Redica/Anthropic mode)
 
   Step 1  (01_extract_observation_signals.py --source redica --provider anthropic)
       Reads : redica_483_observations.csv
-      Writes: redica_483_obs_llm_signals_anthropic_v2.csv
+      Writes: redica_483_obs_llm_signals_anthropic.csv
               one row per observation; LLM semantic fields
 
   Step 4  (04_build_combined_obs_universe.py)
       Reads : redica_483_observations.csv
-              redica_483_obs_llm_signals_anthropic_v2.csv
+              redica_483_obs_llm_signals_anthropic.csv
       Writes: 483_combined_obs_universe.csv
               one row per observation, all sources combined
 
@@ -91,12 +91,12 @@ import pandas as pd
 HERE        = Path(__file__).parent
 
 # PDF pipeline (--source pdf)
-SIGNALS_CSV = HERE / "483_observation_context_signals.csv"
+SIGNALS_CSV = HERE / "fdapdf_483_obs_llm_signals_anthropic.csv"
 OUT_CSV     = HERE / "483_fei_text_features_timeseries.csv"
 OUT_STATIC  = HERE / "483_fei_context_features.csv"
 
 # Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
-REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals_anthropic_v2.csv"
+REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals_anthropic.csv"
 OUT_REDICA_CSV     = HERE / "483_fei_text_features_timeseries_redica.csv"
 
 # Combined pipeline (--source combined) — requires step 04 first
@@ -497,8 +497,8 @@ def main() -> None:
     parser.add_argument(
         "--source", choices=["pdf", "combined", "redica"], default="pdf",
         help=(
-            "'pdf'      — reads 483_observation_context_signals.csv (38 FEIs, PDF pipeline).\n"
-            "'redica'   — reads redica_483_obs_llm_signals_anthropic_v2.csv directly "
+            "'pdf'      — reads fdapdf_483_obs_llm_signals_anthropic.csv (38 FEIs, PDF pipeline).\n"
+            "'redica'   — reads redica_483_obs_llm_signals_anthropic.csv directly "
             "(98 FEIs, current pipeline; use this for modeling). No step 04 needed.\n"
             "'combined' — reads 483_combined_obs_universe.csv (all sources). "
             "Requires 04_build_combined_obs_universe.py to run first."
