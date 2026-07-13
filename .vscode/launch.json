@@ -1,0 +1,43 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "03 build combined obs universe",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/03_build_combined_obs_universe.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "02 aggregate — Redica",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/02_aggregate_fei_features.py",
+            "args": ["--source", "redica"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "02 aggregate — PDF",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/02_aggregate_fei_features.py",
+            "args": ["--source", "pdf"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "00 load Redica obs",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/00_load_redica_obs.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        }
+    ]
+}
