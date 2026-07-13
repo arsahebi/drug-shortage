@@ -2,6 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "eval — validate LLM vs Redica",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/eval/validate_llm_vs_redica.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
             "name": "02 aggregate — Redica",
             "type": "debugpy",
             "request": "launch",
