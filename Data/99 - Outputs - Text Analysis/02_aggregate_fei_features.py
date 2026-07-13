@@ -197,14 +197,6 @@ def _layer1_quality(grp: pd.DataFrame, ns: int) -> dict:
     mean_conf = round(float(scored["confidence"].mean()), 4) \
         if ns > 0 and "confidence" in scored.columns else float("nan")
 
-    # Use filename if available; fall back to document_id for combined obs universe
-    if "filename" in grp.columns:
-        n_files = int(grp["filename"].nunique())
-    elif "document_id" in grp.columns:
-        n_files = int(grp["document_id"].dropna().nunique())
-    else:
-        n_files = int(grp["insp_date"].nunique())
-
     return {
         "n_obs_total":             n,
         "n_obs_scored":            ns,
@@ -212,7 +204,6 @@ def _layer1_quality(grp: pd.DataFrame, ns: int) -> dict:
         "n_obs_low_confidence":    n_low_conf,
         "mean_confidence":         mean_conf,
         "n_blank_evidence_quotes": n_blank_eq,
-        "n_files_483":             n_files,
     }
 
 
@@ -427,7 +418,7 @@ _COL_ORDER = [
     "fei", "snapshot_date", "year_month",
     # earliest date in current snapshot and total files seen
     "n_obs_total", "n_obs_scored", "n_obs_failed", "n_obs_low_confidence",
-    "mean_confidence", "n_blank_evidence_quotes", "n_files_483",
+    "mean_confidence", "n_blank_evidence_quotes",
     # Layer 2 -- regex
     "repeat_regex_share", "systemic_regex_share", "documentation_regex_share",
     "investigation_regex_share", "contamination_regex_share",
