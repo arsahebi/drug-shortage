@@ -50,7 +50,7 @@ ROOT   = HERE.parent.parent.parent   # Project - Drug Shortage/
 DATA   = ROOT / "Data"
 OUT    = HERE / "outputs"
 
-TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries_redica.csv"
+TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica.csv"
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
 
@@ -58,6 +58,7 @@ OUT_PANEL = OUT / "fei_ae_panel.parquet"
 
 # ── Text features included in the panel ──────────────────────────────────────
 TEXT_FEATURES = [
+    # Layer 3: LLM signal shares
     "severity_critmajor_share",
     "contamination_llm_share",
     "data_integrity_llm_share",
@@ -68,6 +69,15 @@ TEXT_FEATURES = [
     "cultural_root_cause_share",
     "vc_labcontrols_share",
     "vc_qualitysystem_share",
+    # Layer 5: raw counts (intensity alongside proportion)
+    "n_labcontrols_obs",
+    "n_qualitysystem_obs",
+    # Layer 5: joint co-occurrence flags (two-failure-mode hypothesis)
+    "joint_labcontrols_qualitysystem",
+    "joint_labcontrols_dataintegrity",
+    "joint_contamination_labcontrols",
+    "joint_qualitysystem_production",
+    "multi_domain_insp",
 ]
 
 PANEL_YEARS = list(range(2018, 2026))   # years for which we build panel rows

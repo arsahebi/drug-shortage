@@ -61,6 +61,7 @@ PANEL     = OUT / "fei_ae_panel.parquet"
 SP_CODE   = HERE.parent.parent.parent / "Data" / "99 - Outputs - Shortage Prediction" / "code"
 
 TEXT_FEATURES = [
+    # Layer 3: LLM signal shares
     "severity_critmajor_share",
     "contamination_llm_share",
     "data_integrity_llm_share",
@@ -71,19 +72,35 @@ TEXT_FEATURES = [
     "cultural_root_cause_share",
     "vc_labcontrols_share",
     "vc_qualitysystem_share",
+    # Layer 5: raw counts (intensity alongside proportion)
+    "n_labcontrols_obs",
+    "n_qualitysystem_obs",
+    # Layer 5: joint co-occurrence flags (two-failure-mode hypothesis)
+    "joint_labcontrols_qualitysystem",
+    "joint_labcontrols_dataintegrity",
+    "joint_contamination_labcontrols",
+    "joint_qualitysystem_production",
+    "multi_domain_insp",
 ]
 
 FEATURE_LABELS = {
-    "severity_critmajor_share":  "Severity Maj+Crit share",
-    "contamination_llm_share":   "Contamination flag rate",
-    "data_integrity_llm_share":  "Data integrity flag rate",
-    "patient_risk_llm_share":    "Patient risk flag rate",
-    "investigation_llm_share":   "Invest. failure flag rate",
-    "repeat_cross_insp_share":   "Repeat obs. rate",
-    "scope_facilitywide_share":  "Scope: facility-wide share",
-    "cultural_root_cause_share": "Root cause: Cultural share",
-    "vc_labcontrols_share":      "Domain: Lab controls share",
-    "vc_qualitysystem_share":    "Domain: Quality system share",
+    "severity_critmajor_share":        "Severity Maj+Crit share",
+    "contamination_llm_share":         "Contamination flag rate",
+    "data_integrity_llm_share":        "Data integrity flag rate",
+    "patient_risk_llm_share":          "Patient risk flag rate",
+    "investigation_llm_share":         "Invest. failure flag rate",
+    "repeat_cross_insp_share":         "Repeat obs. rate",
+    "scope_facilitywide_share":        "Scope: facility-wide share",
+    "cultural_root_cause_share":       "Root cause: Cultural share",
+    "vc_labcontrols_share":            "Domain: Lab controls share",
+    "vc_qualitysystem_share":          "Domain: Quality system share",
+    "n_labcontrols_obs":               "# Lab control obs.",
+    "n_qualitysystem_obs":             "# Quality system obs.",
+    "joint_labcontrols_qualitysystem": "Joint: LabCtrl + QualSys",
+    "joint_labcontrols_dataintegrity": "Joint: LabCtrl + DI",
+    "joint_contamination_labcontrols": "Joint: Contam + LabCtrl",
+    "joint_qualitysystem_production":  "Joint: QualSys + Prod",
+    "multi_domain_insp":               "Multi-domain inspection",
 }
 
 SEED = 42
@@ -291,7 +308,7 @@ def main() -> None:
         f"Panel: {len(df)} FEI × year observations, {df['fei'].nunique()} unique FEIs",
         f"Outcome: above-median serious AE count at t+1 (base rate {y.mean():.1%})",
         "",
-        metrics[["config", "model", "auc", "ap"]].to_markdown(index=False),
+        metrics[["config", "model", "auc", "ap"]].to_string(index=False),
         "",
         "AUC > 0.5 = better than random. Group-based CV prevents FEI data leakage.",
     ]
