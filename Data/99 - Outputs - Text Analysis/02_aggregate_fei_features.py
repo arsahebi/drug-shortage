@@ -303,6 +303,57 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
     return out
 
 
+# ── Layer 5: Raw counts and joint co-occurrence flags ─────────────────────
+# Counts: raw number of observations per category/severity (not shares).
+#   Complement the shares — model sees both intensity and proportion.
+# Joint flags: binary indicators for co-occurrence of two domains within
+#   the same inspection. Key for two-failure-mode hypothesis:
+#   governance failures (QualitySystem) vs technical failures (LabControls/DI).
+
+def _layer5_counts_and_joints(scored: pd.DataFrame, ns: int) -> dict:
+    vc  = scored["violation_category"] if ns > 0 else pd.Series(dtype=str)
+    sev = scored["severity_tier"]      if ns > 0 else pd.Series(dtype=str)
+
+    categories = ["LabControls", "ProductionControls", "BuildingsEquipment",
+                  "OrgPersonnel", "PackagingLabeling", "RecordsReports",
+                  "QualitySystem", "Other"]
+
+    # Raw counts per violation category
+    vc_counts = {}
+    for cat in categories:
+        vc_counts[f"n_{cat.lower()}_obs"] = int((vc == cat).sum()) if ns > 0 else 0
+
+    # Raw counts per severity tier
+    sev_counts = {
+        "n_critical_obs": int((sev == "Critical").sum()) if ns > 0 else 0,
+        "n_major_obs":    int((sev == "Major").sum())    if ns > 0 else 0,
+        "n_moderate_obs": int((sev == "Moderate").sum()) if ns > 0 else 0,
+        "n_minor_obs":    int((sev == "Minor").sum())    if ns > 0 else 0,
+    }
+
+    # Joint co-occurrence flags: True if BOTH categories present in this inspection
+    def _has(cat):
+        return (vc == cat).any() if ns > 0 else False
+
+    joint_flags = {
+        # Two-failure-mode pairs (governance vs technical)
+        "joint_labcontrols_qualitysystem":   bool(_has("LabControls")   and _has("QualitySystem")),
+        "joint_labcontrols_dataintegrity":   bool(_has("LabControls")   and
+                                                  (scored["data_integrity_flag_llm"].astype(str).str.lower() == "true").any()
+                                                  if ns > 0 and "data_integrity_flag_llm" in scored.columns else False),
+        "joint_contamination_labcontrols":   bool(_has("LabControls")   and _has("BuildingsEquipment")),
+        "joint_qualitysystem_production":    bool(_has("QualitySystem") and _has("ProductionControls")),
+        # Breadth flags: inspection hits 3+ distinct domains
+        "multi_domain_insp":                 bool(vc.nunique() >= 3)    if ns > 0 else False,
+    }
+
+    out = {}
+    out.update(vc_counts)
+    out.update(sev_counts)
+    out.update(joint_flags)
+    return out
+
+
 # ── Layer 4: Agreement and semantic lift ───────────────────────────────────
 
 def _layer4_agreement(scored: pd.DataFrame, ns: int) -> dict:
@@ -337,9 +388,10 @@ def _aggregate_snapshot(subset: pd.DataFrame) -> dict:
     l2 = _layer2_regex(subset)
     l3 = _layer3_llm(scored, ns)
     l4 = _layer4_agreement(scored, ns)
+    l5 = _layer5_counts_and_joints(scored, ns)
 
     flat = {}
-    for layer in (l1, l2, l3, l4):
+    for layer in (l1, l2, l3, l4, l5):
         flat.update(layer)
 
     if "repeat_cross_insp" in subset.columns:
@@ -411,6 +463,16 @@ _COL_ORDER = [
     "patient_risk_regex_llm_agreement",   "patient_risk_llm_only_share",
     # Cross-inspection repeat (text similarity vs earlier inspections)
     "n_repeat_cross_insp", "repeat_cross_insp_share",
+    # Layer 5 -- raw counts per violation category
+    "n_labcontrols_obs", "n_productioncontrols_obs", "n_buildingsequipment_obs",
+    "n_orgpersonnel_obs", "n_packaginglabeling_obs", "n_recordsreports_obs",
+    "n_qualitysystem_obs", "n_other_obs",
+    # Layer 5 -- raw counts per severity tier
+    "n_critical_obs", "n_major_obs", "n_moderate_obs", "n_minor_obs",
+    # Layer 5 -- joint co-occurrence flags (two-failure-mode hypothesis)
+    "joint_labcontrols_qualitysystem", "joint_labcontrols_dataintegrity",
+    "joint_contamination_labcontrols", "joint_qualitysystem_production",
+    "multi_domain_insp",
 ]
 
 
