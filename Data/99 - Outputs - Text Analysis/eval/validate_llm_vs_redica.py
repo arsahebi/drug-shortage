@@ -1,5 +1,5 @@
 """
-validate_vs_redica.py
+validate_llm_vs_redica.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Validates LLM-extracted features against Redica's pre-structured
 categorizations.
