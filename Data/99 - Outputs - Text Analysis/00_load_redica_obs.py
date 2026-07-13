@@ -57,7 +57,7 @@ DATA = HERE.parent  # Data/
 REDICA_OBS_XLSX = DATA / "07 - Redica" / "Raw" / "Valisure14_FDA_483_Observations_WL_Deficiencies_OSU.xlsx"
 SITE_LIST_XLSX  = DATA / "07 - Redica" / "Raw" / "Valisure14_Site_List.xlsx"
 SHEET_NAME      = "FDA-483s Obs + WL Deficiencies"
-OUT_CSV         = HERE / "redica_483_observations.csv"
+OUT_CSV         = HERE / "step00_redica_483_observations.csv"
 
 QSL_TO_VC: dict[str, str] = {
     "Laboratory":               "LabControls",

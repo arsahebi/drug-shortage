@@ -37,10 +37,10 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 
-OUR_CSV         = HERE / "fdapdf_483_obs_llm_signals_anthropic.csv"
-REDICA_CSV      = HERE / "redica_483_observations.csv"
-REDICA_LLM_CSV  = HERE / "redica_483_obs_llm_signals_anthropic.csv"   # created by 01 --source redica --provider anthropic
-OUT_CSV         = HERE / "483_combined_obs_universe.csv"
+OUR_CSV         = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
+REDICA_CSV      = HERE / "step00_redica_483_observations.csv"
+REDICA_LLM_CSV  = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"   # created by 01 --source redica --provider anthropic
+OUT_CSV         = HERE / "step04_483_combined_obs_universe.csv"
 
 # Columns carried from the PDF+LLM pipeline
 PDF_COLS = [

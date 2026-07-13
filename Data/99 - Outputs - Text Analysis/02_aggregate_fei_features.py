@@ -88,17 +88,17 @@ import pandas as pd
 HERE        = Path(__file__).parent
 
 # PDF pipeline (--source pdf)
-SIGNALS_CSV = HERE / "fdapdf_483_obs_llm_signals_anthropic.csv"
-OUT_CSV     = HERE / "483_fei_text_features_timeseries_fdapdf.csv"
-OUT_STATIC  = HERE / "483_fei_text_features_static_fdapdf.csv"
+SIGNALS_CSV = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
+OUT_CSV     = HERE / "step02_483_fei_text_features_timeseries_fdapdf.csv"
+OUT_STATIC  = HERE / "step02_483_fei_text_features_static_fdapdf.csv"
 
 # Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
-REDICA_SIGNALS_CSV = HERE / "redica_483_obs_llm_signals_anthropic.csv"
-OUT_REDICA_CSV     = HERE / "483_fei_text_features_timeseries_redica.csv"
+REDICA_SIGNALS_CSV = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
+OUT_REDICA_CSV     = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
 # Combined pipeline (--source combined) — requires step 04 first
-COMBINED_CSV     = HERE / "483_combined_obs_universe.csv"
-OUT_COMBINED_CSV = HERE / "483_fei_text_features_timeseries_combined.csv"
+COMBINED_CSV     = HERE / "step04_483_combined_obs_universe.csv"
+OUT_COMBINED_CSV = HERE / "step02_483_fei_text_features_timeseries_combined.csv"
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 

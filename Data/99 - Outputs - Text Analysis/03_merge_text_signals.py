@@ -34,8 +34,8 @@ import pandas as pd
 # ── Paths ──────────────────────────────────────────────────────────────────
 HERE         = Path(__file__).parent
 NODES_CSV    = HERE / "analytics" / "fei_node_summary.csv"
-RISK_CSV     = HERE / "483_fei_text_features_static_fdapdf.csv"   # produced by 02 --source pdf
-ENRICHED_CSV = HERE / "fei_node_summary_enriched.csv"
+RISK_CSV     = HERE / "step02_483_fei_text_features_static_fdapdf.csv"   # produced by 02 --source pdf
+ENRICHED_CSV = HERE / "step03_fei_node_summary_enriched.csv"
 
 
 def main():

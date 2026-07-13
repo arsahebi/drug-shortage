@@ -53,9 +53,9 @@ from scipy.stats import spearmanr
 HERE    = Path(__file__).resolve().parent   # eval/
 PARENT  = HERE.parent                       # 99 - Outputs - Text Analysis/
 
-LLM_PDF_CSV    = PARENT / "fdapdf_483_obs_llm_signals_anthropic.csv"
-LLM_REDICA_CSV = PARENT / "redica_483_obs_llm_signals_anthropic.csv"
-REDICA_CSV     = PARENT / "redica_483_observations.csv"
+LLM_PDF_CSV    = PARENT / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
+LLM_REDICA_CSV = PARENT / "step01_redica_483_obs_llm_signals_anthropic.csv"
+REDICA_CSV     = PARENT / "step00_redica_483_observations.csv"
 
 OUT_OBS  = HERE / "redica_validation_obs_level.csv"
 OUT_DOC  = HERE / "redica_validation_doc_level.csv"
