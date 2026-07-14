@@ -127,19 +127,19 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 \begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2015–2026}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Drug universe: 14 Valisure-tested APIs}\\[2pt]
+\textbf{Drug universe: 14 APIs independently tested by Valisure}\\[2pt]
 {\small Atorvastatin, Bupropion, Metformin, Pantoprazole, Vancomycin, Lisinopril, Metoprolol, Metronidazole, Ampicillin, Tacrolimus, Calcium Gluconate, Magnesium Sulfate, Potassium Chloride, Ampicillin/Sulbactam}
 
 \vspace{6pt}
-\textbf{Why Valisure?} They independently test commercially purchased samples and publish failure rates, giving us a rare external benchmark for actual product quality.
+\textbf{Why these 14?} Valisure's published test results give us an independent, externally motivated drug selection — not a convenience sample. Their list defines the scope; their test data is not used in the model itself.
 
 \vspace{6pt}
 \textbf{Facility universe:}
 \begin{itemize}
-  \item 129 unique FEIs in Valisure mapping
-  \item \highlight{98 FEIs} with both 483 text and FAERS AE data
+  \item 129 unique FEIs identified via DailyMed NDC$\to$FEI crosswalk
+  \item \highlight{98 FEIs} with both 483 text (Redica) and FAERS AE data
   \item \highlight{246 inspection events} (2018–2026)
-  \item Average \highlight{7.2 inspections per FEI} (range: 1–26)
+  \item Mean 13 inspections per FEI across all FDA visit types (range 3–44)
 \end{itemize}
 
 \column{0.47\textwidth}
@@ -153,8 +153,8 @@ Source & Content \\
 Redica Systems & 483 text + OAI/VAI/NAI classifications \\
 FAERS & Serious adverse event reports \\
 SDUD (Medicaid) & Drug utilization volume \\
-Valisure FEI map & Drug $\leftrightarrow$ FEI crosswalk \\
-DailyMed & NDC $\leftrightarrow$ FEI crosswalk \\
+DailyMed & NDC $\to$ FEI crosswalk (facility mapping) \\
+ProPublica & Supplementary facility$\leftrightarrow$drug linkage \\
 \bottomrule
 \end{tabular}
 
@@ -448,7 +448,7 @@ For each FEI $\times$ calendar year $t$, use the most recent inspection snapshot
 \vspace{6pt}
 \textbf{Outcome:} Binary \texttt{ae\_high\_t1}
 $$\mathbf{1}\left[n\_ae_{t+1} > \text{median}(n\_ae)\right]$$
-$n\_ae$ = serious FAERS reports attributed to FEI in year $t+1$ via Valisure API $\to$ FEI crosswalk.
+$n\_ae$ = serious FAERS reports attributed to FEI in year $t+1$ via DailyMed NDC$\to$FEI crosswalk.
 
 \vspace{6pt}
 \textbf{Cross-validation:} GroupKFold ($k=5$), groups = FEI. Prevents data leakage across inspection snapshots of the same facility.
@@ -546,7 +546,7 @@ Gap & $n$ & pre\_rise & persist & mean gap \\
 \midrule
 $<$1yr & 22 & 1.189 & 1.054 & 0.6 \\
 \rowcolor{techBlue!15}
-1–2yr & 48 & \textbf{1.275} & 1.064 & 1.5 \\
+1–2yr & 48 & \textbf{1.193} & 1.044 & 1.5 \\
 2–3.5yr & 50 & 1.038 & 1.063 & 2.7 \\
 $>$3.5yr & 46 & 1.042 & 0.962 & 4.8 \\
 \bottomrule
@@ -857,7 +857,7 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 \begin{enumerate}
   \item Link to FDA enforcement actions (warning letters, consent decrees) as additional outcomes
   \item Build real-time dashboard for FDA/industry use: facility risk score updated after each inspection
-  \item Test on non-Valisure drug universe (expand from 14 to broader generic market)
+  \item Expand beyond the 14 target drugs to the broader generic market
   \item Natural experiment: COVID inspection moratorium as exogenous shock — did facilities with pre-COVID high-risk 483 signals show worse outcomes during the gap?
 \end{enumerate}
 
