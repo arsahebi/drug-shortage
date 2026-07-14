@@ -234,16 +234,17 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path) -> None:
 
 def plot_ae_trajectory(traj: pd.DataFrame, out_path: Path) -> None:
     """
-    Line plot: mean AE count at t0 / t1 / t2 for each facility group.
-    Groups: OAI-ever, High-signal VAI, Low-signal VAI.
+    Line plot: mean AE count at tm2/tm1/t0/t1/t2 for each facility group.
+    Full 5-point window centered on inspection year shows pre-existing
+    elevation and post-inspection correction speed.
     """
-    groups  = traj["group"].unique()
     colors  = {"OAI-ever": "#dc2626", "High-signal VAI": "#d97706", "Low-signal VAI": "#2563eb"}
     markers = {"OAI-ever": "o", "High-signal VAI": "s", "Low-signal VAI": "^"}
-    lags    = ["t0", "t1", "t2"]
+    lags    = ["tm2", "tm1", "t0", "t1", "t2"]
+    xlabels = ["t−2", "t−1", "t=0\n(inspection)", "t+1", "t+2"]
     x       = np.arange(len(lags))
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(7, 4))
     for grp in ["OAI-ever", "High-signal VAI", "Low-signal VAI"]:
         sub = traj[traj["group"] == grp]
         if sub.empty:
@@ -253,10 +254,11 @@ def plot_ae_trajectory(traj: pd.DataFrame, out_path: Path) -> None:
         ax.plot(x, means, marker=markers[grp], color=colors[grp],
                 linewidth=2, label=f"{grp} (n={ns} FEIs)")
 
+    ax.axvline(x=2, color="gray", linewidth=1.0, linestyle="--", alpha=0.6, label="Inspection")
     ax.set_xticks(x)
-    ax.set_xticklabels(["t=0\n(inspection year)", "t+1", "t+2"])
+    ax.set_xticklabels(xlabels, fontsize=9)
     ax.set_ylabel("Mean serious AEs per FEI-year")
-    ax.set_title("AE trajectory post-inspection by facility group\n"
+    ax.set_title("AE trajectory around inspection year by facility group\n"
                  "(High-signal = top-quartile LabControls+DI text features)", fontsize=9)
     ax.legend(fontsize=8)
     plt.tight_layout()
@@ -337,18 +339,25 @@ def _trajectory_analysis(
         sub = df[df["group"] == grp]
         if sub.empty:
             continue
-        m0 = sub["n_ae_t0"].mean()
-        m1 = sub["n_ae_t1"].mean()
-        m2 = sub["n_ae_t2"].mean()
-        # persistence ratio: AE at t+2 relative to t=0 (>1 = sustained/rising)
-        persist = (m2 / m0) if m0 > 0 else np.nan
+        mm2 = sub["n_ae_tm2"].mean() if "n_ae_tm2" in sub.columns else np.nan
+        mm1 = sub["n_ae_tm1"].mean() if "n_ae_tm1" in sub.columns else np.nan
+        m0  = sub["n_ae_t0"].mean()
+        m1  = sub["n_ae_t1"].mean()
+        m2  = sub["n_ae_t2"].mean()
+        # pre-elevation: how much higher were AEs at t0 vs t-2?
+        pre_rise  = (m0 / mm2) if (mm2 and mm2 > 0) else np.nan
+        # persistence: how much of that elevation remains at t+2?
+        persist   = (m2 / m0) if m0 > 0 else np.nan
         rows.append({
-            "group":        grp,
-            "n_feis":       sub["fei"].nunique(),
-            "n_rows":       len(sub),
-            "mean_ae_t0":   round(m0, 1),
-            "mean_ae_t1":   round(m1, 1),
-            "mean_ae_t2":   round(m2, 1),
+            "group":         grp,
+            "n_feis":        sub["fei"].nunique(),
+            "n_rows":        len(sub),
+            "mean_ae_tm2":   round(mm2, 1),
+            "mean_ae_tm1":   round(mm1, 1),
+            "mean_ae_t0":    round(m0, 1),
+            "mean_ae_t1":    round(m1, 1),
+            "mean_ae_t2":    round(m2, 1),
+            "pre_rise_t0_tm2": round(pre_rise, 3),
             "persist_t2_t0": round(persist, 3),
         })
     traj_df = pd.DataFrame(rows)
@@ -358,18 +367,18 @@ def _trajectory_analysis(
     if hs_vai.empty:
         return traj_df, pd.DataFrame()
 
-    fei_agg = (
-        hs_vai.groupby("fei", as_index=False)
-              .agg(
-                  mean_ae_t0=("n_ae_t0", "mean"),
-                  mean_ae_t1=("n_ae_t1", "mean"),
-                  mean_ae_t2=("n_ae_t2", "mean"),
-                  mean_tech_score=("tech_score", "mean"),
-                  n_years=("panel_year", "count"),
-              )
+    agg_dict = dict(
+        mean_ae_t0=("n_ae_t0", "mean"),
+        mean_ae_t1=("n_ae_t1", "mean"),
+        mean_ae_t2=("n_ae_t2", "mean"),
+        mean_tech_score=("tech_score", "mean"),
+        n_years=("panel_year", "count"),
     )
+    if "n_ae_tm1" in hs_vai.columns:
+        agg_dict["mean_ae_tm1"] = ("n_ae_tm1", "mean")
+    fei_agg = hs_vai.groupby("fei", as_index=False).agg(**agg_dict)
     fei_agg["persist_t2_t0"] = (fei_agg["mean_ae_t2"] / fei_agg["mean_ae_t0"]).round(3)
-    # rising = persist > 1.0 (AEs at t+2 exceed t0 despite never being forced to correct)
+    # rising = persist > 1.0 (AEs at t+2 exceed t0 despite no forced correction)
     fei_agg["ae_rising"] = fei_agg["persist_t2_t0"] > 1.0
     fei_agg = fei_agg.sort_values("persist_t2_t0", ascending=False).round(1)
 

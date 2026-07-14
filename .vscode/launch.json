@@ -56,6 +56,15 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "ae — 04 trajectory clustering",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/04_ae_trajectory_clustering.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
         }
     ]
 }

@@ -18,9 +18,11 @@ AE outcome: FAERS serious AEs attributed to FEI
   Step 3 — Join Valisure API → FEI via the FEI mapping sheet.
   Step 4 — Aggregate to FEI × year → n_ae (count of serious AE reports).
 
-Lags: for each FEI × year t we record AE counts at t, t+1, t+2.
-  This lets downstream scripts test: "does the text signal at inspection
-  time t predict AE volume 0, 1, or 2 years later?"
+Lags: for each FEI × year t we record AE counts across a 5-year window:
+  t-2, t-1 (pre-inspection) and t0, t+1, t+2 (post-inspection).
+  Pre-inspection lags test whether AEs were already elevated before FDA
+  caught the problem (supports pre-distribution of bad product hypothesis).
+  Post-inspection lags test correction speed and persistence.
 
 Output
 ──────
@@ -34,9 +36,11 @@ Columns
   n_oai, n_vai, n_nai    : inspection outcome counts (from Inspections Details.xlsx)
   any_oai                : 1 if FEI received ≥1 OAI in this panel year
   [TEXT_FEATURES]        : 17 LLM signal shares + Layer 5 counts/joints
-  n_ae_t0                : FAERS serious AEs attributed to FEI in year t
-  n_ae_t1                : …in year t+1
-  n_ae_t2                : …in year t+2
+  n_ae_tm2               : FAERS serious AEs two years BEFORE inspection
+  n_ae_tm1               : …one year before
+  n_ae_t0                : …in inspection year
+  n_ae_t1                : …one year after
+  n_ae_t2                : …two years after
   n_drug_fei_pairs       : distinct drug-FEI pairs (market presence proxy)
 """
 
@@ -167,9 +171,20 @@ def _load_faers_fei_year(fei_drug_map: pd.DataFrame) -> pd.DataFrame:
 # ── Step 3: Build lagged panel ────────────────────────────────────────────────
 
 def _add_lags(panel: pd.DataFrame, ae: pd.DataFrame) -> pd.DataFrame:
-    """Join AE counts at lags 0, 1, 2 years to the panel."""
+    """
+    Join AE counts at pre-inspection lags (-2, -1) and post-inspection lags (0, 1, 2).
+
+    panel_year = inspection snapshot year (t=0).
+    n_ae_tm2 = AEs two years BEFORE inspection  (tests pre-existing elevation)
+    n_ae_tm1 = AEs one year  BEFORE inspection
+    n_ae_t0  = AEs in inspection year
+    n_ae_t1  = AEs one year  AFTER  (tests short-run correction effect)
+    n_ae_t2  = AEs two years AFTER  (tests long-run persistence)
+    """
     ae = ae.rename(columns={"year": "ae_year", "n_ae": "n_ae_raw"})
-    for lag, suffix in [(0, "t0"), (1, "t1"), (2, "t2")]:
+    # negative lag = pre-inspection (ae_year = panel_year + |lag|)
+    # positive lag = post-inspection (ae_year = panel_year - lag)
+    for lag, suffix in [(-2, "tm2"), (-1, "tm1"), (0, "t0"), (1, "t1"), (2, "t2")]:
         ae_lag = ae.copy()
         ae_lag["panel_year"] = ae_lag["ae_year"] - lag
         ae_lag = ae_lag.rename(columns={"n_ae_raw": f"n_ae_{suffix}"})[["fei", "panel_year", f"n_ae_{suffix}"]]
@@ -260,18 +275,21 @@ def main() -> None:
     # Final column order
     id_cols      = ["fei", "panel_year", "snapshot_date", "n_inspections_in_year"]
     outcome_cols = ["n_oai", "n_vai", "n_nai", "any_oai"]
-    ae_cols      = ["n_ae_t0", "n_ae_t1", "n_ae_t2", "n_drug_fei_pairs"]
+    ae_cols      = ["n_ae_tm2", "n_ae_tm1", "n_ae_t0", "n_ae_t1", "n_ae_t2", "n_drug_fei_pairs"]
     final        = panel[id_cols + outcome_cols + TEXT_FEATURES + ae_cols].copy()
 
-    n_with_ae = final["n_ae_t1"].notna().sum()
+    n_with_ae  = final["n_ae_t1"].notna().sum()
     n_with_oai = final["any_oai"].sum()
+    n_pre      = final["n_ae_tm1"].notna().sum()
     print(f"\nPanel summary:")
-    print(f"  Total rows (FEI × year):  {len(final)}")
-    print(f"  Rows with t+1 AE data:    {n_with_ae}")
-    print(f"  FEIs with any AE data:    {final[final['n_ae_t1'].notna()]['fei'].nunique()}")
-    print(f"  FEI-years with OAI:       {n_with_oai} ({n_with_oai/len(final):.1%})")
-    print(f"\n  n_ae_t1 distribution:")
-    print(final["n_ae_t1"].describe().to_string())
+    print(f"  Total rows (FEI × year):    {len(final)}")
+    print(f"  Rows with pre (t-1) AE:     {n_pre}")
+    print(f"  Rows with post (t+1) AE:    {n_with_ae}")
+    print(f"  FEIs with any AE data:      {final[final['n_ae_t1'].notna()]['fei'].nunique()}")
+    print(f"  FEI-years with OAI:         {n_with_oai} ({n_with_oai/len(final):.1%})")
+    print(f"\n  Full window mean AEs (all FEIs):")
+    for col in ["n_ae_tm2", "n_ae_tm1", "n_ae_t0", "n_ae_t1", "n_ae_t2"]:
+        print(f"    {col}: {final[col].mean():.1f} (n={final[col].notna().sum()})")
 
     OUT.mkdir(parents=True, exist_ok=True)
     final.to_parquet(OUT_PANEL, index=False)
