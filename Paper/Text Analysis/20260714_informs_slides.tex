@@ -150,9 +150,8 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 \toprule
 Source & Content \\
 \midrule
-Redica Systems & 483 observation text \\
-FDA Inspections DB & Classifications (OAI/VAI/NAI) \\
-FAERS & Serious AE reports \\
+Redica Systems & 483 text + OAI/VAI/NAI classifications \\
+FAERS & Serious adverse event reports \\
 SDUD (Medicaid) & Drug utilization volume \\
 Valisure FEI map & Drug $\leftrightarrow$ FEI crosswalk \\
 DailyMed & NDC $\leftrightarrow$ FEI crosswalk \\
@@ -741,46 +740,42 @@ Cross-reference with market concentration data. If these FEIs are dominant suppl
 \begin{frame}{Volume Control: SDUD Medicaid Utilization}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Motivation}: A large manufacturer naturally generates more FAERS reports even at the same defect rate. Raw AE counts conflate facility size with quality.
+A larger manufacturer generates more FAERS reports at the same defect rate. Raw AE counts conflate facility size with quality.
 
 \vspace{6pt}
-\textbf{Source}: CMS State Drug Utilization Data (SDUD)
-\begin{itemize}
-  \item All 50 states, quarterly, 2015–2024
-  \item 49.5M rows total; filtered to 14 drugs $\times$ 98 FEIs
-  \item Join: SDUD $\{$labeler code $+$ product code$\}$ $\to$ NDC-FEI crosswalk (DailyMed) $\to$ FEI
-\end{itemize}
+\textbf{CMS SDUD}: all 50 states, quarterly, 2015–2024\\
+Join: labeler + product code $\to$ DailyMed NDC-FEI crosswalk
 
-\vspace{4pt}
+\vspace{6pt}
 \begin{tabular}{ll}
 \toprule
 Metric & Value \\
 \midrule
-SDUD coverage (FEI-years) & 69\% \\
-Mean annual SDUD units & 237M \\
-Median ae\_rate\_t1 & 49 AEs/M units \\
-Mean ae\_rate\_t1 & 19,394 (skewed) \\
+FEI-year coverage & \highlight{69\%} \\
+Mean annual units/FEI & 237M \\
+Median AE rate & 49 AEs / M units \\
 \bottomrule
 \end{tabular}
 
+\vspace{6pt}
+\textbf{Recommendation}: use $\log(\text{sdud\_units})$ as a covariate in the model, not a rate denominator — 31\% missing coverage biases the rate.
+
 \column{0.45\textwidth}
-\textbf{Volume by OAI status:}
-\begin{itemize}
-  \item OAI=0: mean SDUD = 239M units, ae\_rate = 19,847/M
-  \item OAI=1: mean SDUD = 203M units, ae\_rate = 8,925/M
-\end{itemize}
+\begin{tabular}{lcc}
+\toprule
+Group & SDUD units & AE rate \\
+\midrule
+Never-OAI & 239M & 19,847/M \\
+Ever-OAI  & 203M & 8,925/M \\
+\bottomrule
+\end{tabular}
 
-\vspace{4pt}
-\textbf{Caveats:}
-\begin{itemize}
-  \item The rate comes out inverted relative to raw counts (non-OAI higher). This is most likely a matching artifact: the 31\% of FEI-years with no SDUD match create denominator gaps that distort rates when those same facilities have AEs
-  \item SDUD is Medicaid only, roughly 20\% of total volume
-  \item Best use: include $\log(\text{sdud\_units})$ as a covariate rather than constructing a rate denominator
-\end{itemize}
+\vspace{8pt}
+Rate is \emph{inverted} vs.\ raw counts: a matching artifact from the 31\% gap, not a real quality signal.
 
-\vspace{4pt}
-\begin{block}{Bottom line}
-Volume is an important control variable, but rate normalization needs better coverage before it can be trusted as a primary outcome.
+\vspace{8pt}
+\begin{block}{Limitation}
+SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed for full volume control.
 \end{block}
 \end{columns}
 \end{frame}
