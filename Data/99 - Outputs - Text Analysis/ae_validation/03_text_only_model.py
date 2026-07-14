@@ -232,6 +232,39 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path) -> None:
     print(f"  Saved ablation bar → {out_path}")
 
 
+def plot_ae_trajectory(traj: pd.DataFrame, out_path: Path) -> None:
+    """
+    Line plot: mean AE count at t0 / t1 / t2 for each facility group.
+    Groups: OAI-ever, High-signal VAI, Low-signal VAI.
+    """
+    groups  = traj["group"].unique()
+    colors  = {"OAI-ever": "#dc2626", "High-signal VAI": "#d97706", "Low-signal VAI": "#2563eb"}
+    markers = {"OAI-ever": "o", "High-signal VAI": "s", "Low-signal VAI": "^"}
+    lags    = ["t0", "t1", "t2"]
+    x       = np.arange(len(lags))
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for grp in ["OAI-ever", "High-signal VAI", "Low-signal VAI"]:
+        sub = traj[traj["group"] == grp]
+        if sub.empty:
+            continue
+        means = [sub[f"mean_ae_{lag}"].values[0] for lag in lags]
+        ns    = sub["n_feis"].values[0]
+        ax.plot(x, means, marker=markers[grp], color=colors[grp],
+                linewidth=2, label=f"{grp} (n={ns} FEIs)")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(["t=0\n(inspection year)", "t+1", "t+2"])
+    ax.set_ylabel("Mean serious AEs per FEI-year")
+    ax.set_title("AE trajectory post-inspection by facility group\n"
+                 "(High-signal = top-quartile LabControls+DI text features)", fontsize=9)
+    ax.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved AE trajectory → {out_path}")
+
+
 def plot_rf_importance(imp: pd.DataFrame, out_path: Path) -> None:
     imp = imp.copy()
     imp["label"] = imp["feature"].map(FEATURE_LABELS).fillna(imp["feature"])
@@ -245,6 +278,104 @@ def plot_rf_importance(imp: pd.DataFrame, out_path: Path) -> None:
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  Saved RF importance → {out_path}")
+
+
+# ── Trajectory analysis ───────────────────────────────────────────────────────
+
+# Technical signal features that theory says should drive AEs (Chain 1)
+_TECH_FEATURES = [
+    "vc_labcontrols_share",
+    "data_integrity_llm_share",
+    "joint_labcontrols_dataintegrity",
+    "joint_contamination_labcontrols",
+    "n_labcontrols_obs",
+]
+
+
+def _trajectory_analysis(
+    df: pd.DataFrame,
+    fei_ever_oai: "pd.Series",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Segment facilities by OAI status × technical signal level, then compare
+    AE trajectories at t0, t1, t2.
+
+    Groups:
+      OAI-ever          — received at least one OAI (forced correction)
+      High-signal VAI   — top-quartile composite technical score, never OAI
+      Low-signal VAI    — bottom three quartiles, never OAI
+
+    Returns:
+      traj_df   — one row per group: mean AE at t0/t1/t2 and persistence ratio
+      flagged   — individual High-signal VAI FEIs sorted by AE persistence
+    """
+    df = df.copy()
+
+    # Composite technical score: z-score mean of available tech features
+    tech_cols = [c for c in _TECH_FEATURES if c in df.columns]
+    if not tech_cols:
+        return pd.DataFrame(), pd.DataFrame()
+
+    from scipy.stats import zscore as _zscore
+    df["tech_score"] = df[tech_cols].fillna(0).apply(_zscore).mean(axis=1)
+
+    # Assign group per FEI (use max tech_score across years for the FEI)
+    fei_tech = df.groupby("fei")["tech_score"].mean()
+    q75 = fei_tech.quantile(0.75)
+
+    def _group(fei):
+        if fei in fei_ever_oai.index and fei_ever_oai[fei] == 1:
+            return "OAI-ever"
+        if fei_tech.get(fei, 0) >= q75:
+            return "High-signal VAI"
+        return "Low-signal VAI"
+
+    df["group"] = df["fei"].map(_group)
+
+    rows = []
+    for grp in ["OAI-ever", "High-signal VAI", "Low-signal VAI"]:
+        sub = df[df["group"] == grp]
+        if sub.empty:
+            continue
+        m0 = sub["n_ae_t0"].mean()
+        m1 = sub["n_ae_t1"].mean()
+        m2 = sub["n_ae_t2"].mean()
+        # persistence ratio: AE at t+2 relative to t=0 (>1 = sustained/rising)
+        persist = (m2 / m0) if m0 > 0 else np.nan
+        rows.append({
+            "group":        grp,
+            "n_feis":       sub["fei"].nunique(),
+            "n_rows":       len(sub),
+            "mean_ae_t0":   round(m0, 1),
+            "mean_ae_t1":   round(m1, 1),
+            "mean_ae_t2":   round(m2, 1),
+            "persist_t2_t0": round(persist, 3),
+        })
+    traj_df = pd.DataFrame(rows)
+
+    # Flag individual high-signal VAI facilities: ranked by persistence
+    hs_vai = df[df["group"] == "High-signal VAI"].copy()
+    if hs_vai.empty:
+        return traj_df, pd.DataFrame()
+
+    fei_agg = (
+        hs_vai.groupby("fei", as_index=False)
+              .agg(
+                  mean_ae_t0=("n_ae_t0", "mean"),
+                  mean_ae_t1=("n_ae_t1", "mean"),
+                  mean_ae_t2=("n_ae_t2", "mean"),
+                  mean_tech_score=("tech_score", "mean"),
+                  n_years=("panel_year", "count"),
+              )
+    )
+    fei_agg["persist_t2_t0"] = (fei_agg["mean_ae_t2"] / fei_agg["mean_ae_t0"]).round(3)
+    # rising = persist > 1.0 (AEs at t+2 exceed t0 despite never being forced to correct)
+    fei_agg["ae_rising"] = fei_agg["persist_t2_t0"] > 1.0
+    fei_agg = fei_agg.sort_values("persist_t2_t0", ascending=False).round(1)
+
+    print(f"  Groups: {traj_df[['group','n_feis']].to_string(index=False)}")
+    print(f"  High-signal VAI threshold: tech_score ≥ {q75:.3f} (top quartile)")
+    return traj_df, fei_agg
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -324,6 +455,14 @@ def main() -> None:
         else:
             print("  Too few rows or single-class outcome — skipping Config E.")
 
+    # ── Trajectory analysis (AE persistence by facility group) ───────────────
+    # Technical signal composite: mean z-score of top LabControls/DI features.
+    # Segments VAI facilities into high-signal vs low-signal to test whether
+    # bad-signal VAI facilities show sustained (non-declining) AE trajectory,
+    # unlike OAI facilities where corrective action should reduce AEs at t+1/t+2.
+    print("\nTrajectory analysis: AE persistence by facility group…")
+    traj_df, flagged = _trajectory_analysis(df, fei_ever_oai if "any_oai" in df.columns else pd.Series(dtype=int))
+
     # ── Compile and save ──
     all_results = results_A + results_B + results_C + results_D + results_E
     metrics = pd.DataFrame(all_results)
@@ -335,6 +474,14 @@ def main() -> None:
     metrics.to_csv(OUT_MOD / "ablation_metrics.csv", index=False)
     print(f"\nAblation results:\n{metrics[['config','model','auc','ap','n_folds']].to_string(index=False)}")
 
+    if not traj_df.empty:
+        traj_df.to_csv(OUT_TABS / "ae_trajectory_by_group.csv", index=False)
+        print(f"\nAE trajectory by group:\n{traj_df.to_string(index=False)}")
+    if not flagged.empty:
+        flagged.to_csv(OUT_TABS / "high_signal_vai_flagged.csv", index=False)
+        print(f"\nHigh-signal VAI facilities (candidates for strategic leniency):")
+        print(flagged.to_string(index=False))
+
     # Markdown summary
     md_lines = [
         "# Text-signal AE prediction — model summary",
@@ -345,12 +492,17 @@ def main() -> None:
         metrics[["config", "model", "auc", "ap"]].to_string(index=False),
         "",
         "AUC > 0.5 = better than random. Group-based CV prevents FEI data leakage.",
+        "",
+        "## AE trajectory by facility group",
+        traj_df.to_string(index=False) if not traj_df.empty else "(not available)",
     ]
     (OUT_TABS / "model_summary.md").write_text("\n".join(md_lines))
 
     plot_ablation_bar(metrics, OUT_FIGS / "ablation_auc_bar.png")
     if not imp.empty:
         plot_rf_importance(imp, OUT_FIGS / "rf_feature_importance.png")
+    if not traj_df.empty:
+        plot_ae_trajectory(traj_df, OUT_FIGS / "ae_trajectory_by_group.png")
 
     print(f"\nAll outputs saved to {OUT}/")
 
