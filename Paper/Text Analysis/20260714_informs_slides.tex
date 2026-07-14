@@ -1,0 +1,1072 @@
+% ============================================================
+% INFORMS 2026 — Presentation Slides
+% From Regulatory Text to Patient Harm:
+%   LLM Extraction of FDA 483 Signals and Adverse Event Prediction
+% ============================================================
+\documentclass[aspectratio=169,10pt]{beamer}
+
+% ── Theme ────────────────────────────────────────────────────────────────────
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamersize{text margin left=6mm, text margin right=6mm}
+
+% ── Packages ─────────────────────────────────────────────────────────────────
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit}
+\usepackage{colortbl}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+% ── Colors ───────────────────────────────────────────────────────────────────
+\definecolor{ncsuRed}{RGB}{204,0,0}
+\definecolor{ncsuGray}{RGB}{100,100,100}
+\definecolor{techBlue}{RGB}{37,99,235}
+\definecolor{govGreen}{RGB}{5,150,105}
+\definecolor{warnOrange}{RGB}{217,119,6}
+\definecolor{lightGray}{RGB}{243,244,246}
+\definecolor{oaiRed}{RGB}{220,38,38}
+
+\setbeamercolor{structure}{fg=ncsuRed}
+\setbeamercolor{block title}{bg=ncsuRed!90, fg=white}
+\setbeamercolor{block body}{bg=ncsuRed!8}
+\setbeamercolor{alerted text}{fg=ncsuRed}
+
+% ── Helper commands ───────────────────────────────────────────────────────────
+\newcommand{\todo}[1]{{\color{warnOrange}\textbf{[TODO: #1]}}}
+\newcommand{\highlight}[1]{{\color{ncsuRed}\textbf{#1}}}
+\newcommand{\tech}[1]{{\color{techBlue}\textbf{#1}}}
+\newcommand{\gov}[1]{{\color{govGreen}\textbf{#1}}}
+\newcommand{\rho}{\ensuremath{\varrho}}
+
+% ── Title ────────────────────────────────────────────────────────────────────
+\title[483 Text $\to$ Adverse Event Prediction]{%
+  From Regulatory Text to Patient Harm:\\
+  LLM Extraction of FDA 483 Signals\\
+  and Adverse Event Prediction}
+
+\author[Sahebi-Fakhrabad]{%
+  Amirreza Sahebi-Fakhrabad\\[2pt]
+  {\small Poole College of Management\\
+  North Carolina State University}}
+
+\date{INFORMS Annual Meeting 2026}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ── SECTION 1: MOTIVATION ────────────────────────────────────────────────────
+\section{Motivation}
+
+\begin{frame}{The FDA 483 Form: Rich Signal, Rarely Used}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{What is a Form 483?}
+\begin{itemize}
+  \item Issued at the end of every FDA facility inspection
+  \item Lists \emph{observations} — specific violations of Current Good Manufacturing Practice (cGMP)
+  \item Each observation is 1–3 paragraphs of regulatory prose
+  \item Covers: contamination, data integrity (DI), lab failures, equipment, quality system gaps
+\end{itemize}
+\vspace{4pt}
+\textbf{The gap}: 483s are public, detailed, and timely — but \emph{unstructured text} with no standardized schema across facilities or inspectors.
+
+\column{0.42\textwidth}
+\begin{block}{Example 483 observation (paraphrased)}
+\small
+``Investigations into out-of-specification results are not conducted with scientific sound and thorough approach. Specifically, the investigation for Batch \#XY failed to extend to other batches manufactured under similar conditions\ldots''
+\end{block}
+\vspace{6pt}
+\begin{alertblock}{Research question}
+Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (serious adverse events) before FDA's next inspection?
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Why This Matters: The Quality–Shortage–Harm Triangle}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{Manufacturing quality failures drive two harms:}
+\begin{enumerate}
+  \item \textbf{Patient harm} — bad product already distributed causes adverse events (AEs) before FDA detects the problem
+  \item \textbf{Drug shortage} — FDA enforcement (OAI, import refusal, recall) removes supply from market
+\end{enumerate}
+\vspace{6pt}
+\textbf{Current surveillance gap:}
+\begin{itemize}
+  \item Median inspection gap for our facilities: \highlight{2.4 years} (pre-COVID)
+  \item Post-COVID expansion to \highlight{4+ years} median gap
+  \item Between inspections: \emph{no structured quality signal} reaches FDA
+\end{itemize}
+\column{0.42\textwidth}
+\begin{block}{Policy motivation}
+\small
+\begin{itemize}
+  \item If 483 text predicts AEs, FDA could \textbf{prioritize re-inspection} of high-risk facilities \emph{before} the next scheduled visit
+  \item Text signals could also flag ``strategic leniency'' cases where VAI/NAI assignments may be underestimating quality risk
+  \item COVID inspection moratorium created a 4-year blind window — text-based risk scores are the \emph{only} available signal
+\end{itemize}
+\end{block}
+\end{columns}
+\end{frame}
+
+% ── SECTION 2: STUDY DESIGN ──────────────────────────────────────────────────
+\section{Study Design \& Data}
+
+\begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2015–2026}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Drug universe: 14 Valisure-tested APIs}\\[2pt]
+{\small Atorvastatin, Bupropion, Metformin, Pantoprazole, Vancomycin, Lisinopril, Metoprolol, Metronidazole, Ampicillin, Tacrolimus, Calcium Gluconate, Magnesium Sulfate, Potassium Chloride, Ampicillin/Sulbactam}
+
+\vspace{6pt}
+\textbf{Why Valisure?} Independent lab testing of commercially purchased samples — provides ground-truth quality failure data anchoring the study.
+
+\vspace{6pt}
+\textbf{Facility universe:}
+\begin{itemize}
+  \item 129 unique FEIs in Valisure mapping
+  \item \highlight{98 FEIs} with both 483 text and FAERS AE data
+  \item \highlight{246 inspection events} (2018–2026)
+  \item Average \highlight{7.2 inspections per FEI} (range: 1–26)
+\end{itemize}
+
+\column{0.47\textwidth}
+\textbf{Data sources integrated:}
+
+\vspace{4pt}
+\begin{tabular}{ll}
+\toprule
+Source & Content \\
+\midrule
+Redica Systems & 483 observation text \\
+FDA Inspections DB & Classifications (OAI/VAI/NAI) \\
+FAERS & Serious AE reports \\
+SDUD (Medicaid) & Drug utilization volume \\
+Valisure FEI map & Drug $\leftrightarrow$ FEI crosswalk \\
+DailyMed & NDC $\leftrightarrow$ FEI crosswalk \\
+\bottomrule
+\end{tabular}
+
+\vspace{8pt}
+\textbf{Panel structure:}
+\begin{itemize}
+  \item \textbf{Yearly}: 645 FEI $\times$ year rows (2018–2025)
+  \item \textbf{Inspection-centered quarterly}: 246 rows centered on each inspection $\pm$4 quarters
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Inspection Frequency: The Blind Window Between Inspections}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Gap between consecutive inspections (our 98 FEIs):}
+
+\vspace{4pt}
+\begin{tabular}{lrr}
+\toprule
+Metric & All drug facilities & Our 98 FEIs \\
+\midrule
+Mean gap & 2.68 yr & 1.76 yr \\
+Median gap & 2.11 yr & 1.51 yr \\
+P75 gap & 3.70 yr & 2.36 yr \\
+P90 gap & 5.81 yr & 3.68 yr \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\textbf{Gap distribution for our 246 inspections:}
+\begin{itemize}
+  \item $<$1 year: 13\% (follow-up inspections)
+  \item 1–2 years: 29\% (annual surveillance)
+  \item 2–3.5 years: 30\% (biennial)
+  \item $>$3.5 years: 28\% (post-COVID or rare)
+\end{itemize}
+
+\column{0.45\textwidth}
+\textbf{Inspections per year (panel FEIs):}
+
+\vspace{4pt}
+\begin{tabular}{lc}
+\toprule
+Year & \# Inspections \\
+\midrule
+2015–2019 & 276 total (55/yr avg) \\
+\rowcolor{lightGray}
+2020 & 24 \quad{\small (COVID) } \\
+\rowcolor{lightGray}
+2021 & 8  \quad{\small (COVID) } \\
+2022 & 23 \\
+2023–2025 & 34, 20, 12 \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\begin{alertblock}{COVID creates a 4-year blind window}
+\small
+Post-2022 median gap = \textbf{4.04 years}. Text signals from pre-COVID inspections are the \emph{only} structured quality information available for many facilities through 2025.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+% ── SECTION 3: LLM PIPELINE ──────────────────────────────────────────────────
+\section{LLM Extraction Pipeline}
+
+\begin{frame}{Pipeline: From 483 Text to Structured Features}
+
+\begin{tikzpicture}[
+  box/.style={rectangle, rounded corners=4pt, draw, fill=lightGray,
+              minimum height=0.7cm, minimum width=2.6cm, font=\small, align=center},
+  arrow/.style={-{Stealth}, thick}
+]
+% Step 0
+\node[box] (s0) at (0,0) {Step 00\\Redica observations\\{\tiny load \& normalize}};
+% Step 1
+\node[box] (s1) at (3.2,0) {Step 01\\LLM extraction\\{\tiny Anthropic Claude}};
+% Step 2
+\node[box] (s2) at (6.4,0) {Step 02\\Aggregate to\\FEI $\times$ inspection};
+% Panel
+\node[box, fill=ncsuRed!15] (panel) at (9.6,0) {Panel\\FEI $\times$ year/qtr\\{\tiny script 01}};
+% Model
+\node[box, fill=techBlue!15] (model) at (12.8,0) {Model\\{\tiny scripts 03–04}};
+
+\draw[arrow] (s0) -- (s1);
+\draw[arrow] (s1) -- (s2);
+\draw[arrow] (s2) -- (panel);
+\draw[arrow] (panel) -- (model);
+
+% Data joins below panel
+\node[box, fill=govGreen!15] (faers) at (9.6,-1.5) {FAERS AEs\\+ SDUD volume\\+ Insp. outcomes};
+\draw[arrow] (faers) -- (panel);
+
+\end{tikzpicture}
+
+\vspace{6pt}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Input}: 1,067+ 483 observations (Redica text)\\
+\textbf{Source}: Redica Systems human-coded database (same observation text as FDA PDFs)
+
+\textbf{5-layer feature hierarchy extracted per observation:}
+\begin{itemize}
+  \item L1: Violation category (8 classes)
+  \item L2: Severity (Critical/Major/Minor/Info)
+  \item L3: LLM flags (contamination, DI, patient risk, scope, root cause, remediation)
+  \item L4: Repeat/cross-inspection pattern
+  \item L5: Raw counts + joint co-occurrence flags
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Aggregation (Step 02)}: Per inspection snapshot\\
+\vspace{4pt}
+\begin{tabular}{ll}
+\toprule
+Feature group & Example columns \\
+\midrule
+Severity shares & \texttt{severity\_critmajor\_share} \\
+Domain shares & \texttt{vc\_labcontrols\_share} \\
+LLM flag rates & \texttt{data\_integrity\_llm\_share} \\
+Raw counts (L5) & \texttt{n\_labcontrols\_obs} \\
+Joint flags (L5) & \texttt{joint\_labcontrols\_di} \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+Total: \highlight{17 features} per inspection used in predictive model
+\end{columns}
+\end{frame}
+
+% ── SECTION 4: VALIDATION ────────────────────────────────────────────────────
+\section{Validation}
+
+\begin{frame}{LLM Extraction Validation vs.\ Redica Human Labels}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Track A — Row-by-row comparison}\\
+Same 1,067 Redica observations; LLM assigned labels vs Redica human labels.
+
+\vspace{6pt}
+\begin{tabular}{lcc}
+\toprule
+Dimension & Agreement & Baseline \\
+\midrule
+Severity (4-tier) & \highlight{67.5\%} & 25\% random \\
+Violation category (8-class) & \highlight{58.6\%} & 12.5\% random \\
+\bottomrule
+\end{tabular}
+
+\vspace{8pt}
+\textbf{Data Integrity flag:}\\[2pt]
+\begin{tabular}{lc}
+\toprule
+Metric & Value \\
+\midrule
+Precision & 0.307 \\
+Recall & \highlight{0.859} \\
+F1 & 0.452 \\
+\bottomrule
+\end{tabular}
+
+\column{0.47\textwidth}
+\textbf{Interpretation:}
+\begin{itemize}
+  \item Random baseline on 8 classes = 12.5\%; LLM achieves 58.6\% — real domain learning
+  \item Disagreements cluster in adjacent categories (QualitySystem $\leftrightarrow$ ProductionControls) — GMP language is genuinely ambiguous; not random error
+  \item \textbf{Redica is not ground truth}: it is itself human-coded with non-zero error. Frame as \emph{inter-rater agreement / convergent validity}
+  \item DI flag: LLM uses broader operational definition; high recall, lower precision. Use \texttt{data\_integrity\_llm\_share} as noisy-but-informative feature with appropriate caution
+  \item Core AE model features (Lab Controls, Quality System, severity) are validated at defensible rates
+\end{itemize}
+\end{columns}
+\end{frame}
+
+% ── SECTION 5: THEORY ────────────────────────────────────────────────────────
+\section{Two Failure Mode Theory}
+
+\begin{frame}{Two Failure Pathways: Technical vs.\ Governance}
+
+\begin{tikzpicture}[
+  node/.style={rectangle, rounded corners=3pt, draw, minimum height=0.65cm,
+               minimum width=3cm, align=center, font=\small},
+  arrow/.style={-{Stealth}, thick},
+  darrow/.style={-{Stealth}, thick, dashed}
+]
+
+% Technical pathway
+\node[node, fill=techBlue!20, draw=techBlue] (labctrl) at (0, 1.2)
+  {\tech{Lab Controls / DI}\\\tech{failures in 483}};
+\node[node, fill=techBlue!10, draw=techBlue] (dist) at (4.5, 1.2)
+  {Pre-inspection\\bad product distributed};
+\node[node, fill=techBlue!20, draw=techBlue] (ae) at (9, 1.2)
+  {\tech{AEs at t+1, t+2}\\(patient harm)};
+
+\draw[arrow, color=techBlue] (labctrl) -- (dist)
+  node[midway, above, font=\scriptsize]{OAI issued, but too late};
+\draw[arrow, color=techBlue] (dist) -- (ae)
+  node[midway, above, font=\scriptsize]{market clearance lag};
+
+% Governance pathway
+\node[node, fill=govGreen!20, draw=govGreen] (qsys) at (0, -0.4)
+  {\gov{Quality System /}\\\gov{Governance gaps in 483}};
+\node[node, fill=govGreen!10, draw=govGreen] (oai) at (4.5, -0.4)
+  {OAI issued\\(systemic risk)};
+\node[node, fill=govGreen!20, draw=govGreen] (noharm) at (9, -0.4)
+  {\gov{Minimal AEs}\\(product quality intact)};
+
+\draw[arrow, color=govGreen] (qsys) -- (oai)
+  node[midway, above, font=\scriptsize]{FDA escalates};
+\draw[arrow, color=govGreen] (oai) -- (noharm)
+  node[midway, above, font=\scriptsize]{no bad product released};
+
+% Labels
+\node[font=\scriptsize\itshape, color=techBlue] at (0, 0.55) {Chain 1};
+\node[font=\scriptsize\itshape, color=govGreen] at (0, -1.0) {Chain 3};
+
+\end{tikzpicture}
+
+\vspace{6pt}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Chain 1 (Technical $\to$ AEs):}
+\begin{itemize}
+  \item Lab Controls / DI / contamination found in 483
+  \item OAI is issued and corrective action required
+  \item But product made \emph{before} inspection already in market
+  \item $\Rightarrow$ AEs appear at t+1/t+2 from pre-inspection distribution
+\end{itemize}
+\column{0.48\textwidth}
+\textbf{Chain 3 (Governance $\to$ OAI only):}
+\begin{itemize}
+  \item Quality system gaps: missing SOPs, no management review
+  \item FDA escalates because systemic risk is present
+  \item Actual product quality may be intact (no bad batches released)
+  \item $\Rightarrow$ OAI without elevated AEs
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Empirical Evidence for Two Pathways: Spearman Correlations with AEs}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Correlation with future AEs (n\_ae\_t1), $n = 645$ FEI-years:}
+
+\vspace{4pt}
+\begin{tabular}{lcc}
+\toprule
+Feature & $\varrho$ & $p$-value \\
+\midrule
+\multicolumn{3}{l}{\textit{\tech{Technical pathway features}}} \\
+\texttt{n\_labcontrols\_obs} & \tech{+0.236} & $<0.001$ \\
+\texttt{vc\_labcontrols\_share} & \tech{+0.228} & $<0.001$ \\
+\texttt{joint\_labcontrols\_di} & \tech{+0.216} & $<0.001$ \\
+\texttt{joint\_contam\_labctrl} & \tech{+0.173} & $<0.001$ \\
+\texttt{data\_integrity\_share} & \tech{+0.158} & $<0.001$ \\
+\midrule
+\multicolumn{3}{l}{\textit{\gov{Governance pathway features}}} \\
+\texttt{vc\_qualitysystem\_share} & \gov{$-$0.009} & 0.82 \\
+\texttt{cultural\_root\_cause} & \gov{$-$0.116} & 0.003 \\
+\texttt{joint\_qsys\_production} & \gov{$-$0.083} & 0.03 \\
+\midrule
+\texttt{contamination\_share} & $-$0.182 & $<0.001$ \\
+\bottomrule
+\end{tabular}
+
+\column{0.45\textwidth}
+\textbf{Key finding:}
+\begin{itemize}
+  \item \tech{Technical features} (Lab Controls, DI, their co-occurrences) are positively and significantly correlated with future AEs
+  \item \gov{Governance features} (Quality System, cultural root cause) are near-zero or negative — they predict OAI, not patient harm
+  \item \texttt{contamination\_share} is negative because Redica's ``contamination'' category covers environmental/facility violations (HVAC, pests), not product contamination. The \emph{joint} flag (contamination co-occurring with lab failures) is positive (+0.173)
+\end{itemize}
+
+\vspace{4pt}
+\begin{block}{Takeaway}
+The LLM features cleanly separate the two pathways that theory predicts — without imposing any prior structure.
+\end{block}
+\end{columns}
+\end{frame}
+
+% ── SECTION 6: PREDICTIVE MODEL ──────────────────────────────────────────────
+\section{Predictive Model}
+
+\begin{frame}{Panel Construction and Outcome Variable}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{As-of join (text features):}\\
+For each FEI $\times$ calendar year $t$, use the most recent inspection snapshot with $\text{snapshot\_date} \le \text{Dec 31}(t)$.
+
+\vspace{6pt}
+\textbf{Outcome:} Binary \texttt{ae\_high\_t1}
+$$\mathbf{1}\left[n\_ae_{t+1} > \text{median}(n\_ae)\right]$$
+$n\_ae$ = serious FAERS reports attributed to FEI in year $t+1$ via Valisure API $\to$ FEI crosswalk.
+
+\vspace{6pt}
+\textbf{Cross-validation:} GroupKFold ($k=5$), groups = FEI. Prevents data leakage across inspection snapshots of the same facility.
+
+\vspace{6pt}
+\textbf{Models:} Logistic Regression (L2, $C=1$) and Random Forest (300 trees, max depth 4).
+
+\column{0.45\textwidth}
+\textbf{Panel statistics:}\\[4pt]
+\begin{tabular}{ll}
+\toprule
+Metric & Value \\
+\midrule
+Total FEI $\times$ year rows & 645 \\
+Unique FEIs & 98 \\
+Outcome base rate & 49.0\% \\
+Rows with OAI & 24 (3.7\%) \\
+SDUD coverage & 69\% \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\textbf{AE lag window (pre + post):}\\[4pt]
+\begin{tabular}{ll}
+\toprule
+Column & Meaning \\
+\midrule
+\texttt{n\_ae\_tm2} & AEs 2 yr before inspection \\
+\texttt{n\_ae\_tm1} & AEs 1 yr before \\
+\texttt{n\_ae\_t0} & AEs at inspection year \\
+\texttt{n\_ae\_t1} & AEs 1 yr after (outcome) \\
+\texttt{n\_ae\_t2} & AEs 2 yr after \\
+\bottomrule
+\end{tabular}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Model Results: Ablation by Feature Set}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{GroupKFold CV results (mean AUC across 5 folds):}
+
+\vspace{4pt}
+\begin{tabular}{llcc}
+\toprule
+Config & Features & LR AUC & RF AUC \\
+\midrule
+A & \highlight{Text only} (17 LLM) & \highlight{0.611} & 0.569 \\
+B & Text + insp. count & 0.607 & 0.577 \\
+C & Insp. count only & 0.545 & 0.542 \\
+\midrule
+\multicolumn{4}{l}{\textit{Stratified subgroups}} \\
+D & Text, VAI-only FEIs & 0.555 & 0.555 \\
+E & Text, OAI-ever FEIs & 0.560 & 0.484 \\
+\midrule
+\multicolumn{4}{l}{\textit{Random baseline = 0.500}} \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\textbf{Key observations:}
+\begin{itemize}
+  \item Text-only LR beats inspection count baseline by \highlight{+6.6 AUC points}
+  \item Adding inspection count does not help (config B $\approx$ A) — text \emph{subsumes} the structural signal
+  \item RF underperforms LR: small $N$ (645 rows) leads to overfitting
+\end{itemize}
+
+\column{0.42\textwidth}
+\textbf{Config D vs E interpretation:}
+
+\begin{itemize}
+  \item \textbf{Config D (VAI-only, 80 FEIs, 521 rows)}: AUC = 0.555. Text is a \emph{weaker} predictor for VAI-only facilities — their problems are less severe on average, less separable
+  \item \textbf{Config E (OAI-ever, 18 FEIs, 124 rows)}: LR AUC = 0.560, AP = \highlight{0.630}. Small sample, but precision at the high-risk end is good (AP $>$ config D's AP = 0.530)
+\end{itemize}
+
+\vspace{6pt}
+\begin{block}{Implication}
+Predictive signal is concentrated in OAI facilities — facilities with genuinely bad technical problems and already-distributed bad product. VAI text signals are harder to separate.
+\end{block}
+\end{columns}
+\end{frame}
+
+% ── SECTION 7: INSPECTION GAP ANALYSIS ───────────────────────────────────────
+\section{Inspection Gap Analysis}
+
+\begin{frame}{Inspection Gaps Shape What the Trajectory Means}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{AE trajectory by gap length} (inspection-centered quarterly panel, 166 matched inspections):
+
+\vspace{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Gap & $n$ & pre\_rise & persist & mean gap \\
+& & $t_0/t_{-4}$ & $t_{+4}/t_0$ & (yr) \\
+\midrule
+$<$1yr & 22 & 1.189 & 1.054 & 0.6 \\
+\rowcolor{techBlue!15}
+1–2yr & 48 & \textbf{1.275} & 1.064 & 1.5 \\
+2–3.5yr & 50 & 1.038 & 1.063 & 2.7 \\
+$>$3.5yr & 46 & 1.042 & 0.962 & 4.8 \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\textbf{The critical case: 1–2yr gap group}\\
+$t_{-4}$ is within the current inspection cycle (no overlap with previous inspection). This group shows the clearest pre-distribution signal: AEs \textbf{+28\%} in the year before inspection.
+
+\column{0.45\textwidth}
+\textbf{Why gaps matter for interpretation:}
+\begin{itemize}
+  \item For gap $>$2yr: our $t_{-4}$ point (1 year before current inspection) is approximately at the time of the \emph{previous inspection}. The pre-rise comparison is against a post-inspection baseline, not a neutral one.
+  \item For gap $<$1yr: follow-up inspections; already-elevated AEs from the prior inspection cycle persist.
+  \item For gap $>$3.5yr: AEs actually \emph{decline} post-inspection (persist = 0.962) — long inter-inspection windows may allow voluntary corrections, or rare inspections target already-declining facilities.
+\end{itemize}
+
+\vspace{4pt}
+\begin{alertblock}{Refined claim}
+``AEs rise 28\% in the year \emph{before} inspection for annually-inspected facilities (1–2yr gap). FDA is detecting an ongoing quality problem with a $\sim$1 year lag.''
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+% ── SECTION 8: TRAJECTORY ANALYSIS ──────────────────────────────────────────
+\section{Trajectory Analysis}
+
+\begin{frame}{Yearly Trajectory: AEs Peak at Inspection Year}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{5-year window centered on inspection year} (yearly panel, all 645 FEI-year rows):
+
+\vspace{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Window & All & OAI-ever & Hi-sig & Lo-sig \\
+& & (18 FEIs) & VAI (20) & VAI (60) \\
+\midrule
+$t-2$ & 2533 & 2542 & 3360 & 2237 \\
+$t-1$ & 2659 & 2673 & 3585 & 2328 \\
+$t=0$ & \textbf{2727} & \textbf{2716} & \textbf{3738} & \textbf{2374} \\
+$t+1$ & 2413 & 2415 & 3343 & 2084 \\
+$t+2$ & 2343 & 2357 & 3286 & 2001 \\
+\midrule
+pre\_rise & — & 1.069 & \highlight{1.112} & 1.061 \\
+persist & — & 0.868 & \highlight{0.879} & 0.843 \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+{\small ``Hi-sig VAI'' = top-quartile composite of vc\_labcontrols\_share, data\_integrity\_share, joint\_labcontrols\_di}
+
+\column{0.45\textwidth}
+\textbf{Reading the table:}
+\begin{itemize}
+  \item All groups show an \highlight{inverted-V peaking at $t=0$} — FDA inspection is a lagging indicator; harm has been building
+  \item \textbf{High-signal VAI} has the \emph{highest} baseline (3,738), \emph{highest} pre-rise (1.112), and \emph{slowest} post-decline (persist = 0.879 vs 0.843 low-signal)
+  \item Direction is consistent with no-forced-correction story, though effect size is modest
+  \item \textbf{Caveat}: High-signal VAI facilities may simply be \emph{larger manufacturers} — volume control needed (SDUD Medicaid data partially addresses this; 69\% coverage)
+\end{itemize}
+
+\begin{block}{Bottom line}
+AEs peak AT inspection and were rising before. The difference between VAI and OAI post-trajectory is small yearly, but much clearer at quarterly resolution.
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Quarterly Trajectory: Timing of OAI Correction vs.\ VAI Persistence}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{Inspection-centered quarterly panel} (246 inspection events, $\pm$4 quarters = $\pm$1 year):
+
+\vspace{4pt}
+\begin{tabular}{lccc}
+\toprule
+Quarter & All & VAI/NAI & OAI \\
+& (246) & (223) & (23) \\
+\midrule
+$t-4$ & 607 & 608 & 591 \\
+$t-3$ & 647 & — & — \\
+$t-2$ & 674 & — & — \\
+$t-1$ & 669 & — & — \\
+$t=0$ & 682 & 687 & 629 \\
+$t+1$ & 702 & — & — \\
+$t+2$ & \textbf{735} & — & — \\
+$t+3$ & 739 & — & — \\
+$t+4$ & 712 & \highlight{724} & \highlight{604} \\
+\midrule
+pre\_rise & — & 1.130 & 1.065 \\
+persist & — & \highlight{1.053} & \highlight{0.961} \\
+\bottomrule
+\end{tabular}
+
+\column{0.42\textwidth}
+\textbf{What quarterly resolution reveals that yearly misses:}
+\begin{enumerate}
+  \item \textbf{OAI correction works but is delayed}\\
+    AEs continue rising through $t+2$ (market clearance lag), then decline below $t=0$ by $t+4$ ($\approx$12 months post-inspection). Mechanism: corrective action plan submission, manufacturing changeover, product turnover.
+
+  \item \textbf{VAI/NAI: sustained elevation}\\
+    AEs peak at $t+3$ ($\approx$9 months), partially decline but \emph{never return to pre-inspection levels} (persist $= 1.053$). No forced correction $=$ sustained harm.
+
+  \item \textbf{Implication}\\
+    VAI is insufficient for facilities with Lab Controls/DI signals. 483 text can identify which VAI cases should be escalated.
+\end{enumerate}
+\end{columns}
+\end{frame}
+
+% ── SECTION 9: REVERSE CLUSTERING ────────────────────────────────────────────
+\section{Reverse Clustering}
+
+\begin{frame}{Reverse Flow: Cluster AE Trajectories, Characterize by Inspection}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{Method}: KMeans ($k=4$) on trajectory features per FEI (median across panel years):
+\begin{itemize}
+  \item \texttt{slope\_pre}: OLS slope $t_{-2} \to t_0$
+  \item \texttt{slope\_post}: OLS slope $t_0 \to t_{+2}$
+  \item \texttt{persist}: $n\_ae_{t+2} / n\_ae_{t0}$
+  \item \texttt{pre\_rise}: $n\_ae_{t0} / n\_ae_{t-2}$
+\end{itemize}
+
+\vspace{6pt}
+\begin{tabular}{lcccccc}
+\toprule
+Cluster & $n$ & AE $t_0$ & persist & pre & tech & OAI \\
+\midrule
+Flat/rising & 3 & 51 & \highlight{0.96} & \highlight{4.63} & 0.39 & 0 \\
+Spike-correct & 28 & 3420 & 0.93 & 1.14 & \highlight{0.62} & 0.14 \\
+Slow-decline & 66 & 2264 & 0.87 & 1.02 & 0.33 & 0.21 \\
+Flat-low & 2 & 7386 & 0.30 & 1.11 & 0.42 & 0 \\
+\bottomrule
+\end{tabular}
+{\small tech = composite LabControls/DI score; OAI = share ever-OAI}
+
+\column{0.42\textwidth}
+\textbf{Cluster interpretation:}
+\begin{itemize}
+  \item \textbf{Flat/rising (3 FEIs)}: AEs were 4.6$\times$ higher at inspection than 2 years prior, keep rising, \emph{zero OAI ever}. Top candidate: FEI 3002608066 (vc\_labcontrols=0.67, DI=0.67, persist=1.20, any\_oai=0). \highlight{Strategic leniency candidates.}
+  \item \textbf{Spike-correct (28)}: Highest technical signals (0.62), rising pre-inspection, some OAI. Classic Chain 1 facilities.
+  \item \textbf{Slow-decline (66)}: Majority cluster. Gradual decline, moderate signals, 21\% ever-OAI. Typical biennial inspection cycle.
+  \item \textbf{Flat-low (2)}: Extreme AE counts ($>$7,000) collapsing to persist=0.30. Likely market event (recall/withdrawal), not inspection-driven.
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Strategic Leniency Candidates: High-Signal VAI Facilities}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{High-signal VAI facilities} (top-quartile technical score, never OAI), ranked by AE persistence:
+
+\vspace{4pt}
+{\small
+\begin{tabular}{lccccc}
+\toprule
+FEI & AE $t_0$ & AE $t+2$ & persist & tech & OAI? \\
+\midrule
+3011033544 & 2850 & 2754 & \highlight{1.00} & 0.4 & No \\
+3013567704 & 2772 & 2668 & 1.00 & 0.4 & No \\
+3003157498 & 3781 & 3612 & 1.00 & 0.6 & No \\
+3004554612 & 4755 & 4363 & 0.92 & 0.7 & No \\
+3006370524 & 5949 & 5381 & 0.90 & 1.3 & No \\
+3008298016 & 8159 & 6990 & 0.86 & 0.4 & No \\
+\ldots & & & & & \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{4pt}
+Plus \textbf{Flat/rising cluster} FEI 3002608066:\\
+\quad vc\_labcontrols = 0.67, DI = 0.67, persist = 1.20, AEs rising
+
+\column{0.42\textwidth}
+\textbf{What ``strategic leniency'' means here:}
+\begin{itemize}
+  \item These facilities have 483 text that matches the OAI profile (high Lab Controls + DI signals)
+  \item FDA assigned VAI or NAI despite these signals
+  \item Possible explanations:
+  \begin{enumerate}
+    \item Genuine inspector judgement (severity below OAI threshold)
+    \item Strategic leniency to prevent shortage (facility is sole supplier)
+    \item Insufficient inspection depth (under-resourced inspections)
+  \end{enumerate}
+\end{itemize}
+
+\vspace{4pt}
+\begin{alertblock}{Next step to confirm}
+Cross-reference with market concentration: are these facilities sole/dominant suppliers of critical generics? IQVIA or SDUD market share would directly test the shortage-avoidance explanation.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
+% ── SECTION 10: VOLUME ───────────────────────────────────────────────────────
+\section{Volume Normalization}
+
+\begin{frame}{Volume Control: SDUD Medicaid Utilization}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Motivation}: A large manufacturer naturally generates more FAERS reports even at the same defect rate. Raw AE counts conflate facility size with quality.
+
+\vspace{6pt}
+\textbf{Source}: CMS State Drug Utilization Data (SDUD)
+\begin{itemize}
+  \item All 50 states, quarterly, 2015–2024
+  \item 49.5M rows total; filtered to 14 drugs $\times$ 98 FEIs
+  \item Join: SDUD $\{$labeler code $+$ product code$\}$ $\to$ NDC-FEI crosswalk (DailyMed) $\to$ FEI
+\end{itemize}
+
+\vspace{4pt}
+\begin{tabular}{ll}
+\toprule
+Metric & Value \\
+\midrule
+SDUD coverage (FEI-years) & 69\% \\
+Mean annual SDUD units & 237M \\
+Median ae\_rate\_t1 & 49 AEs/M units \\
+Mean ae\_rate\_t1 & 19,394 (skewed) \\
+\bottomrule
+\end{tabular}
+
+\column{0.45\textwidth}
+\textbf{Volume by OAI status:}
+\begin{itemize}
+  \item OAI=0: mean SDUD = 239M units, ae\_rate = 19,847/M
+  \item OAI=1: mean SDUD = 203M units, ae\_rate = 8,925/M
+\end{itemize}
+
+\vspace{4pt}
+\textbf{Interpretation caveats:}
+\begin{itemize}
+  \item Rate is \emph{inverted} vs raw counts: non-OAI has higher rate. Likely a SDUD matching artifact (31\% gap) — facilities without SDUD match have denominator bias when they do have AEs
+  \item SDUD covers Medicaid only ($\sim$20\% of drug market) — not full volume
+  \item \textbf{Recommended use}: Add $\log(\text{sdud\_units})$ as a \emph{covariate} in the predictive model, not as a rate denominator
+\end{itemize}
+
+\vspace{4pt}
+\begin{block}{Bottom line}
+Volume matters but requires careful handling. Current pipeline includes volume; rate normalization is exploratory.
+\end{block}
+\end{columns}
+\end{frame}
+
+% ── SECTION 11: LIMITATIONS ──────────────────────────────────────────────────
+\section{Limitations \& Next Steps}
+
+\begin{frame}{Limitations}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Sample size:}
+\begin{itemize}
+  \item 98 FEIs, 246 inspections, only \textbf{23 OAI inspections}
+  \item Subgroup analyses (Config D, E, clusters) are underpowered
+  \item Treat cluster findings as hypothesis-generating, not confirmatory
+\end{itemize}
+
+\vspace{6pt}
+\textbf{COVID inspection gap:}
+\begin{itemize}
+  \item 2020–2021: only 26 inspections (moratorium)
+  \item Post-2022 inspections have 4-year prior gap — the $t_{-2}$ baseline is in COVID, a very different environment
+  \item AE trends during COVID are confounded by healthcare utilization changes
+\end{itemize}
+
+\vspace{6pt}
+\textbf{FAERS reporting bias:}
+\begin{itemize}
+  \item Serious AEs only; underreporting is non-random
+  \item Reporting rates vary by drug class, year, and market events
+  \item No adjustment for reporting trends
+\end{itemize}
+
+\column{0.47\textwidth}
+\textbf{LLM extraction circularity:}
+\begin{itemize}
+  \item LLM trained/validated against Redica labels; Redica uses same 483 text
+  \item True external validation requires FDA inspector ground truth or clinical outcome linkage
+\end{itemize}
+
+\vspace{6pt}
+\textbf{SDUD volume:}
+\begin{itemize}
+  \item 69\% FEI-year coverage; denominator bias in ae\_rate
+  \item Medicaid only; commercial market (IQVIA) not yet integrated
+\end{itemize}
+
+\vspace{6pt}
+\textbf{Causal identification:}
+\begin{itemize}
+  \item All associations are correlational
+  \item Unobserved confounders (firm-level R\&D investment, country of origin, API source) not controlled
+  \item Strategic leniency interpretation requires market concentration data
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Next Steps}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Immediate (before submission):}
+\begin{enumerate}
+  \item Add $\log(\text{sdud\_units})$ as volume covariate in prediction model (Config F)
+  \item Check whether results hold after excluding 2020–2021 COVID years
+  \item Drug-level analysis: do results hold for each of the 14 APIs separately?
+  \item Expert review of top strategic leniency candidates (FEI 3002608066) — cross-check with recall/import refusal records
+\end{enumerate}
+
+\vspace{6pt}
+\textbf{Medium-term:}
+\begin{enumerate}
+  \item Integrate IQVIA commercial sales for market concentration
+  \item Extend to shortage outcome (UUtah shortage database) — shortage prediction pipeline already built (m01–m10 modules)
+  \item Run paid LLM re-extraction with updated 4-tier severity + scope field
+\end{enumerate}
+
+\column{0.47\textwidth}
+\textbf{Longer-term:}
+\begin{enumerate}
+  \item Link to FDA enforcement actions (warning letters, consent decrees) as additional outcomes
+  \item Build real-time dashboard for FDA/industry use: facility risk score updated after each inspection
+  \item Test on non-Valisure drug universe (expand from 14 to broader generic market)
+  \item Natural experiment: COVID inspection moratorium as exogenous shock — did facilities with pre-COVID high-risk 483 signals show worse outcomes during the gap?
+\end{enumerate}
+
+\vspace{4pt}
+\begin{block}{Target venue}
+INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
+\end{block}
+\end{columns}
+\end{frame}
+
+% ── SECTION 12: SUMMARY ──────────────────────────────────────────────────────
+\section{Summary}
+
+\begin{frame}{Summary: Five Key Messages}
+
+\begin{enumerate}
+  \setlength{\itemsep}{8pt}
+  \item \textbf{LLM text signals predict patient harm.}\\
+    483-derived features achieve AUC = \highlight{0.611} vs 0.545 baseline. Text subsumes the structural inspection signal.
+
+  \item \textbf{Two empirically separable failure pathways.}\\
+    \tech{Technical features} (Lab Controls, DI) $\to$ positive AE correlation. \gov{Governance features} (Quality System) $\to$ zero/negative AE correlation. Theory confirmed without imposing structure.
+
+  \item \textbf{Inspection is a lagging indicator.}\\
+    AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +28\% in the 4 quarters before inspection.
+
+  \item \textbf{OAI corrects in $\sim$3 quarters; VAI shows sustained harm.}\\
+    Quarterly inspection-centered analysis: OAI $\to$ AEs below baseline by $t+4$ (12 months). VAI/NAI $\to$ AEs still elevated at $t+4$ (persist = 1.053).
+
+  \item \textbf{Strategic leniency candidates are identifiable.}\\
+    3 FEIs show rising AEs, high technical 483 signals, and zero OAI ever. Cross-referencing with market concentration will test the shortage-avoidance hypothesis.
+\end{enumerate}
+
+\vspace{8pt}
+\begin{center}
+\textit{Code and pipeline: \texttt{github.com/arsahebi/drug-shortage}}\\
+\textit{Contact: \texttt{amirreza.sahebi@gmail.com}}
+\end{center}
+\end{frame}
+
+% ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
+\appendix
+\section*{Backup Slides}
+
+\begin{frame}{Backup: Full Feature List (17 LLM Features)}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Layer 3 — LLM signal shares} (per inspection):
+\vspace{4pt}
+\begin{tabular}{ll}
+\toprule
+Feature & What it captures \\
+\midrule
+\texttt{severity\_critmajor\_share} & Fraction Crit/Major obs \\
+\texttt{contamination\_llm\_share} & Contamination flag rate \\
+\texttt{data\_integrity\_llm\_share} & DI flag rate \\
+\texttt{patient\_risk\_llm\_share} & Direct patient risk flag \\
+\texttt{investigation\_llm\_share} & Investigation failure rate \\
+\texttt{repeat\_cross\_insp\_share} & Repeat observation rate \\
+\texttt{scope\_facilitywide\_share} & Facility-wide scope share \\
+\texttt{cultural\_root\_cause\_share} & Cultural/systemic root cause \\
+\texttt{vc\_labcontrols\_share} & Lab Controls domain share \\
+\texttt{vc\_qualitysystem\_share} & Quality System domain share \\
+\bottomrule
+\end{tabular}
+
+\column{0.47\textwidth}
+\textbf{Layer 5 — Counts \& joint co-occurrence flags}:
+\vspace{4pt}
+\begin{tabular}{ll}
+\toprule
+Feature & What it captures \\
+\midrule
+\texttt{n\_labcontrols\_obs} & Raw Lab Controls obs count \\
+\texttt{n\_qualitysystem\_obs} & Raw Quality System obs count \\
+\midrule
+\texttt{joint\_labcontrols\_qualitysystem} & Both domains present \\
+\texttt{joint\_labcontrols\_dataintegrity} & Lab Controls + DI present \\
+\texttt{joint\_contamination\_labcontrols} & Contamination + Lab ctrl \\
+\texttt{joint\_qualitysystem\_production} & QSys + Production \\
+\texttt{multi\_domain\_insp} & $\ge$3 domains in inspection \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\textbf{Aggregation}: Per inspection snapshot (one row per inspection event in timeseries).
+\end{columns}
+\end{frame}
+
+\begin{frame}{Backup: Inspection Gap Distribution Detail}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{All drug facilities (23,604 FEIs, 27,431 gap pairs):}
+\vspace{4pt}
+\begin{tabular}{lc}
+\toprule
+Percentile & Gap (years) \\
+\midrule
+P10 & 0.16 \\
+P25 & 1.01 \\
+P50 (median) & 2.11 \\
+P75 & 3.70 \\
+P90 & 5.81 \\
+P95 & 7.17 \\
+Max & 16.26 \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+Gaps $>$ 3yr: 33.3\% of pairs\\
+Gaps $>$ 2yr: 52.7\% of pairs\\
+Gaps $<$ 1yr: 24.6\% of pairs
+
+\column{0.47\textwidth}
+\textbf{By previous inspection classification (our 98 FEIs):}
+\vspace{4pt}
+\begin{tabular}{lccc}
+\toprule
+Prev. class & Mean gap & Median gap & $n$ \\
+\midrule
+NAI & 1.78yr & 1.44yr & 193 \\
+VAI & 1.77yr & 1.55yr & 372 \\
+OAI & \highlight{1.55yr} & 1.41yr & 47 \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\textbf{Finding}: OAI facilities are re-inspected slightly faster (1.55 vs 1.77 mean), but the difference is small ($\Delta = 0.22$ yr). FDA does not dramatically accelerate follow-up for OAI facilities in this sample.
+
+\vspace{4pt}
+Post-COVID gap expansion: pre-2020 median = 1.33yr $\to$ post-2022 median = 4.04yr
+\end{columns}
+\end{frame}
+
+\begin{frame}{Backup: Reverse Cluster Profiles (Full Detail)}
+\textbf{KMeans ($k=4$) on trajectory features, one row per FEI (98 FEIs):}
+
+\vspace{6pt}
+\begin{tabular}{lccccccccc}
+\toprule
+Cluster & $n$ & AE $t_{-2}$ & AE $t_0$ & AE $t_{+2}$ & slope\_pre & slope\_post & persist & pre\_rise & tech\_score \\
+\midrule
+Flat/rising & 3 & 13 & 51 & 59 & 19.3 & 3.7 & 0.955 & 4.629 & 0.389 \\
+Spike-correct & 28 & 3120 & 3420 & 3365 & 149.9 & $-$94.8 & 0.934 & 1.140 & \highlight{0.624} \\
+Slow-decline & 66 & 2300 & 2264 & 2125 & $-$18.1 & $-$86.1 & 0.874 & 1.025 & 0.332 \\
+Flat-low & 2 & 6685 & 7386 & 2212 & 350.5 & $-$2586.8 & 0.300 & 1.105 & 0.417 \\
+\bottomrule
+\end{tabular}
+
+\vspace{8pt}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Flat/rising FEIs (strategic leniency candidates):}
+\begin{itemize}
+  \item FEI 3002608066: vc\_labcontrols=0.67, DI=0.67, persist=1.20
+  \item FEI 3010453141: persist=1.20, tech\_score=0.00 (signals absent — AE rise may be volume-driven)
+  \item FEI 3017573557: persist=0.46, tech\_score=0.30
+\end{itemize}
+\column{0.48\textwidth}
+\textbf{Flat-low FEIs (event-driven):}
+\begin{itemize}
+  \item 2 FEIs with 7,000+ AEs at $t=0$ declining to $\sim$2,200 by $t+2$ (persist=0.30)
+  \item Likely a product recall or market withdrawal — not inspection-driven correction
+  \item Zero OAI: supports proactive voluntary withdrawal before enforcement
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Backup: Panel Files and Pipeline Outputs}
+\begin{tabular}{lll}
+\toprule
+File & Location & Content \\
+\midrule
+\texttt{fei\_ae\_panel.parquet} & \texttt{ae\_validation/outputs/} & Yearly, 645 rows, 29 cols \\
+\texttt{fei\_ae\_panel\_quarterly.parquet} & same & Calendar-quarter, 2470 rows \\
+\texttt{fei\_ae\_panel\_inspection\_centered.parquet} & same & Inspection-event, 246 rows \\
+\texttt{ablation\_metrics.csv} & \texttt{outputs/models/} & AUC/AP for configs A–E \\
+\texttt{ae\_trajectory\_by\_group.csv} & \texttt{outputs/tables/} & Yearly traj. by OAI/VAI group \\
+\texttt{high\_signal\_vai\_flagged.csv} & same & 20 high-signal VAI FEIs \\
+\texttt{ae\_cluster\_summary.csv} & same & Cluster mean profiles \\
+\texttt{ae\_cluster\_fei\_list.csv} & same & FEI-level cluster labels \\
+\midrule
+\texttt{ablation\_auc\_bar.png} & \texttt{outputs/figures/} & Bar chart configs A–E \\
+\texttt{rf\_feature\_importance.png} & same & RF MDI importances \\
+\texttt{ae\_trajectory\_by\_group.png} & same & 5-point trajectory plot \\
+\texttt{ae\_cluster\_trajectories.png} & same & Cluster trajectory lines \\
+\bottomrule
+\end{tabular}
+
+\vspace{8pt}
+\textbf{Pipeline entry points:}\\[4pt]
+\begin{tabular}{ll}
+\texttt{python 01\_build\_fei\_ae\_panel.py --granularity yearly} & Yearly panel + SDUD \\
+\texttt{python 01\_build\_fei\_ae\_panel.py --granularity inspection} & Inspection-centered quarterly \\
+\texttt{python 03\_text\_only\_model.py} & Ablation + trajectory analysis \\
+\texttt{python 04\_ae\_trajectory\_clustering.py} & Reverse clustering \\
+\end{tabular}
+\end{frame}
+
+\end{document}
