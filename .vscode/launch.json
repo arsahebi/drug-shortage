@@ -2,10 +2,31 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "ae — 01 build FEI-AE panel",
+            "name": "ae — 01 panel (yearly)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/01_build_fei_ae_panel.py",
+            "args": ["--granularity", "yearly"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "ae — 01 panel (inspection-centered)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/01_build_fei_ae_panel.py",
+            "args": ["--granularity", "inspection"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "ae — 01 panel (quarterly)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/01_build_fei_ae_panel.py",
+            "args": ["--granularity", "quarterly"],
             "console": "integratedTerminal",
             "justMyCode": false,
             "python": "${workspaceFolder}/.venv/bin/python"
