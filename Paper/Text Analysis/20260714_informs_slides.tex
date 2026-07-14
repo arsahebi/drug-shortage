@@ -22,9 +22,8 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit}
 \usepackage{colortbl}
-\usepackage{caption}
-\usepackage{enumitem}
 \usepackage{hyperref}
+\pdfstringdefDisableCommands{\let\\\space\let$\relax}
 
 % ── Colors ───────────────────────────────────────────────────────────────────
 \definecolor{ncsuRed}{RGB}{204,0,0}
@@ -47,14 +46,14 @@
 \newcommand{\gov}[1]{{\color{govGreen}\textbf{#1}}}
 
 % ── Title ────────────────────────────────────────────────────────────────────
-\title[483 Text $\to$ Adverse Event Prediction]{%
-  From Regulatory Text to Patient Harm:\\
-  LLM Extraction of FDA 483 Signals\\
+\title[483 Text to Adverse Event Prediction]{%
+  From Regulatory Text to Patient Harm:\texorpdfstring{\\}{ }
+  LLM Extraction of FDA 483 Signals\texorpdfstring{\\}{ }
   and Adverse Event Prediction}
 
 \author[Sahebi-Fakhrabad]{%
-  Amirreza Sahebi-Fakhrabad\\[2pt]
-  {\small Poole College of Management\\
+  Amirreza Sahebi-Fakhrabad\texorpdfstring{\\[2pt]}{ }
+  {\small Poole College of Management\texorpdfstring{\\}{ }
   North Carolina State University}}
 
 \date{INFORMS Annual Meeting 2026}
