@@ -290,8 +290,42 @@ def main() -> None:
     X_both = np.hstack([X_text, X_insp_fallback])
     results_B = _cv_evaluate(X_both, y, groups, "B: Text + Insp")
 
+    # ── Config D: VAI-only facilities (OAI moderation hypothesis) ──
+    # Facilities that received only VAI (never OAI in any year in this panel)
+    # had bad 483 signals but no forced corrective action — do their signals
+    # predict sustained AEs better than the full population?
+    results_D = []
+    if "any_oai" in df.columns:
+        fei_ever_oai = df.groupby("fei")["any_oai"].max()
+        vai_feis = fei_ever_oai[fei_ever_oai == 0].index
+        df_vai = df[df["fei"].isin(vai_feis)].copy()
+        print(f"\nConfig D: VAI-only facilities ({df_vai['fei'].nunique()} FEIs, {len(df_vai)} rows)…")
+        if len(df_vai) >= 20 and df_vai["ae_high_t1"].nunique() > 1:
+            X_vai  = df_vai[TEXT_FEATURES].fillna(0).values
+            y_vai  = df_vai["ae_high_t1"].values.astype(int)
+            grp_vai = df_vai["fei"].astype(int).values
+            results_D = _cv_evaluate(X_vai, y_vai, grp_vai, "D: VAI-only (text)")
+        else:
+            print("  Too few rows or single-class outcome — skipping Config D.")
+    else:
+        print("\nConfig D skipped — any_oai column not in panel (run 01 first).")
+
+    # ── Config E: OAI facilities only (for contrast with D) ──
+    results_E = []
+    if "any_oai" in df.columns:
+        fei_has_oai = fei_ever_oai[fei_ever_oai == 1].index
+        df_oai = df[df["fei"].isin(fei_has_oai)].copy()
+        print(f"\nConfig E: OAI-ever facilities ({df_oai['fei'].nunique()} FEIs, {len(df_oai)} rows)…")
+        if len(df_oai) >= 20 and df_oai["ae_high_t1"].nunique() > 1:
+            X_oai   = df_oai[TEXT_FEATURES].fillna(0).values
+            y_oai   = df_oai["ae_high_t1"].values.astype(int)
+            grp_oai = df_oai["fei"].astype(int).values
+            results_E = _cv_evaluate(X_oai, y_oai, grp_oai, "E: OAI-ever (text)")
+        else:
+            print("  Too few rows or single-class outcome — skipping Config E.")
+
     # ── Compile and save ──
-    all_results = results_A + results_B + results_C
+    all_results = results_A + results_B + results_C + results_D + results_E
     metrics = pd.DataFrame(all_results)
 
     OUT_MOD.mkdir(parents=True, exist_ok=True)

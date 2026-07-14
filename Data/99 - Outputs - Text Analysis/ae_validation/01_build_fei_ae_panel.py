@@ -31,7 +31,9 @@ Columns
   fei, year
   n_inspections_in_year  : 483 inspections issued to this FEI in year t
   snapshot_date          : date of the inspection used for text features
-  [TEXT_FEATURES]        : 10 LLM signal shares (see list below)
+  n_oai, n_vai, n_nai    : inspection outcome counts (from Inspections Details.xlsx)
+  any_oai                : 1 if FEI received ≥1 OAI in this panel year
+  [TEXT_FEATURES]        : 17 LLM signal shares + Layer 5 counts/joints
   n_ae_t0                : FAERS serious AEs attributed to FEI in year t
   n_ae_t1                : …in year t+1
   n_ae_t2                : …in year t+2
@@ -53,6 +55,7 @@ OUT    = HERE / "outputs"
 TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica.csv"
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
+INSP_DETAILS = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 
 OUT_PANEL = OUT / "fei_ae_panel.parquet"
 
@@ -177,6 +180,38 @@ def _add_lags(panel: pd.DataFrame, ae: pd.DataFrame) -> pd.DataFrame:
     return panel
 
 
+# ── Step 3b: Load OAI/VAI/NAI outcomes from Inspections Details ───────────────
+
+def _load_inspection_outcomes() -> pd.DataFrame:
+    """
+    Load FDA inspection classifications from Inspections Details.xlsx.
+    Aggregate to FEI × fiscal year: n_oai, n_vai, n_nai, any_oai.
+    """
+    df = pd.read_excel(INSP_DETAILS)
+    df.columns = [c.strip() for c in df.columns]
+    df["fei"]  = pd.to_numeric(df["FEI Number"], errors="coerce").astype("Int64")
+    df["year"] = pd.to_numeric(df["Fiscal Year"], errors="coerce").astype("Int64")
+    df = df.dropna(subset=["fei", "year", "Classification"])
+
+    # keep drug/pharma inspections only (optional filter — broad inclusion)
+    drug_mask = df["Project Area"].str.contains("Drug", na=False, case=False)
+    df = df[drug_mask].copy()
+
+    df["is_oai"] = df["Classification"].str.contains("OAI", na=False).astype(int)
+    df["is_vai"] = df["Classification"].str.contains("VAI", na=False).astype(int)
+    df["is_nai"] = df["Classification"].str.contains("NAI", na=False).astype(int)
+
+    agg = (
+        df.groupby(["fei", "year"], as_index=False)
+          .agg(n_oai=("is_oai", "sum"),
+               n_vai=("is_vai", "sum"),
+               n_nai=("is_nai", "sum"))
+    )
+    agg["any_oai"] = (agg["n_oai"] > 0).astype(int)
+    agg = agg.rename(columns={"year": "panel_year"})
+    return agg
+
+
 # ── Step 4: Count inspections per FEI × year ─────────────────────────────────
 
 def _inspection_counts(ts: pd.DataFrame) -> pd.DataFrame:
@@ -215,16 +250,26 @@ def main() -> None:
     panel = panel.merge(insp_counts, on=["fei", "panel_year"], how="left")
     panel["n_inspections_in_year"] = panel["n_inspections_in_year"].fillna(0).astype(int)
 
+    print("Loading inspection outcomes (OAI/VAI/NAI)…")
+    outcomes = _load_inspection_outcomes()
+    print(f"  {len(outcomes)} FEI × year rows with outcome data, {outcomes['fei'].nunique()} FEIs")
+    panel = panel.merge(outcomes, on=["fei", "panel_year"], how="left")
+    for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
+        panel[col] = panel[col].fillna(0).astype(int)
+
     # Final column order
-    id_cols   = ["fei", "panel_year", "snapshot_date", "n_inspections_in_year"]
-    ae_cols   = ["n_ae_t0", "n_ae_t1", "n_ae_t2", "n_drug_fei_pairs"]
-    final     = panel[id_cols + TEXT_FEATURES + ae_cols].copy()
+    id_cols      = ["fei", "panel_year", "snapshot_date", "n_inspections_in_year"]
+    outcome_cols = ["n_oai", "n_vai", "n_nai", "any_oai"]
+    ae_cols      = ["n_ae_t0", "n_ae_t1", "n_ae_t2", "n_drug_fei_pairs"]
+    final        = panel[id_cols + outcome_cols + TEXT_FEATURES + ae_cols].copy()
 
     n_with_ae = final["n_ae_t1"].notna().sum()
+    n_with_oai = final["any_oai"].sum()
     print(f"\nPanel summary:")
-    print(f"  Total rows (FEI × year): {len(final)}")
-    print(f"  Rows with t+1 AE data:   {n_with_ae}")
-    print(f"  FEIs with any AE data:   {final[final['n_ae_t1'].notna()]['fei'].nunique()}")
+    print(f"  Total rows (FEI × year):  {len(final)}")
+    print(f"  Rows with t+1 AE data:    {n_with_ae}")
+    print(f"  FEIs with any AE data:    {final[final['n_ae_t1'].notna()]['fei'].nunique()}")
+    print(f"  FEI-years with OAI:       {n_with_oai} ({n_with_oai/len(final):.1%})")
     print(f"\n  n_ae_t1 distribution:")
     print(final["n_ae_t1"].describe().to_string())
 
