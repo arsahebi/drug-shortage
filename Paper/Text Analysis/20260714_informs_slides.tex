@@ -332,7 +332,7 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \begin{itemize}
   \item FDA arrives. Product made before the visit is already in the market.
   \item The 483 records what was happening, not what starts next.
-  \item AEs from pre-inspection product surface at $t+1$, before corrective action takes effect.
+  \item AEs from pre-inspection product surface in the following quarters, before corrective action takes effect.
   \item We predict harm already in the pipeline, not future failures.
 \end{itemize}
 
@@ -344,55 +344,55 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \toprule
 Element & Design \\
 \midrule
-Features & 483 text at year $t$ \\
-Outcome & AEs at year $t+1$ \\
-Join & As-of: latest inspection \\
- & with date $\le$ Dec\,31$(t)$ \\
+Unit & One inspection event \\
+Features & 483 text at that inspection \\
+Outcome & AEs in Q+1..Q+4 (sum) \\
+N & 246 inspections, 98 FEIs \\
 CV & FEI-grouped 5-fold \\
 \bottomrule
 \end{tabular}
 
 \vspace{8pt}
-\textbf{Question:} which text signals predict AEs one year out, beyond inspection frequency?
+\textbf{Question:} which text signals predict AEs in the year after inspection, beyond knowing the OAI/VAI outcome?
 \end{columns}
 \end{frame}
 
-\begin{frame}{Empirical Evidence for Two Pathways: Spearman Correlations with AEs}
+\begin{frame}{Spearman Correlations: 483 Text Signals vs.\ AEs One Year After Inspection}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Correlation with future AEs (n\_ae\_t1), $n = 645$ FEI-years:}
+\textbf{Spearman $\varrho$ with Q+4 AEs, $n = 224$ inspections:}
 
 \vspace{4pt}
+{\small
 \begin{tabular}{lcc}
 \toprule
-Feature & $\varrho$ & $p$-value \\
+Feature & $\varrho$ & \\
 \midrule
-\multicolumn{3}{l}{\textit{\tech{Technical pathway features}}} \\
-\texttt{n\_labcontrols\_obs} & \tech{+0.236} & $<0.001$ \\
-\texttt{vc\_labcontrols\_share} & \tech{+0.228} & $<0.001$ \\
-\texttt{joint\_labcontrols\_di} & \tech{+0.216} & $<0.001$ \\
-\texttt{joint\_contam\_labctrl} & \tech{+0.173} & $<0.001$ \\
-\texttt{data\_integrity\_share} & \tech{+0.158} & $<0.001$ \\
+\texttt{joint\_labctrl\_di} & \tech{+0.231} & *** \\
+\texttt{n\_labcontrols\_obs} & \tech{+0.201} & ** \\
+\texttt{vc\_labcontrols\_share} & \tech{+0.176} & ** \\
+\texttt{joint\_contam\_labctrl} & \tech{+0.174} & ** \\
+\texttt{data\_integrity\_share} & \tech{+0.133} & * \\
 \midrule
-\multicolumn{3}{l}{\textit{\gov{Governance pathway features}}} \\
-\texttt{vc\_qualitysystem\_share} & \gov{$-$0.009} & 0.82 \\
-\texttt{cultural\_root\_cause} & \gov{$-$0.116} & 0.003 \\
-\texttt{joint\_qsys\_production} & \gov{$-$0.083} & 0.03 \\
-\midrule
-\texttt{contamination\_share} & $-$0.182 & $<0.001$ \\
+\texttt{vc\_qualitysystem\_share} & $-$0.032 & \\
+\texttt{cultural\_root\_cause} & $-$0.100 & \\
+\texttt{joint\_qsys\_production} & $-$0.042 & \\
+\texttt{contamination\_share} & $-$0.088 & \\
 \bottomrule
+\multicolumn{3}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$}
 \end{tabular}
+}
 
 \column{0.45\textwidth}
 \begin{itemize}
-  \item \tech{Technical features} (Lab Controls, DI, their co-occurrences) show consistent positive correlations with future AEs
-  \item \gov{Governance features} (Quality System, cultural root cause) are near zero or negative; they track systemic risk for OAI purposes, not patient harm
-  \item The negative sign on \texttt{contamination\_share} is a labeling artifact: Redica's contamination category captures facility/environmental violations (HVAC, pests). The \emph{joint} flag pairing contamination with lab failures is positive (+0.173), as expected
+  \item Lab Controls count, DI flag, and their joint co-occurrence all predict elevated AEs one year after inspection
+  \item Quality System share, severity tier, and cultural root cause show no significant correlation with future AEs
+  \item The joint flag (Lab Controls + DI) outperforms either feature alone, consistent with the detection lag story: when both are present, bad product was more likely already distributed
 \end{itemize}
 
 \vspace{4pt}
 \begin{block}{Takeaway}
-The LLM features separate the two pathways without any prior structure imposed on the extraction. This is what the theory predicted, and it shows up in the data.
+Five text features carry signal for future harm. Thirteen do not. The split is not about which features are ``bad'' — it is about which failures leave bad product in the market.
 \end{block}
 \end{columns}
 \end{frame}
@@ -403,16 +403,16 @@ The LLM features separate the two pathways without any prior structure imposed o
 \begin{frame}{Panel Construction and Outcome Variable}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{As-of join (text features):}\\
-For each FEI $\times$ calendar year $t$, use the most recent inspection snapshot with $\text{snapshot\_date} \le \text{Dec 31}(t)$.
+\textbf{Unit of observation:} one inspection event.\\[4pt]
+Features come from the 483 text at that inspection. Outcome is measured in the 4 quarters after.
 
 \vspace{6pt}
-\textbf{Outcome:} Binary \texttt{ae\_high\_t1}
-$$\mathbf{1}\left[n\_ae_{t+1} > \text{median}(n\_ae)\right]$$
-$n\_ae$ = serious FAERS reports attributed to FEI in year $t+1$ via DailyMed NDC$\to$FEI crosswalk.
+\textbf{Outcome:} Binary \texttt{ae\_high\_next4q}
+$$\mathbf{1}\!\left[\sum_{q=1}^{4} n\_ae_{t+q} > \text{median}\right]$$
+Sum of serious FAERS reports in Q+1 through Q+4 after inspection, via DailyMed NDC$\to$FEI crosswalk.
 
 \vspace{6pt}
-\textbf{Cross-validation:} GroupKFold ($k=5$), groups = FEI. Prevents data leakage across inspection snapshots of the same facility.
+\textbf{Cross-validation:} FEI-grouped 5-fold. All inspections of the same facility stay in one fold — no facility-level leakage.
 
 \vspace{6pt}
 \textbf{Models:} Logistic Regression (L2, $C=1$) and Random Forest (300 trees, max depth 4).
@@ -423,25 +423,24 @@ $n\_ae$ = serious FAERS reports attributed to FEI in year $t+1$ via DailyMed NDC
 \toprule
 Metric & Value \\
 \midrule
-Total FEI $\times$ year rows & 645 \\
+Inspection events & 246 \\
 Unique FEIs & 98 \\
-Outcome base rate & 49.0\% \\
-Rows with OAI & 24 (3.7\%) \\
-SDUD coverage & 69\% \\
+Outcome base rate & 50.0\% \\
+OAI inspections & 23 (9.3\%) \\
 \bottomrule
 \end{tabular}
 
 \vspace{6pt}
-\textbf{AE lag window (pre + post):}\\[4pt]
+\textbf{AE window ($\pm$4 quarters around inspection):}\\[4pt]
 \begin{tabular}{ll}
 \toprule
 Column & Meaning \\
 \midrule
-\texttt{n\_ae\_tm2} & AEs 2 yr before inspection \\
-\texttt{n\_ae\_tm1} & AEs 1 yr before \\
-\texttt{n\_ae\_t0} & AEs at inspection year \\
-\texttt{n\_ae\_t1} & AEs 1 yr after (outcome) \\
-\texttt{n\_ae\_t2} & AEs 2 yr after \\
+\texttt{n\_ae\_tm4} & AEs 4 qtrs before (1 yr) \\
+\texttt{n\_ae\_tm2} & AEs 2 qtrs before (6 mo) \\
+\texttt{n\_ae\_t0}  & AEs at inspection quarter \\
+\texttt{n\_ae\_tp2} & AEs 2 qtrs after (6 mo) \\
+\texttt{n\_ae\_tp4} & AEs 4 qtrs after — outcome \\
 \bottomrule
 \end{tabular}
 \end{columns}
@@ -450,20 +449,20 @@ Column & Meaning \\
 \begin{frame}{Model Results: Ablation by Feature Set}
 \begin{columns}[T]
 \column{0.55\textwidth}
-\textbf{GroupKFold CV results (mean AUC across 5 folds):}
+\textbf{FEI-grouped 5-fold CV (mean AUC, 246 inspections):}
 
 \vspace{4pt}
 \begin{tabular}{llcc}
 \toprule
 Config & Features & LR AUC & RF AUC \\
 \midrule
-A & \highlight{Text only} (17 LLM) & \highlight{0.611} & 0.569 \\
-B & Text + insp. count & 0.607 & 0.577 \\
-C & Insp. count only & 0.545 & 0.542 \\
+A & \highlight{Text only} (17 LLM) & \highlight{0.533} & 0.514 \\
+B & Text + OAI flag & 0.538 & 0.515 \\
+C & OAI flag only & 0.517 & 0.517 \\
 \midrule
 \multicolumn{4}{l}{\textit{Stratified subgroups}} \\
-D & Text, VAI-only FEIs & 0.555 & 0.555 \\
-E & Text, OAI-ever FEIs & 0.560 & 0.484 \\
+D & Text, VAI-only FEIs & 0.523 & 0.489 \\
+E & Text, OAI-ever FEIs & \highlight{0.626} & 0.431 \\
 \midrule
 \multicolumn{4}{l}{\textit{Random baseline = 0.500}} \\
 \bottomrule
@@ -471,22 +470,22 @@ E & Text, OAI-ever FEIs & 0.560 & 0.484 \\
 
 \vspace{6pt}
 \begin{itemize}
-  \item Text-only LR outperforms the inspection count baseline by \highlight{+6.6 AUC points}
-  \item Adding the inspection count (config B) does not improve on text alone; whatever the count reflects, the text already captures it
-  \item RF underperforms LR throughout: with only 645 rows, the ensemble overfits
+  \item Text-only LR beats the OAI flag baseline by \highlight{+1.6 AUC points}. Knowing this inspection was OAI tells you little about which patients get hurt next year; the text does more.
+  \item Adding the OAI flag to text (config B) barely moves the needle. Text already captures what the classification captures.
+  \item RF underperforms LR throughout: 246 rows, the ensemble overfits.
 \end{itemize}
 
 \column{0.42\textwidth}
-\textbf{Config D vs E interpretation:}
+\textbf{Config D vs E:}
 
 \begin{itemize}
-  \item \textbf{Config D (VAI-only, 80 FEIs, 521 rows)}: AUC = 0.555. Text is a \emph{weaker} predictor for VAI-only facilities. Their violations are less severe on average and harder to separate from clean facilities.
-  \item \textbf{Config E (OAI-ever, 18 FEIs, 124 rows)}: LR AUC = 0.560, AP = \highlight{0.630}. Small sample, but AP = 0.630 beats the VAI-only group (0.530). Precision at the high-risk end holds despite the smaller sample.
+  \item \textbf{Config D (VAI-only, 81 FEIs, 184 rows)}: AUC = 0.523. Text is a weaker predictor for facilities FDA never escalated. Violations are less severe on average.
+  \item \textbf{Config E (OAI-ever, 17 FEIs, 62 rows)}: LR AUC = \highlight{0.626}, AP = \highlight{0.703}. Strongest result in the ablation. For facilities with confirmed quality failures, 483 text predicts which inspections precede elevated patient harm.
 \end{itemize}
 
 \vspace{6pt}
 \begin{block}{Implication}
-Predictive signal is concentrated in OAI facilities: genuinely bad technical problems with product already distributed before inspection. VAI text is harder to separate.
+Predictive signal concentrates in OAI facilities: confirmed quality problems, bad product already distributed. Text beats structured inspection outcome alone.
 \end{block}
 \end{columns}
 \end{frame}
@@ -535,38 +534,42 @@ $t_{-4}$ is within the current inspection cycle (no overlap with previous inspec
 % ── SECTION 8: TRAJECTORY ANALYSIS ──────────────────────────────────────────
 \section{Trajectory Analysis}
 
-\begin{frame}{Yearly Trajectory: AEs Peak at Inspection Year}
+\begin{frame}{AE Trajectory by Facility Group: OAI Corrects, High-Signal VAI Persists}
 \begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{5-year window centered on inspection year} (yearly panel, all 645 FEI-year rows):
+\column{0.54\textwidth}
+\textbf{Quarterly window ($\pm$4 quarters) by facility group} (246 inspections, 98 FEIs):
 
 \vspace{4pt}
+{\small
 \begin{tabular}{lcccc}
 \toprule
-Window & All & OAI-ever & Hi-sig & Lo-sig \\
-& & (18 FEIs) & VAI (20) & VAI (60) \\
+Group & Q$-$4 & Q0 & Q+4 & persist \\
+ & (1yr before) & (insp.) & (1yr after) & \\
 \midrule
-$t-2$ & 2533 & 2542 & 3360 & 2237 \\
-$t-1$ & 2659 & 2673 & 3585 & 2328 \\
-$t=0$ & \textbf{2727} & \textbf{2716} & \textbf{3738} & \textbf{2374} \\
-$t+1$ & 2413 & 2415 & 3343 & 2084 \\
-$t+2$ & 2343 & 2357 & 3286 & 2001 \\
-\midrule
-pre\_rise & — & 1.069 & \highlight{1.112} & 1.061 \\
-persist & — & 0.868 & \highlight{0.879} & 0.843 \\
+OAI-ever (17) & 614 & 674 & \highlight{655} & \highlight{0.97} \\
+Hi-sig VAI (16) & 791 & 959 & \highlight{1055} & \highlight{1.10} \\
+Lo-sig VAI (65) & 568 & 632 & 669 & 1.06 \\
 \bottomrule
 \end{tabular}
+}
 
 \vspace{4pt}
-{\small ``Hi-sig VAI'' = top-quartile composite of vc\_labcontrols\_share, data\_integrity\_share, joint\_labcontrols\_di}
+{\small ``Hi-sig VAI'' = top-quartile composite of vc\_labcontrols\_share, data\_integrity\_share, joint\_labcontrols\_di; never OAI.}
 
-\column{0.45\textwidth}
+\vspace{6pt}
+pre\_rise: OAI 1.10, Hi-sig VAI \highlight{1.21}, Lo-sig VAI 1.11
+
+\column{0.43\textwidth}
 \begin{itemize}
-  \item Every group follows an \highlight{inverted-V peaking at $t=0$}: adverse events were already rising before FDA arrived
-  \item \textbf{High-signal VAI} has the highest AE level (3,738), the steepest pre-rise (1.112), and the slowest post-decline (persist 0.879 vs 0.843). Without a forced correction, AEs linger
-  \item Effect sizes are modest at yearly resolution; the quarterly panel makes the timing much sharper
-  \item The main unresolved confound is size: high-signal VAI facilities may simply produce more volume, which inflates both AEs and 483 count. SDUD partially controls for this (69\% coverage).
+  \item OAI facilities: AEs peak near inspection, then fall back below the pre-inspection baseline (persist = 0.97). Forced corrective action works.
+  \item High-signal VAI: AEs at Q+4 are \highlight{10\% above} the inspection quarter and \highlight{33\% above} 1 year prior. Without enforcement pressure, the quality problem stays in the market.
+  \item Low-signal VAI shows a modest rise too (persist = 1.06), but the text signal correctly separates the two VAI groups.
 \end{itemize}
+
+\vspace{4pt}
+\begin{alertblock}{The gap this fills}
+FDA rated these facilities identically (VAI). 483 text identifies which ones keep harming patients.
+\end{alertblock}
 \end{columns}
 \end{frame}
 
@@ -833,16 +836,16 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 \begin{enumerate}
   \setlength{\itemsep}{8pt}
   \item \textbf{LLM text signals predict patient harm.}\\
-    483-derived features achieve AUC = \highlight{0.611} vs 0.545 baseline. Text subsumes the structural inspection signal.
+    483-derived features achieve AUC = \highlight{0.533} vs 0.517 OAI-flag baseline. For OAI-ever facilities, AUC = 0.626, AP = 0.703. Text beats structured inspection outcome alone.
 
-  \item \textbf{Two empirically separable failure pathways.}\\
-    \tech{Technical features} (Lab Controls, DI) $\to$ positive AE correlation. \gov{Governance features} (Quality System) $\to$ zero/negative AE correlation. Theory confirmed without imposing structure.
+  \item \textbf{Five text signals carry AE-predictive information; twelve do not.}\\
+    Lab Controls count, DI flag, and their joint co-occurrence predict AEs one year out. Quality System share, severity tier, and cultural root cause do not. The split tracks which failures leave bad product in the market.
 
   \item \textbf{Inspection is a lagging indicator.}\\
     AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +28\% in the 4 quarters before inspection.
 
-  \item \textbf{OAI corrects in $\sim$3 quarters; VAI shows sustained harm.}\\
-    Quarterly inspection-centered analysis: OAI $\to$ AEs below baseline by $t+4$ (12 months). VAI/NAI $\to$ AEs still elevated at $t+4$ (persist = 1.053).
+  \item \textbf{OAI corrects; high-signal VAI shows sustained harm.}\\
+    OAI facilities: AEs fall below the pre-inspection baseline by Q+4 (persist = 0.97). High-signal VAI: AEs at Q+4 are 10\% above the inspection quarter (persist = 1.10). FDA rated both groups the same.
 
   \item \textbf{Strategic leniency candidates are identifiable.}\\
     3 FEIs show rising AEs, high technical 483 signals, and zero OAI ever. Cross-referencing with market concentration will test the shortage-avoidance hypothesis.

@@ -63,7 +63,7 @@ HERE     = Path(__file__).resolve().parent
 OUT      = HERE / "outputs"
 OUT_TABS = OUT / "tables"
 OUT_FIGS = OUT / "figures"
-PANEL    = OUT / "fei_ae_panel.parquet"
+PANEL    = OUT / "fei_ae_panel_inspection_centered.parquet"
 
 TEXT_FEATURES = [
     # individual shares / rates
@@ -108,9 +108,10 @@ FEATURE_LABELS = {
 }
 
 AE_LAGS = {
-    "n_ae_t0": "Lag 0 (same year)",
-    "n_ae_t1": "Lag +1 yr",
-    "n_ae_t2": "Lag +2 yr",
+    "n_ae_t0":   "Q0 (inspection qtr)",
+    "n_ae_tp1":  "Q+1 (0–3 mo after)",
+    "n_ae_tp2":  "Q+2 (3–6 mo after)",
+    "n_ae_tp4":  "Q+4 (9–12 mo after)",
 }
 
 
@@ -323,8 +324,8 @@ def main() -> None:
         corr_tbl.to_csv(OUT_TABS / "lag_correlation_table.csv", index=False)
         print(f"  Saved → {OUT_TABS / 'lag_correlation_table.csv'}")
 
-    print(f"\nCorrelations at lag+1 (sorted by |ρ|):")
-    top = (corr_tbl[corr_tbl["lag"] == "n_ae_t1"]
+    print(f"\nCorrelations at Q+4 / 1-year-after (sorted by |ρ|):")
+    top = (corr_tbl[corr_tbl["lag"] == "n_ae_tp4"]
            .sort_values("spearman_r", key=abs, ascending=False)
            [["feature_label", "spearman_r", "p_value", "sig", "n"]])
     print(top.to_string(index=False))
@@ -341,10 +342,10 @@ def main() -> None:
         print("Plotting lag profile…")
         plot_lag_profile(corr_tbl, features, OUT_FIGS / "lag_profile_all_features.png")
 
-    print("Plotting scatter(s) at lag+1…")
+    print("Plotting scatter(s) at Q+4…")
     for feat in features:
         fname = feat.replace("_share", "").replace("_llm", "")
-        plot_scatter(df, feat, "n_ae_t1", OUT_FIGS / f"scatter_{fname}_lag1.png")
+        plot_scatter(df, feat, "n_ae_tp4", OUT_FIGS / f"scatter_{fname}_qtp4.png")
 
     print("\nDone.")
 

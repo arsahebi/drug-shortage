@@ -2,22 +2,21 @@
 03_text_only_model.py
 ────────────────────────────────────────────────────────────────────────────
 Predictive model: do LLM text signals forecast above-median adverse event
-volume at the facility level (FEI × year, predicting year t+1)?
+volume at the facility level, 4 quarters after inspection?
 
-This script answers the core research question for the paper:
-  "Text features extracted by LLM from 483 observations predict
-   facility-level patient harm, measured by FAERS serious AE counts,
-   one year in advance."
+Unit of observation: one inspection event (246 total, 98 FEIs, 2018–2026).
+Features: 17 LLM text signals from the 483 observations at that inspection.
+Outcome: binary — were AEs in the 4 quarters after inspection above median?
+         ae_high_next4q = 1 if sum(n_ae_tp1..tp4) > median.
 
-Three model configurations are compared (ablation):
-  A. Text only       — LLM signals from 483 text
-  B. Text + Insp     — Text + inspection outcome counts (OAI/VAI/WL)
-  C. Insp only       — Inspection counts only (baseline)
-
-Binary outcome: ae_high_t1 = 1 if FEI's n_ae_t1 > per-drug-FEI-pair median.
+Three model configurations (ablation):
+  A. Text only       — 17 LLM signals from 483 text
+  B. Text + OAI flag — Text + whether this inspection was OAI (structured baseline)
+  C. OAI flag only   — just the OAI/VAI/NAI outcome (what structured data alone tells you)
 
 Models: Logistic Regression (L2) and Random Forest.
-Evaluation: GroupKFold cross-validation grouped by FEI (no data leakage).
+Evaluation: FEI-grouped 5-fold CV (all inspections of the same facility stay
+            in one fold — prevents facility-level data leakage).
 
 Outputs
 ───────
@@ -55,7 +54,7 @@ OUT       = HERE / "outputs"
 OUT_TABS  = OUT / "tables"
 OUT_FIGS  = OUT / "figures"
 OUT_MOD   = OUT / "models"
-PANEL     = OUT / "fei_ae_panel.parquet"
+PANEL     = OUT / "fei_ae_panel_inspection_centered.parquet"
 
 # Inspection features from shortage prediction pipeline (optional enrichment)
 SP_CODE   = HERE.parent.parent.parent / "Data" / "99 - Outputs - Shortage Prediction" / "code"
@@ -109,9 +108,13 @@ SEED = 42
 # ── Outcome construction ──────────────────────────────────────────────────────
 
 def _build_outcome(df: pd.DataFrame) -> pd.DataFrame:
-    """Binary: ae_high_t1 = 1 if n_ae_t1 > median across all FEI-years."""
+    """Binary: ae_high_next4q = 1 if total AEs in Q+1..Q+4 > median across all inspections."""
     df = df.copy()
-    df["ae_high_t1"] = (df["n_ae_t1"] > df["n_ae_t1"].median()).astype(int)
+    df["n_ae_next4q"] = (
+        df["n_ae_tp1"].fillna(0) + df["n_ae_tp2"].fillna(0)
+        + df["n_ae_tp3"].fillna(0) + df["n_ae_tp4"].fillna(0)
+    )
+    df["ae_high_next4q"] = (df["n_ae_next4q"] > df["n_ae_next4q"].median()).astype(int)
     return df
 
 
@@ -215,7 +218,7 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(configs, fontsize=10)
     ax.set_ylabel("Mean AUC (GroupKFold CV)", fontsize=10)
-    ax.set_title("Ablation: text vs. inspection features for AE prediction\n(outcome: above-median AEs at facility, t+1)",
+    ax.set_title("Ablation: text vs. inspection features for AE prediction\n(outcome: above-median AEs in 4 quarters after inspection)",
                  fontsize=9)
     ax.set_ylim(0.4, 1.0)
     ax.legend(fontsize=9)
@@ -240,8 +243,8 @@ def plot_ae_trajectory(traj: pd.DataFrame, out_path: Path) -> None:
     """
     colors  = {"OAI-ever": "#dc2626", "High-signal VAI": "#d97706", "Low-signal VAI": "#2563eb"}
     markers = {"OAI-ever": "o", "High-signal VAI": "s", "Low-signal VAI": "^"}
-    lags    = ["tm2", "tm1", "t0", "t1", "t2"]
-    xlabels = ["t−2", "t−1", "t=0\n(inspection)", "t+1", "t+2"]
+    lags    = ["tm4", "tm2", "t0", "tp2", "tp4"]
+    xlabels = ["Q−4\n(1yr before)", "Q−2\n(6mo before)", "Q0\n(inspection)", "Q+2\n(6mo after)", "Q+4\n(1yr after)"]
     x       = np.arange(len(lags))
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -339,26 +342,26 @@ def _trajectory_analysis(
         sub = df[df["group"] == grp]
         if sub.empty:
             continue
+        mm4 = sub["n_ae_tm4"].mean() if "n_ae_tm4" in sub.columns else np.nan
         mm2 = sub["n_ae_tm2"].mean() if "n_ae_tm2" in sub.columns else np.nan
-        mm1 = sub["n_ae_tm1"].mean() if "n_ae_tm1" in sub.columns else np.nan
-        m0  = sub["n_ae_t0"].mean()
-        m1  = sub["n_ae_t1"].mean()
-        m2  = sub["n_ae_t2"].mean()
-        # pre-elevation: how much higher were AEs at t0 vs t-2?
-        pre_rise  = (m0 / mm2) if (mm2 and mm2 > 0) else np.nan
-        # persistence: how much of that elevation remains at t+2?
-        persist   = (m2 / m0) if m0 > 0 else np.nan
+        m0  = sub["n_ae_t0"].mean()  if "n_ae_t0"  in sub.columns else np.nan
+        mp2 = sub["n_ae_tp2"].mean() if "n_ae_tp2" in sub.columns else np.nan
+        mp4 = sub["n_ae_tp4"].mean() if "n_ae_tp4" in sub.columns else np.nan
+        # pre-elevation: Q0 vs Q-4 (1yr before)
+        pre_rise = (m0 / mm4) if (mm4 and mm4 > 0) else np.nan
+        # persistence: Q+4 vs Q0
+        persist  = (mp4 / m0) if (m0 and m0 > 0) else np.nan
         rows.append({
-            "group":         grp,
-            "n_feis":        sub["fei"].nunique(),
-            "n_rows":        len(sub),
-            "mean_ae_tm2":   round(mm2, 1),
-            "mean_ae_tm1":   round(mm1, 1),
-            "mean_ae_t0":    round(m0, 1),
-            "mean_ae_t1":    round(m1, 1),
-            "mean_ae_t2":    round(m2, 1),
-            "pre_rise_t0_tm2": round(pre_rise, 3),
-            "persist_t2_t0": round(persist, 3),
+            "group":           grp,
+            "n_feis":          sub["fei"].nunique(),
+            "n_rows":          len(sub),
+            "mean_ae_tm4":     round(mm4, 1),
+            "mean_ae_tm2":     round(mm2, 1),
+            "mean_ae_t0":      round(m0, 1),
+            "mean_ae_tp2":     round(mp2, 1),
+            "mean_ae_tp4":     round(mp4, 1),
+            "pre_rise_t0_tm4": round(pre_rise, 3),
+            "persist_tp4_t0":  round(persist, 3),
         })
     traj_df = pd.DataFrame(rows)
 
@@ -368,19 +371,18 @@ def _trajectory_analysis(
         return traj_df, pd.DataFrame()
 
     agg_dict = dict(
-        mean_ae_t0=("n_ae_t0", "mean"),
-        mean_ae_t1=("n_ae_t1", "mean"),
-        mean_ae_t2=("n_ae_t2", "mean"),
+        mean_ae_t0=("n_ae_t0",   "mean"),
+        mean_ae_tp2=("n_ae_tp2", "mean"),
+        mean_ae_tp4=("n_ae_tp4", "mean"),
         mean_tech_score=("tech_score", "mean"),
-        n_years=("panel_year", "count"),
+        n_inspections=("fei",    "count"),
     )
-    if "n_ae_tm1" in hs_vai.columns:
-        agg_dict["mean_ae_tm1"] = ("n_ae_tm1", "mean")
+    if "n_ae_tm4" in hs_vai.columns:
+        agg_dict["mean_ae_tm4"] = ("n_ae_tm4", "mean")
     fei_agg = hs_vai.groupby("fei", as_index=False).agg(**agg_dict)
-    fei_agg["persist_t2_t0"] = (fei_agg["mean_ae_t2"] / fei_agg["mean_ae_t0"]).round(3)
-    # rising = persist > 1.0 (AEs at t+2 exceed t0 despite no forced correction)
-    fei_agg["ae_rising"] = fei_agg["persist_t2_t0"] > 1.0
-    fei_agg = fei_agg.sort_values("persist_t2_t0", ascending=False).round(1)
+    fei_agg["persist_tp4_t0"] = (fei_agg["mean_ae_tp4"] / fei_agg["mean_ae_t0"]).round(3)
+    fei_agg["ae_rising"] = fei_agg["persist_tp4_t0"] > 1.0
+    fei_agg = fei_agg.sort_values("persist_tp4_t0", ascending=False).round(1)
 
     print(f"  Groups: {traj_df[['group','n_feis']].to_string(index=False)}")
     print(f"  High-signal VAI threshold: tech_score ≥ {q75:.3f} (top quartile)")
@@ -396,9 +398,10 @@ def main() -> None:
     print("Loading panel…")
     df = pd.read_parquet(PANEL)
     df = _build_outcome(df)
+    print(f"  {len(df)} inspection events, {df['fei'].nunique()} FEIs")
 
-    # restrict to rows with complete text features and t+1 AE outcome
-    complete_mask = df[TEXT_FEATURES].notna().all(axis=1) & df["ae_high_t1"].notna()
+    # restrict to rows with complete text features and outcome
+    complete_mask = df[TEXT_FEATURES].notna().all(axis=1) & df["ae_high_next4q"].notna()
     df = df[complete_mask].copy()
     print(f"  Complete rows for modeling: {len(df)} (FEIs: {df['fei'].nunique()})")
 
@@ -407,10 +410,10 @@ def main() -> None:
         return
 
     X_text  = df[TEXT_FEATURES].fillna(0).values
-    y       = df["ae_high_t1"].values.astype(int)
+    y       = df["ae_high_next4q"].values.astype(int)
     groups  = df["fei"].astype(int).values
 
-    print(f"  Outcome: {y.mean():.1%} above-median AE rate")
+    print(f"  Outcome: {y.mean():.1%} above-median AEs in Q+1..Q+4")
 
     # ── Config A: Text only ──
     print("\nConfig A: Text only…")
@@ -420,15 +423,15 @@ def main() -> None:
     print("Fitting full RF for feature importances (text only)…")
     imp = _rf_importances(X_text, y, TEXT_FEATURES)
 
-    # ── Config C: Inspection only (inspection count as minimal baseline) ──
-    X_insp_fallback = df[["n_inspections_in_year"]].fillna(0).values
-    print("\nConfig C: Inspection count only (fallback baseline)…")
-    results_C = _cv_evaluate(X_insp_fallback, y, groups, "C: Insp only")
+    # ── Config C: OAI flag only (structured inspection outcome as baseline) ──
+    X_oai_flag = df[["any_oai"]].fillna(0).values.astype(float)
+    print("\nConfig C: OAI flag only (structured inspection outcome baseline)…")
+    results_C = _cv_evaluate(X_oai_flag, y, groups, "C: OAI flag only")
 
-    # ── Config B: Text + Inspection ──
-    print("\nConfig B: Text + Inspection…")
-    X_both = np.hstack([X_text, X_insp_fallback])
-    results_B = _cv_evaluate(X_both, y, groups, "B: Text + Insp")
+    # ── Config B: Text + OAI flag ──
+    print("\nConfig B: Text + OAI flag…")
+    X_both = np.hstack([X_text, X_oai_flag])
+    results_B = _cv_evaluate(X_both, y, groups, "B: Text + OAI")
 
     # ── Config D: VAI-only facilities (OAI moderation hypothesis) ──
     # Facilities that received only VAI (never OAI in any year in this panel)
@@ -440,9 +443,9 @@ def main() -> None:
         vai_feis = fei_ever_oai[fei_ever_oai == 0].index
         df_vai = df[df["fei"].isin(vai_feis)].copy()
         print(f"\nConfig D: VAI-only facilities ({df_vai['fei'].nunique()} FEIs, {len(df_vai)} rows)…")
-        if len(df_vai) >= 20 and df_vai["ae_high_t1"].nunique() > 1:
-            X_vai  = df_vai[TEXT_FEATURES].fillna(0).values
-            y_vai  = df_vai["ae_high_t1"].values.astype(int)
+        if len(df_vai) >= 20 and df_vai["ae_high_next4q"].nunique() > 1:
+            X_vai   = df_vai[TEXT_FEATURES].fillna(0).values
+            y_vai   = df_vai["ae_high_next4q"].values.astype(int)
             grp_vai = df_vai["fei"].astype(int).values
             results_D = _cv_evaluate(X_vai, y_vai, grp_vai, "D: VAI-only (text)")
         else:
@@ -450,17 +453,17 @@ def main() -> None:
     else:
         print("\nConfig D skipped — any_oai column not in panel (run 01 first).")
 
-    # ── Config E: OAI facilities only (for contrast with D) ──
+    # ── Config E: OAI-ever facilities only (for contrast with D) ──
     results_E = []
     if "any_oai" in df.columns:
         fei_has_oai = fei_ever_oai[fei_ever_oai == 1].index
-        df_oai = df[df["fei"].isin(fei_has_oai)].copy()
-        print(f"\nConfig E: OAI-ever facilities ({df_oai['fei'].nunique()} FEIs, {len(df_oai)} rows)…")
-        if len(df_oai) >= 20 and df_oai["ae_high_t1"].nunique() > 1:
-            X_oai   = df_oai[TEXT_FEATURES].fillna(0).values
-            y_oai   = df_oai["ae_high_t1"].values.astype(int)
-            grp_oai = df_oai["fei"].astype(int).values
-            results_E = _cv_evaluate(X_oai, y_oai, grp_oai, "E: OAI-ever (text)")
+        df_oai_sub = df[df["fei"].isin(fei_has_oai)].copy()
+        print(f"\nConfig E: OAI-ever facilities ({df_oai_sub['fei'].nunique()} FEIs, {len(df_oai_sub)} rows)…")
+        if len(df_oai_sub) >= 20 and df_oai_sub["ae_high_next4q"].nunique() > 1:
+            X_oai_e   = df_oai_sub[TEXT_FEATURES].fillna(0).values
+            y_oai_e   = df_oai_sub["ae_high_next4q"].values.astype(int)
+            grp_oai_e = df_oai_sub["fei"].astype(int).values
+            results_E = _cv_evaluate(X_oai_e, y_oai_e, grp_oai_e, "E: OAI-ever (text)")
         else:
             print("  Too few rows or single-class outcome — skipping Config E.")
 
@@ -495,8 +498,8 @@ def main() -> None:
     md_lines = [
         "# Text-signal AE prediction — model summary",
         "",
-        f"Panel: {len(df)} FEI × year observations, {df['fei'].nunique()} unique FEIs",
-        f"Outcome: above-median serious AE count at t+1 (base rate {y.mean():.1%})",
+        f"Panel: {len(df)} inspection events, {df['fei'].nunique()} unique FEIs",
+        f"Outcome: above-median AEs in Q+1..Q+4 after inspection (base rate {y.mean():.1%})",
         "",
         metrics[["config", "model", "auc", "ap"]].to_string(index=False),
         "",
