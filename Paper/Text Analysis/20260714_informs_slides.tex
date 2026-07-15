@@ -257,11 +257,11 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 
 \vspace{4pt}
 \begin{itemize}
-  \item \textbf{L1: Domain.} CFR Part 211 organizes cGMP requirements by manufacturing area. Classifying violations by domain shows which part of a facility's operations is failing.
+  \item \textbf{L1: Domain.} 8 CFR\,211 areas: Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel.
   \item \textbf{L2: Severity.} Confirmed defect vs.\ systemic risk. Major means bad product was likely already made.
-  \item \textbf{L3: Flags.} DI, contamination, patient risk, scope, root cause, remediation. Each independently defined to avoid overlap.
-  \item \textbf{L4: Recurrence.} Persistent findings signal a facility that hasn't fixed the underlying problem.
-  \item \textbf{L5: Co-occurrence.} Lab Controls and DI together in one inspection carries more signal than either alone.
+  \item \textbf{L3: Flags.} DI, contamination, patient risk, scope, root cause, remediation. Each independently defined.
+  \item \textbf{L4: Recurrence.} Persistent findings signal a facility that hasn't fixed the problem.
+  \item \textbf{L5: Co-occurrence.} Lab Controls and DI together carries more signal than either alone.
 \end{itemize}
 
 \column{0.47\textwidth}
@@ -284,13 +284,13 @@ Step 02 aggregates these per-observation labels into per-inspection feature vect
 \begin{frame}{How the LLM Extracts Signals: A Concrete Example}
 \begin{columns}[T]
 \column{0.58\textwidth}
-\begin{block}{Input — verbatim 483 observation text}
+\begin{block}{Input: verbatim 483 observation text}
 \scriptsize
 ``Batch production records were not completed at the time of manufacture. Entries were reconstructed from memory 2 days after processing.''
 \end{block}
 
 \vspace{4pt}
-\textbf{Output — Claude Haiku, strict JSON prompt:}
+\textbf{Output: Claude Haiku, strict JSON prompt:}
 
 \vspace{2pt}
 {\scriptsize
