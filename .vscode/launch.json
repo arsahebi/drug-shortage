@@ -95,6 +95,35 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "ae — 02 lag correlation (full run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/02_lag_correlation.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "ae — 02 lag correlation (verbose, no plots)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/02_lag_correlation.py",
+            "args": ["--verbose", "--no-plots"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "ae — 02 lag correlation (single feature debug)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Data/99 - Outputs - Text Analysis/ae_validation/02_lag_correlation.py",
+            "args": ["--feature", "vc_labcontrols_share", "--verbose", "--no-plots"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.venv/bin/python"
         }
     ]
 }
