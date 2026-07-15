@@ -325,19 +325,16 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 % ── SECTION 5: THEORY ────────────────────────────────────────────────────────
 \section{Two Failure Mode Theory}
 
-\begin{frame}{From 483 Text to Future Adverse Events: The Detection Lag}
+\begin{frame}{From 483 Text to Future Harm: The Detection Lag}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Why 483 text predicts future AEs:}
-
-\vspace{8pt}
-When FDA inspects a facility and finds quality violations, the inspection is already late. Product manufactured before the visit is in the market. The 483 documents what was already happening, not what is about to start.
-
-\vspace{8pt}
-AEs from pre-inspection product surface in the following year, often before corrective action takes effect. The inspection is a detection event, not a causal trigger.
-
-\vspace{8pt}
-This means we are predicting harm already in the pipeline. The 483 text carries the signal; the harm follows.
+\textbf{The mechanism:}
+\begin{itemize}
+  \item FDA arrives. Product made before the visit is already in the market.
+  \item The 483 records what was happening, not what starts next.
+  \item AEs from pre-inspection product surface at $t+1$, before corrective action takes effect.
+  \item We predict harm already in the pipeline, not future failures.
+\end{itemize}
 
 \column{0.45\textwidth}
 \textbf{How we operationalize it:}
@@ -347,16 +344,16 @@ This means we are predicting harm already in the pipeline. The 483 text carries 
 \toprule
 Element & Design \\
 \midrule
-Features & 483 text snapshot at year $t$ \\
-Outcome & Serious AEs at year $t+1$ \\
-As-of join & Latest inspection with \\
- & date $\le$ Dec\,31$(t)$ \\
-CV & GroupKFold ($k{=}5$) on FEI \\
+Features & 483 text at year $t$ \\
+Outcome & AEs at year $t+1$ \\
+Join & As-of: latest inspection \\
+ & with date $\le$ Dec\,31$(t)$ \\
+CV & FEI-grouped 5-fold \\
 \bottomrule
 \end{tabular}
 
 \vspace{8pt}
-\textbf{Empirical question:} which features in 483 text predict AEs one year out, beyond what inspection frequency alone captures?
+\textbf{Question:} which text signals predict AEs one year out, beyond inspection frequency?
 \end{columns}
 \end{frame}
 
