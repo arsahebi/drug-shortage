@@ -193,7 +193,7 @@ def plot_heatmap(corr_tbl: pd.DataFrame, out_path: Path) -> None:
     pivot = corr_tbl.pivot(index="feature_label", columns="lag_label", values="spearman_r")
     pivot_p = corr_tbl.pivot(index="feature_label", columns="lag_label", values="sig")
 
-    col_order = ["Lag 0 (same year)", "Lag +1 yr", "Lag +2 yr"]
+    col_order = list(AE_LAGS.values())
     pivot   = pivot.reindex(columns=col_order)
     pivot_p = pivot_p.reindex(columns=col_order)
 
@@ -254,8 +254,8 @@ def plot_scatter(df: pd.DataFrame, feature: str, ae_col: str, out_path: Path) ->
 
 
 def plot_lag_profile(corr_tbl: pd.DataFrame, features: list[str], out_path: Path) -> None:
-    col_order = ["n_ae_t0", "n_ae_t1", "n_ae_t2"]
-    lag_nums  = [0, 1, 2]
+    col_order = list(AE_LAGS.keys())
+    lag_nums  = list(range(len(AE_LAGS)))
 
     fig, ax = plt.subplots(figsize=(6, 4))
     for feat in features:
