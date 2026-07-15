@@ -197,7 +197,8 @@ def plot_heatmap(corr_tbl: pd.DataFrame, out_path: Path) -> None:
     pivot   = pivot.reindex(columns=col_order)
     pivot_p = pivot_p.reindex(columns=col_order)
 
-    lag1_vals = corr_tbl[corr_tbl["lag_label"] == "Lag +1 yr"].set_index("feature_label")["spearman_r"]
+    sort_lag  = list(AE_LAGS.values())[-1]  # Q+4 — most forward-looking
+    lag1_vals = corr_tbl[corr_tbl["lag_label"] == sort_lag].set_index("feature_label")["spearman_r"]
     pivot   = pivot.loc[lag1_vals.abs().sort_values(ascending=False).index]
     pivot_p = pivot_p.loc[pivot.index]
 
