@@ -164,11 +164,11 @@ ProPublica & Facility--drug linkage (supplement) \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{Inspection Frequency: The Blind Window Between Inspections}
+\begin{frame}{The Blind Window: Why 483 Text Is the Only Signal Between Inspections}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{All FDA inspections, 98 panel FEIs (Redica, 1998–2026):}\\
-{\small 1,278 inspection events; includes surveillance, pre-approval, and for-cause visits}
+\textbf{Inter-inspection gaps, 98 panel FEIs (Redica, 1998–2026):}\\
+{\small 1,278 FDA inspections; surveillance, pre-approval, and for-cause visits}
 
 \vspace{4pt}
 \begin{tabular}{lcc}
@@ -185,35 +185,28 @@ P75 gap & 1.71 yr & 3.27 yr \\
 \end{tabular}
 
 \vspace{6pt}
-\textbf{Inspections producing 483 text (our 246 panel events):}
+\textbf{Surveillance inspections with 483 text (246 panel events):}
 \begin{itemize}
-  \item These are surveillance-type visits — longer gaps on average
-  \item Pre-COVID median: 1.33 yr; post-COVID median: 4.04 yr
-  \item Larger post-COVID effect because 483-generating inspections were paused longest
+  \item Pre-COVID median gap: 1.33 yr; post-COVID: 4.04 yr
+  \item Surveillance visits were paused longest during COVID — larger gap effect
 \end{itemize}
 
 \column{0.45\textwidth}
-\textbf{Inspections per year (panel FEIs, all types):}
-
-\vspace{4pt}
-\begin{tabular}{lc}
-\toprule
-Period & Median gap (yr) \\
-\midrule
-2015–2019 & 0.95–1.71 \\
-\rowcolor{lightGray}
-2020 & 0.96 (some remote) \\
-\rowcolor{lightGray}
-2021 & 1.93 (moratorium) \\
-2022 & 2.26 \\
-2023–2025 & 1.42–2.07 \\
-\bottomrule
-\end{tabular}
+\textbf{What the gap means for prediction:}
 
 \vspace{6pt}
-\begin{alertblock}{COVID impact confirmed}
+FDA typically returns to a facility every 1--2 years. During that window, no new structured quality signal is generated. The 483 from the \emph{previous} inspection is the last thing on record.
+
+\vspace{10pt}
+If that text contains signals linked to adverse events, we can issue a risk flag \emph{before} FDA returns. That is the model's purpose.
+
+\vspace{10pt}
+Post-COVID, 47\% of gaps exceed 2 years and 21\% exceed 3.5 years. The blind window is getting longer, not shorter.
+
+\vspace{8pt}
+\begin{alertblock}{The core bet}
 \small
-Median inter-inspection gap \textbf{doubles} from 0.97yr (pre-COVID) to 1.88yr (post-2022). For surveillance inspections that generate 483 text, the gap is even wider. For those facilities, pre-COVID text is the last structured signal on record through 2025.
+A 483 written 1--2 years ago still carries predictive signal for what is happening at that facility today.
 \end{alertblock}
 \end{columns}
 \end{frame}
