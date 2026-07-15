@@ -164,45 +164,46 @@ ProPublica & Facility--drug linkage (supplement) \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{The Blind Window: Why 483 Text Is the Only Signal Between Inspections}
+\begin{frame}{Inspection Gaps and the Targeting Problem}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Inter-inspection gaps, 98 panel FEIs (Redica, 1998–2026):}\\
-{\small 1,278 FDA inspections; surveillance, pre-approval, and for-cause visits}
+\textbf{Did post-COVID frequency recover?}\\
+{\small 98 panel FEIs, FDA inspections only (Redica)}
 
 \vspace{4pt}
-\begin{tabular}{lcc}
+{\small
+\begin{tabular}{lccc}
 \toprule
-Metric & Pre-COVID & Post-COVID \\
- & ($<$2020) & (2022+) \\
+Period & Total & Avg/yr & Median gap \\
 \midrule
-Median gap & 0.97 yr & \highlight{1.88 yr} \\
-Mean gap & 1.18 yr & 2.16 yr \\
-P75 gap & 1.71 yr & 3.27 yr \\
-\% gaps $>$2yr & 17.9\% & \highlight{47.4\%} \\
-\% gaps $>$3.5yr & 1.8\% & \highlight{21.4\%} \\
+2015--2019 & 395 & 79 & 0.97 yr \\
+\rowcolor{lightGray}
+2020--2022 & 107 & 36 & 1.88 yr \\
+2023--2025 & 148 & 49 & — \\
 \bottomrule
 \end{tabular}
+}
+
+\vspace{4pt}
+{\small 2018--2019 peak: $\sim$95/yr. Post-2022 average: 49/yr and still declining (60$\to$49$\to$39 by year).}
 
 \vspace{6pt}
-{\small \textbf{483-text visits (246 events):} pre-COVID median 1.33 yr; post-COVID 4.04 yr}
+\textbf{Not recovered.} 47\% of post-2022 gaps exceed 2 years; 21\% exceed 3.5 years.\\
+{\scriptsize 483-text visits (246 events): pre-COVID median 1.33 yr; post-COVID 4.04 yr.}
 
 \column{0.45\textwidth}
-\textbf{Why gaps matter:}
+\textbf{The real problem is targeting, not frequency:}
+
+\vspace{6pt}
+FDA's Site Selection Model (SSM) schedules facilities using compliance history (OAI/VAI/NAI) and time since last visit. It does not use the \emph{content} of 483 observations.
 
 \vspace{8pt}
-FDA returns every 1--2 years. Between visits, the last 483 is the only structured signal on record.
+80 of 98 facilities in our panel are VAI-only. Under SSM, they are treated the same for scheduling. Their 483s tell a different story: some carry high Lab Controls and DI rates; others contain only administrative findings.
 
 \vspace{8pt}
-If it carries AE-linked signals, we can flag risk before FDA returns. That is the model's purpose.
-
-\vspace{8pt}
-Post-COVID, 47\% of gaps exceed 2 years. The window is getting longer.
-
-\vspace{8pt}
-\begin{alertblock}{The core bet}
+\begin{alertblock}{Two separate problems}
 \small
-A 483 written 1--2 years ago still predicts what is happening at that facility today.
+Frequency sets how often FDA can inspect. \emph{Targeting} determines whether the right facilities come first. 483 text addresses the targeting problem regardless of whether frequency recovers.
 \end{alertblock}
 \end{columns}
 \end{frame}

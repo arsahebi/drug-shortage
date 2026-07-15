@@ -90,10 +90,10 @@ def slide4_study_design(panel: pd.DataFrame) -> None:
           f"median={per_fei.median():.0f}  range={per_fei.min()}–{per_fei.max()}")
 
 
-# ── Slide 5: Inspection Frequency ────────────────────────────────────────────
+# ── Slide 5: Inspection Frequency + Targeting ────────────────────────────────
 
 def slide5_inspection_gaps(panel: pd.DataFrame) -> None:
-    _h("SLIDE 5 — Inspection Frequency / Gap Analysis")
+    _h("SLIDE 5 — Inspection Gaps and the Targeting Problem")
 
     sl = pd.read_excel(SITE_LIST)
     ev = pd.read_excel(REDICA_XLSX)
@@ -115,28 +115,61 @@ def slide5_inspection_gaps(panel: pd.DataFrame) -> None:
         gaps = sub.dropna(subset=["gap_yr"]).copy()
         gaps["year"] = gaps["Event Date"].dt.year
 
-        pre  = gaps[gaps["year"] < 2020]["gap_yr"]
-        post = gaps[gaps["year"] >= 2022]["gap_yr"]
+        pre   = gaps[gaps["year"] < 2020]["gap_yr"]
+        covid = gaps[(gaps["year"] >= 2020) & (gaps["year"] <= 2022)]["gap_yr"]
+        post  = gaps[gaps["year"] >= 2023]["gap_yr"]
 
         print(f"    Total events: {len(sub)}, gap pairs: {len(gaps)}")
-        for lbl, g in [("Pre-COVID (<2020)", pre), ("Post-COVID (2022+)", post), ("All", gaps["gap_yr"])]:
+        for lbl, g in [("Pre-COVID (<2020)", pre),
+                        ("COVID (2020-2022)", covid),
+                        ("Post-COVID (2023+)", post),
+                        ("All", gaps["gap_yr"])]:
+            if len(g) == 0:
+                continue
             print(f"    {lbl}  n={len(g)}:")
             print(f"      Median={g.median():.2f}yr  Mean={g.mean():.2f}yr  "
-                  f"P75={g.quantile(0.75):.2f}yr  >2yr={( g>2).mean():.1%}  "
+                  f"P75={g.quantile(0.75):.2f}yr  >2yr={(g>2).mean():.1%}  "
                   f">3.5yr={(g>3.5).mean():.1%}")
+
+    # Per-year inspection counts (slide 5 left column table)
+    _sh("Per-year inspection counts — 98 panel FEIs (slide 5 table)")
+    sub_panel = insp[insp["FEI"].isin(panel_feis)].copy()
+    sub_panel["year"] = sub_panel["Event Date"].dt.year
+    yearly = sub_panel.groupby("year").size()
+    print("    Year-by-year (2015+):")
+    for yr, n in yearly[yearly.index >= 2015].items():
+        print(f"      {yr}: {n}")
+
+    # Three-period summary for the slide table
+    bins   = [0, 2019, 2022, 9999]
+    labels = ["Pre-COVID (2015–2019)", "COVID (2020–2022)", "Post-COVID (2023+)"]
+    sub_panel["period"] = pd.cut(sub_panel["year"], bins=bins, labels=labels)
+    period_df = (
+        sub_panel[sub_panel["year"] >= 2015]
+        .groupby("period", observed=True)
+        .agg(n_inspections=("Event Date", "count"), n_years=("year", "nunique"))
+        .assign(avg_per_yr=lambda d: (d["n_inspections"] / d["n_years"]).round(0))
+    )
+    print("\n    Three-period summary (slide table):")
+    print(period_df.to_string())
 
     _sh("Panel inspection-centered events (246 with 483 text)")
     if INSP_PANEL.exists():
         ic = pd.read_parquet(INSP_PANEL)
-        ic["insp_date"] = pd.to_datetime(ic["insp_date"]) if "insp_date" in ic.columns else None
         print(f"    Total: {len(ic)}")
         if "gap_to_prev_yr" in ic.columns:
             g2 = ic["gap_to_prev_yr"].dropna()
-            pre2  = ic.loc[ic["insp_year"] < 2020, "gap_to_prev_yr"].dropna() \
-                    if "insp_year" in ic.columns else pd.Series(dtype=float)
-            post2 = ic.loc[ic["insp_year"] >= 2022, "gap_to_prev_yr"].dropna() \
-                    if "insp_year" in ic.columns else pd.Series(dtype=float)
-            for lbl, g in [("Pre-COVID (<2020)", pre2), ("Post-COVID (2022+)", post2), ("All", g2)]:
+            pre2   = ic.loc[ic["insp_year"] < 2020, "gap_to_prev_yr"].dropna() \
+                     if "insp_year" in ic.columns else pd.Series(dtype=float)
+            covid2 = ic.loc[(ic["insp_year"] >= 2020) & (ic["insp_year"] <= 2022),
+                            "gap_to_prev_yr"].dropna() \
+                     if "insp_year" in ic.columns else pd.Series(dtype=float)
+            post2  = ic.loc[ic["insp_year"] >= 2023, "gap_to_prev_yr"].dropna() \
+                     if "insp_year" in ic.columns else pd.Series(dtype=float)
+            for lbl, g in [("Pre-COVID (<2020)", pre2),
+                            ("COVID (2020-2022)", covid2),
+                            ("Post-COVID (2023+)", post2),
+                            ("All", g2)]:
                 if len(g):
                     print(f"    {lbl}  n={len(g)}: Median={g.median():.2f}yr")
     else:
