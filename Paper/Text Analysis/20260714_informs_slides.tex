@@ -124,42 +124,42 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 \begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2015–2026}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Drug universe: 14 APIs critical to U.S. drug supply security}\\[2pt]
-{\small Atorvastatin, Bupropion, Metformin, Pantoprazole, Vancomycin, Lisinopril, Metoprolol, Metronidazole, Ampicillin, Tacrolimus, Calcium Gluconate, Magnesium Sulfate, Potassium Chloride, Ampicillin/Sulbactam}
-
-\vspace{6pt}
-\textbf{Why these 14?} These drugs appear on shortage-sensitive and national defense supply priority lists. Valisure's independent testing of exactly this set provides a useful external check on the FEI scope; their quality test data does not enter the model. The text pipeline could extend to any generic drug. The 14-drug scope reflects the policy question: which manufacturers of nationally critical generics carry the highest patient risk?
+\textbf{14 APIs on U.S. defense supply priority lists:}\\[2pt]
+{\small Atorvastatin, Bupropion, Metformin, Pantoprazole, Vancomycin, Lisinopril, Metoprolol, Metronidazole, Ampicillin, Tacrolimus, Calcium Gluconate, Magnesium Sulfate, Potassium Chloride, Ampicillin/Sulbactam}\\[3pt]
+{\scriptsize Valisure's independent testing of this set provides a scope check; their quality data does not enter the model.}
 
 \vspace{6pt}
 \textbf{Facility universe:}
 \begin{itemize}
-  \item 129 unique FEIs identified via DailyMed NDC$\to$FEI crosswalk
-  \item \highlight{98 FEIs} with both 483 text (Redica) and FAERS AE data
+  \item 129 FEIs via DailyMed NDC$\to$FEI crosswalk
+  \item \highlight{98 FEIs} with 483 text (Redica) + FAERS coverage
   \item \highlight{246 inspection events} (2018–2026)
-  \item Mean 13 inspections per FEI across all FDA visit types (range 3–44)
+  \item 3--44 inspections/FEI (mean 13)
 \end{itemize}
 
 \column{0.47\textwidth}
-\textbf{Data sources integrated:}
+\textbf{Data sources:}
 
 \vspace{4pt}
-\begin{tabular}{ll}
+{\small
+\begin{tabular}{lp{4.0cm}}
 \toprule
 Source & Content \\
 \midrule
-Redica Systems & 483 text + OAI/VAI/NAI classifications \\
-FAERS & Serious adverse event reports \\
-SDUD (Medicaid) & Drug utilization volume \\
-DailyMed & NDC $\to$ FEI crosswalk (facility mapping) \\
-ProPublica & Supplementary facility$\leftrightarrow$drug linkage \\
+Redica & 483 text; OAI/VAI/NAI outcomes \\
+FAERS & Serious adverse events \\
+SDUD & Medicaid utilization volume \\
+DailyMed & NDC$\to$FEI crosswalk \\
+ProPublica & Facility--drug linkage (supplement) \\
 \bottomrule
 \end{tabular}
+}
 
-\vspace{8pt}
+\vspace{6pt}
 \textbf{Panel structure:}
 \begin{itemize}
-  \item \textbf{Yearly}: 645 FEI $\times$ year rows (2018–2025)
-  \item \textbf{Inspection-centered quarterly}: 246 rows centered on each inspection $\pm$4 quarters
+  \item \textbf{Yearly}: 645 FEI$\times$year rows (2018--2025)
+  \item \textbf{Inspection-centered}: 246 rows, $\pm$4 quarters around each inspection
 \end{itemize}
 \end{columns}
 \end{frame}
