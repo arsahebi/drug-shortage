@@ -215,7 +215,6 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 
 \begin{frame}{Pipeline: From 483 Text to Structured Features}
 
-\scalebox{0.82}{%
 \begin{tikzpicture}[
   box/.style={rectangle, rounded corners=4pt, draw, fill=lightGray,
               minimum height=0.7cm, minimum width=2.6cm, font=\small, align=center},
@@ -241,45 +240,49 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 \node[box, fill=govGreen!15] (faers) at (9.6,-2.0) {FAERS AEs\\+ SDUD volume\\+ Insp. outcomes};
 \draw[arrow] (faers) -- (panel);
 
-\end{tikzpicture}%
-}
+\end{tikzpicture}
 
-\vspace{6pt}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Input}: 1,067 FDA 483 observations (246 inspections, 98 FEIs)\\
-{\scriptsize Redica FOIA'd these from FDA — richer and more complete than FDA's public inspection dashboard.}
+\vspace{8pt}
+{\small \textbf{Input:} 1,067 FDA 483 observations across 246 inspections and 98 FEIs. Redica FOIA'd the source documents from FDA — richer and more complete than the public inspection dashboard.}
 
-\vspace{4pt}
-\textbf{Per observation, LLM extracts:}
-\begin{itemize}
-  \item L1: Violation category (8 CFR\,211 domains)
-  \item L2: Severity (Critical / Major / Moderate / Minor)
-  \item L3: Flags — DI, contamination, patient risk, scope, root cause, remediation
-  \item L4: Repeat / cross-inspection pattern
-  \item L5: Counts + joint co-occurrence flags
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Step 02 output: one row per inspection}
-
-\vspace{4pt}
-\begin{itemize}
-  \item Severity share (crit/major rate)
-  \item Domain shares (Lab Controls, Quality System, \ldots)
-  \item LLM flag rates (DI, contamination, patient risk, \ldots)
-  \item Raw domain observation counts
-  \item Joint co-occurrence flags (e.g., Lab Controls $\times$ DI)
-\end{itemize}
-
-\vspace{4pt}
-\highlight{17 features} enter the predictive model.\\
-{\small Full list in backup slides.}
-\end{columns}
 \end{frame}
 
-% ── SECTION 4: VALIDATION ────────────────────────────────────────────────────
-\section{Validation}
+% ── SECTION 4: LLM EXTRACTION ────────────────────────────────────────────────
+\section{LLM Extraction Pipeline}
+
+\begin{frame}{What the LLM Extracts and Why}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Five layers per observation:}
+
+\vspace{4pt}
+\begin{itemize}
+  \item \textbf{L1 — Domain:} which CFR\,211 area the failure falls in (8 classes). Locates the failure technically, not organizationally.
+  \item \textbf{L2 — Severity:} Critical / Major / Moderate / Minor. Anchored to confirmed defects vs.\ systemic risk.
+  \item \textbf{L3 — Flags:} DI, contamination, patient risk, scope, root cause, remediation. Each defined independently with anchor examples.
+  \item \textbf{L4 — Recurrence:} cross-inspection repeat flag. Persistent findings are qualitatively different from first-time violations.
+  \item \textbf{L5 — Counts and co-occurrence:} raw counts and joint flags (e.g., Lab Controls $\times$ DI). Captures whether failure modes cluster together in one inspection.
+\end{itemize}
+
+\column{0.47\textwidth}
+\textbf{Why these dimensions?}
+
+\vspace{4pt}
+Lab Controls failures, DI violations, and contamination events are the technical signals that precede FDA enforcement escalation. We extract at observation level because document-level summaries lose the distinction between one isolated finding and a facility-wide pattern.
+
+\vspace{6pt}
+\textbf{GMP expert confirmation (Redica, June 2026):}
+\begin{itemize}
+  \item Observation-level is the right unit of analysis
+  \item DI binary flag fits supply risk use cases
+  \item Repeat and patient risk flags are ``obviously high-impact''
+  \item Technical domain assignment is ``not wrong — may be more useful for predictive modeling''
+\end{itemize}
+
+\vspace{4pt}
+{\scriptsize Step 02 aggregates these to \highlight{17 per-inspection features}. Full list in backup slides.}
+\end{columns}
+\end{frame}
 
 \begin{frame}{How the LLM Extracts Signals: A Concrete Example}
 \begin{columns}[T]
@@ -316,9 +319,6 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
   \item All 10 extracted in one pass per observation
   \item Model: Claude Haiku (cost-efficient at scale)
 \end{itemize}
-
-\vspace{6pt}
-\textbf{Why these dimensions?} GMP domain experts confirmed they capture what matters for regulatory outcomes — repeat findings, DI failures, and patient-proximate violations are the signals that drive enforcement escalation.
 
 \vspace{6pt}
 {\scriptsize Independent SME labeling of a random sample is in progress.}
