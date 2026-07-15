@@ -256,31 +256,34 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 \textbf{Five layers per observation:}
 
 \vspace{4pt}
-\begin{itemize}
-  \item \textbf{L1 — Domain:} which CFR\,211 area the failure falls in (8 classes). Locates the failure technically, not organizationally.
-  \item \textbf{L2 — Severity:} Critical / Major / Moderate / Minor. Anchored to confirmed defects vs.\ systemic risk.
-  \item \textbf{L3 — Flags:} DI, contamination, patient risk, scope, root cause, remediation. Each defined independently with anchor examples.
-  \item \textbf{L4 — Recurrence:} cross-inspection repeat flag. Persistent findings are qualitatively different from first-time violations.
-  \item \textbf{L5 — Counts and co-occurrence:} raw counts and joint flags (e.g., Lab Controls $\times$ DI). Captures whether failure modes cluster together in one inspection.
-\end{itemize}
+{\small
+\begin{tabular}{lp{5.5cm}}
+\toprule
+Layer & What it captures \\
+\midrule
+L1: Domain & Which CFR\,211 area (8 classes) \\
+L2: Severity & Critical / Major / Moderate / Minor \\
+L3: Flags & DI, contamination, patient risk, scope, root cause, remediation \\
+L4: Recurrence & Cross-inspection repeat flag \\
+L5: Counts & Raw counts + joint co-occurrence flags \\
+\bottomrule
+\end{tabular}
+}
 
 \column{0.47\textwidth}
-\textbf{Why these dimensions?}
-
-\vspace{4pt}
-Lab Controls failures, DI violations, and contamination events are the technical signals that precede FDA enforcement escalation. We extract at observation level because document-level summaries lose the distinction between one isolated finding and a facility-wide pattern.
+\textbf{Why these?} Lab Controls, DI, and contamination are the signals that precede enforcement escalation. Observation-level extraction preserves the distinction between one isolated finding and a facility-wide pattern.
 
 \vspace{6pt}
-\textbf{GMP expert confirmation (Redica, June 2026):}
+\textbf{GMP expert review (Redica, June 2026):}
 \begin{itemize}
-  \item Observation-level is the right unit of analysis
+  \item Observation-level is the right unit
   \item DI binary flag fits supply risk use cases
-  \item Repeat and patient risk flags are ``obviously high-impact''
-  \item Technical domain assignment is ``not wrong — may be more useful for predictive modeling''
+  \item Repeat and patient risk are ``obviously high-impact''
+  \item Technical domain assignment is ``not wrong''
 \end{itemize}
 
 \vspace{4pt}
-{\scriptsize Step 02 aggregates these to \highlight{17 per-inspection features}. Full list in backup slides.}
+{\scriptsize Step 02 aggregates to \highlight{17 features} per inspection. Full list in backup.}
 \end{columns}
 \end{frame}
 
