@@ -215,6 +215,7 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 
 \begin{frame}{Pipeline: From 483 Text to Structured Features}
 
+\scalebox{0.82}{%
 \begin{tikzpicture}[
   box/.style={rectangle, rounded corners=4pt, draw, fill=lightGray,
               minimum height=0.7cm, minimum width=2.6cm, font=\small, align=center},
@@ -240,7 +241,8 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 \node[box, fill=govGreen!15] (faers) at (9.6,-2.0) {FAERS AEs\\+ SDUD volume\\+ Insp. outcomes};
 \draw[arrow] (faers) -- (panel);
 
-\end{tikzpicture}
+\end{tikzpicture}%
+}
 
 \vspace{6pt}
 \begin{columns}[T]
@@ -279,48 +281,47 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 % ── SECTION 4: VALIDATION ────────────────────────────────────────────────────
 \section{Validation}
 
-\begin{frame}{Validation: Expert Review and Convergent Agreement}
+\begin{frame}{How the LLM Extracts Signals: A Concrete Example}
 \begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{Expert review (Redica, June 2026)}\\
-{\small Redica's GMP domain experts — who built the leading industry 483 classification system — reviewed our prompt definitions and confirmed:}
-\begin{itemize}
-  \item Observation-level extraction is the right unit of analysis
-  \item DI binary flag is appropriate for supply risk use cases
-  \item Repeat and patient risk flags are high-impact signals
-  \item Our domain philosophy (failure location, not oversight body) is ``not wrong and may be more useful for predictive modeling''
-\end{itemize}
+\column{0.58\textwidth}
+\begin{block}{Input — verbatim 483 observation text}
+\scriptsize
+``Batch production records were not completed at the time of manufacture. Entries were reconstructed from memory 2 days after processing.''
+\end{block}
 
-\vspace{5pt}
-\textbf{Cross-system agreement vs.\ Redica's AI labels}\\
-{\small 1,067 observations; both systems independently trained}
+\vspace{4pt}
+\textbf{Output — Claude Haiku, strict JSON prompt:}
+
 \vspace{2pt}
-{\small
-\begin{tabular}{lcc}
+{\scriptsize
+\begin{tabular}{llp{3.6cm}}
 \toprule
-Dimension & Agreement & Random \\
+Dimension & Value & Prompt rule (excerpt) \\
 \midrule
-Severity (4-tier) & \highlight{67.5\%} & 25\% \\
-Violation category & \highlight{58.6\%} & 12.5\% \\
-DI flag recall & \highlight{0.859} & — \\
+Severity & \textbf{Major} & actual defect confirmed\ldots batch records reconstructed \\
+DI flag & \textbf{True} & backdating, deleted records, reconstructed entries \\
+Scope & \textbf{SingleBatch} & failure tied to one batch or one product run \\
+Root cause & \textbf{Cultural} & behavioral, procedural, or management gap \\
+Remediation & \textbf{None} & no corrective action language present \\
+Investigation & \textbf{False} & True only if investigation was not performed \\
 \bottomrule
 \end{tabular}
 }
 
-\column{0.45\textwidth}
-\textbf{What this is — and what it is not:}
+\column{0.39\textwidth}
+\textbf{Prompt design:}
 \begin{itemize}
-  \item This is \emph{convergent validity}: two independently trained systems agree well above chance on the same 483 text
-  \item Redica's labels are not human ground truth; they are AI-generated from SME-validated training sets
-  \item Main disagreement (QualitySystem vs.\ LabControls) reflects a documented philosophical difference; Redica confirmed both are defensible
-  \item DI recall of 0.859 reflects a broader net than Redica's definition — the right trade-off for a screening feature
+  \item Strict JSON schema — model cannot hallucinate fields
+  \item Each of the 10 dimensions has its own rule and anchor examples
+  \item All 10 extracted in one pass per observation
+  \item Model: Claude Haiku (cost-efficient at scale)
 \end{itemize}
 
-\vspace{4pt}
-\textbf{Literature:} Published work finds Claude Haiku and GPT-4 perform well on structured regulatory text classification with anchor-example prompts. \cite{}
+\vspace{6pt}
+\textbf{Why these dimensions?} GMP domain experts confirmed they capture what matters for regulatory outcomes — repeat findings, DI failures, and patient-proximate violations are the signals that drive enforcement escalation.
 
-\vspace{4pt}
-{\scriptsize Stage 2 validation — independent SME labeling of a random observation sample — is in progress.}
+\vspace{6pt}
+{\scriptsize Independent SME labeling of a random sample is in progress.}
 \end{columns}
 \end{frame}
 
