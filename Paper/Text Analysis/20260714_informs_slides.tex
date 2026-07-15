@@ -110,9 +110,9 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 \begin{block}{What this enables}
 \small
 \begin{itemize}
-  \item \textbf{Risk-based re-inspection:} prioritize facilities showing 483 signals linked to AEs before the next scheduled visit
-  \item \textbf{Assignment review:} flag VAI/NAI cases where text signals suggest the outcome may underestimate quality risk
-  \item \textbf{Between-inspection surveillance:} a text-derived risk score is the only available signal when inspections stall
+  \item Prioritize re-inspection for facilities whose 483 text shows AE-linked signals, before the next scheduled visit
+  \item Flag VAI/NAI outcomes where Lab Controls and DI text indicate the classification understates actual quality risk
+  \item Provide a risk signal between inspections: when a facility's last 483 is 3--4 years old, text is the only available input
 \end{itemize}
 \end{block}
 \end{columns}
@@ -128,7 +128,7 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 {\small Atorvastatin, Bupropion, Metformin, Pantoprazole, Vancomycin, Lisinopril, Metoprolol, Metronidazole, Ampicillin, Tacrolimus, Calcium Gluconate, Magnesium Sulfate, Potassium Chloride, Ampicillin/Sulbactam}
 
 \vspace{6pt}
-\textbf{Why these 14?} Valisure's published test results give us an independent, externally motivated drug selection — not a convenience sample. Their list defines the scope; their test data is not used in the model itself.
+\textbf{Why these 14?} Valisure's published test results anchor the drug selection to an independent quality agenda, separate from our modeling choices. Their list defines the scope; their test data is not used in the model itself.
 
 \vspace{6pt}
 \textbf{Facility universe:}
@@ -213,7 +213,7 @@ Period & Median gap (yr) \\
 \vspace{6pt}
 \begin{alertblock}{COVID impact confirmed}
 \small
-Median inter-inspection gap \textbf{doubles} from 0.97yr (pre-COVID) to 1.88yr (post-2022). For surveillance inspections that generate 483 text, the gap is even wider. For those facilities, pre-COVID text is often the only structured signal available through 2025.
+Median inter-inspection gap \textbf{doubles} from 0.97yr (pre-COVID) to 1.88yr (post-2022). For surveillance inspections that generate 483 text, the gap is even wider. For those facilities, pre-COVID text is the last structured signal on record through 2025.
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -317,13 +317,13 @@ F1 & 0.452 \\
 \end{tabular}
 
 \column{0.47\textwidth}
-\textbf{What these numbers mean:}
+\textbf{Reading the numbers:}
 \begin{itemize}
-  \item Random baseline on 8 classes is 12.5\%; LLM reaches 58.6\%, reflecting genuine domain learning from GMP text
-  \item Most disagreements fall in adjacent categories (QualitySystem vs.\ ProductionControls), where even human raters would likely disagree
-  \item \textbf{Redica is not ground truth}: their labels are also human-coded. We treat this as inter-rater agreement, not accuracy
-  \item The DI flag casts a wider net than Redica's definition; high recall is useful for a screening feature, and we interpret it accordingly
-  \item The features driving our AE model (Lab Controls, severity) sit in the validated range
+  \item Random baseline on 8 classes is 12.5\%. Reaching 58.6\% means the model learned something real about GMP violations, not just label frequency.
+  \item Most disagreements are adjacent (QualitySystem vs.\ ProductionControls). Human raters disagree on those too.
+  \item \textbf{Redica is not ground truth.} Their labels are also human-coded. We treat this as inter-rater agreement.
+  \item The DI flag casts a wider net than Redica's definition. For a screening feature, high recall is the right trade-off.
+  \item The features that drive our AE model (Lab Controls, severity) sit squarely in the validated range.
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -516,13 +516,13 @@ E & Text, OAI-ever FEIs & 0.560 & 0.484 \\
 \textbf{Config D vs E interpretation:}
 
 \begin{itemize}
-  \item \textbf{Config D (VAI-only, 80 FEIs, 521 rows)}: AUC = 0.555. Text is a \emph{weaker} predictor for VAI-only facilities — their problems are less severe on average, less separable
-  \item \textbf{Config E (OAI-ever, 18 FEIs, 124 rows)}: LR AUC = 0.560, AP = \highlight{0.630}. Small sample, but precision at the high-risk end is good (AP $>$ config D's AP = 0.530)
+  \item \textbf{Config D (VAI-only, 80 FEIs, 521 rows)}: AUC = 0.555. Text is a \emph{weaker} predictor for VAI-only facilities. Their violations are less severe on average and harder to separate from clean facilities.
+  \item \textbf{Config E (OAI-ever, 18 FEIs, 124 rows)}: LR AUC = 0.560, AP = \highlight{0.630}. Small sample, but AP = 0.630 beats the VAI-only group (0.530). Precision at the high-risk end holds despite the smaller sample.
 \end{itemize}
 
 \vspace{6pt}
 \begin{block}{Implication}
-Predictive signal is concentrated in OAI facilities — facilities with genuinely bad technical problems and already-distributed bad product. VAI text signals are harder to separate.
+Predictive signal is concentrated in OAI facilities: genuinely bad technical problems with product already distributed before inspection. VAI text is harder to separate.
 \end{block}
 \end{columns}
 \end{frame}
@@ -601,7 +601,7 @@ persist & — & 0.868 & \highlight{0.879} & 0.843 \\
   \item Every group follows an \highlight{inverted-V peaking at $t=0$}: adverse events were already rising before FDA arrived
   \item \textbf{High-signal VAI} has the highest AE level (3,738), the steepest pre-rise (1.112), and the slowest post-decline (persist 0.879 vs 0.843). Without a forced correction, AEs linger
   \item Effect sizes are modest at yearly resolution; the quarterly panel makes the timing much sharper
-  \item One confound worth noting: high-signal VAI facilities may just be larger manufacturers. The SDUD volume data partially addresses this (69\% coverage)
+  \item The main unresolved confound is size: high-signal VAI facilities may simply produce more volume, which inflates both AEs and 483 count. SDUD partially controls for this (69\% coverage).
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -635,14 +635,11 @@ persist & — & \highlight{1.053} & \highlight{0.961} \\
 \column{0.42\textwidth}
 \textbf{What the quarterly panel shows:}
 \begin{enumerate}
-  \item \textbf{OAI correction is real but slow}\\
-    AEs keep rising for two quarters after the inspection (product already in the market), then fall below the pre-inspection level by $t+4$. The timeline matches what we would expect from corrective action plans and product turnover.
+  \item \textbf{OAI correction is real but slow.} AEs keep rising for two more quarters after inspection — product already in the market takes time to clear. By $t+4$, AEs fall below the pre-inspection level, consistent with corrective action plan timelines.
 
-  \item \textbf{VAI/NAI facilities show sustained elevation}\\
-    AEs peak around $t+3$ then partially pull back, but \emph{never return to the pre-inspection level} (persist $= 1.053$). Without a forced correction, the underlying problem stays.
+  \item \textbf{VAI/NAI shows no comparable correction.} AEs peak around $t+3$, pull back slightly, and never return to baseline (persist $= 1.053$). Without enforcement pressure, the quality problem persists.
 
-  \item \textbf{Policy implication}\\
-    A VAI rating is not sufficient for facilities flagged by Lab Controls and DI signals. 483 text can help identify which cases warrant escalation.
+  \item \textbf{Policy implication:} a VAI rating is not sufficient for facilities where Lab Controls and DI signals are elevated. 483 text identifies exactly which VAI cases should be escalated.
 \end{enumerate}
 \end{columns}
 \end{frame}
@@ -809,23 +806,22 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 \column{0.47\textwidth}
 \textbf{LLM extraction circularity:}
 \begin{itemize}
-  \item LLM trained/validated against Redica labels; Redica uses same 483 text
-  \item True external validation requires FDA inspector ground truth or clinical outcome linkage
+  \item LLM validated against Redica, which uses the same 483 text. Both are human-coded; neither is inspector ground truth.
+  \item True external validation requires FDA inspector notes or a direct clinical outcome linkage.
 \end{itemize}
 
 \vspace{6pt}
 \textbf{SDUD volume:}
 \begin{itemize}
-  \item 69\% FEI-year coverage; denominator bias in ae\_rate
-  \item Medicaid only; commercial market (IQVIA) not yet integrated
+  \item 31\% of FEI-years have no SDUD match, biasing the AE rate denominator
+  \item Medicaid covers $\sim$20\% of the market; commercial volume (IQVIA) is not yet integrated
 \end{itemize}
 
 \vspace{6pt}
 \textbf{Causal identification:}
 \begin{itemize}
-  \item All associations are correlational
-  \item Unobserved confounders (firm-level R\&D investment, country of origin, API source) not controlled
-  \item Strategic leniency interpretation requires market concentration data
+  \item All associations are correlational; unobserved confounders (R\&D investment, country of origin, API source) are not controlled
+  \item The strategic leniency interpretation rests on market concentration data we do not yet have
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -855,7 +851,7 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
   \item Link to FDA enforcement actions (warning letters, consent decrees) as additional outcomes
   \item Build real-time dashboard for FDA/industry use: facility risk score updated after each inspection
   \item Expand beyond the 14 target drugs to the broader generic market
-  \item Natural experiment: COVID inspection moratorium as exogenous shock — did facilities with pre-COVID high-risk 483 signals show worse outcomes during the gap?
+  \item Natural experiment: use the COVID inspection moratorium as an exogenous shock. Did facilities with high-risk pre-COVID 483 signals show worse outcomes during the 2020--2022 gap?
 \end{enumerate}
 
 \vspace{4pt}
