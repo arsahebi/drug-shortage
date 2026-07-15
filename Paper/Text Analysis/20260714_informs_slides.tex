@@ -94,28 +94,25 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 \end{columns}
 \end{frame}
 
-\begin{frame}{Why This Matters: Quality Risk, Patient Harm, and Supply Uncertainty}
+\begin{frame}{Why This Matters}
 \begin{columns}[T]
 \column{0.55\textwidth}
-\textbf{Manufacturing quality failures drive interconnected risks:}
+\textbf{Manufacturing quality failures drive two interconnected risks:}
 \begin{enumerate}
-  \item \textbf{Patient harm} — bad product already distributed causes adverse events (AEs) before FDA detects the problem
-  \item \textbf{Supply disruption} — quality problems may trigger voluntary recalls, production shutdowns, or import refusals; though OAI outcomes often lead to \emph{corrective action} rather than shortage, concentrated markets amplify any capacity loss
+  \item \textbf{Patient harm:} bad product already distributed causes adverse events before FDA detects the problem
+  \item \textbf{Supply disruption:} quality problems may trigger voluntary recalls, production shutdowns, or import refusals; though OAI outcomes often lead to corrective action rather than shortage, concentrated markets amplify any capacity loss
 \end{enumerate}
-\vspace{6pt}
-\textbf{Current surveillance gap:}
-\begin{itemize}
-  \item Pre-COVID median gap between inspections: \highlight{$\sim$1 year} across all visit types; \highlight{1.3 years} for surveillance visits that produce 483 text
-  \item Post-COVID: gaps nearly double; many facilities had no surveillance inspection from 2019 through 2023 or later
-  \item During that window, \emph{no new structured quality signal} enters the system
-\end{itemize}
+
+\vspace{8pt}
+\textbf{The core problem:} FDA inspections happen every 1--2 years on average. Between visits, no structured quality signal reaches regulators. If 483 text can predict harm, that window can be shortened.
+
 \column{0.42\textwidth}
-\begin{block}{Policy motivation}
+\begin{block}{What this enables}
 \small
 \begin{itemize}
-  \item If 483 text predicts AEs, FDA could \textbf{prioritize re-inspection} of high-risk facilities \emph{before} the next scheduled visit
-  \item Text signals could also flag ``strategic leniency'' cases where VAI/NAI assignments may be underestimating quality risk
-  \item During the COVID moratorium, pre-2020 483 text became the \emph{only} quality signal available for many facilities through 2025
+  \item \textbf{Risk-based re-inspection:} prioritize facilities showing 483 signals linked to AEs before the next scheduled visit
+  \item \textbf{Assignment review:} flag VAI/NAI cases where text signals suggest the outcome may underestimate quality risk
+  \item \textbf{Between-inspection surveillance:} a text-derived risk score is the only available signal when inspections stall
 \end{itemize}
 \end{block}
 \end{columns}
