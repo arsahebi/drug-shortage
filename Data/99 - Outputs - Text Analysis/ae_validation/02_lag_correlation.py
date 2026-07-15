@@ -40,29 +40,45 @@ OUT_FIGS = OUT / "figures"
 PANEL    = OUT / "fei_ae_panel.parquet"
 
 TEXT_FEATURES = [
-    "severity_critmajor_share",
-    "contamination_llm_share",
+    # individual shares / rates
+    "n_labcontrols_obs",
+    "vc_labcontrols_share",
+    "joint_labcontrols_dataintegrity",
+    "joint_contamination_labcontrols",
     "data_integrity_llm_share",
+    "severity_critmajor_share",
+    "vc_qualitysystem_share",
+    "cultural_root_cause_share",
+    "joint_qualitysystem_production",
+    "contamination_llm_share",
+    # additional
+    "n_qualitysystem_obs",
     "patient_risk_llm_share",
     "investigation_llm_share",
     "repeat_cross_insp_share",
     "scope_facilitywide_share",
-    "cultural_root_cause_share",
-    "vc_labcontrols_share",
-    "vc_qualitysystem_share",
+    "joint_labcontrols_qualitysystem",
+    "multi_domain_insp",
 ]
 
 FEATURE_LABELS = {
-    "severity_critmajor_share":  "Severity: Maj+Crit share",
-    "contamination_llm_share":   "Contamination flag rate",
-    "data_integrity_llm_share":  "Data integrity flag rate",
-    "patient_risk_llm_share":    "Patient risk flag rate",
-    "investigation_llm_share":   "Invest. failure flag rate",
-    "repeat_cross_insp_share":   "Repeat obs. rate",
-    "scope_facilitywide_share":  "Scope: facility-wide share",
-    "cultural_root_cause_share": "Root cause: Cultural share",
-    "vc_labcontrols_share":      "Domain: Lab controls share",
-    "vc_qualitysystem_share":    "Domain: Quality system share",
+    "severity_critmajor_share":        "Severity: Maj+Crit share",
+    "contamination_llm_share":         "Contamination flag rate",
+    "data_integrity_llm_share":        "Data integrity flag rate",
+    "patient_risk_llm_share":          "Patient risk flag rate",
+    "investigation_llm_share":         "Invest. failure flag rate",
+    "repeat_cross_insp_share":         "Repeat obs. rate",
+    "scope_facilitywide_share":        "Scope: facility-wide share",
+    "cultural_root_cause_share":       "Root cause: Cultural share",
+    "vc_labcontrols_share":            "Domain: Lab controls share",
+    "vc_qualitysystem_share":          "Domain: Quality system share",
+    "n_labcontrols_obs":               "Lab controls obs count",
+    "n_qualitysystem_obs":             "Quality system obs count",
+    "joint_labcontrols_dataintegrity": "Joint: Lab ctrl + DI",
+    "joint_contamination_labcontrols": "Joint: Contamination + Lab ctrl",
+    "joint_qualitysystem_production":  "Joint: Quality sys + Production",
+    "joint_labcontrols_qualitysystem": "Joint: Lab ctrl + Quality sys",
+    "multi_domain_insp":               "Multi-domain inspection (≥3)",
 }
 
 AE_LAGS = {

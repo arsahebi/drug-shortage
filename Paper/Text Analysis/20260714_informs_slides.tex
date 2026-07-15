@@ -325,65 +325,38 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 % ── SECTION 5: THEORY ────────────────────────────────────────────────────────
 \section{Two Failure Mode Theory}
 
-\begin{frame}{Two Failure Pathways: Technical vs.\ Governance}
+\begin{frame}{From 483 Text to Future Adverse Events: The Detection Lag}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Why 483 text predicts future AEs:}
 
-\begin{tikzpicture}[
-  node/.style={rectangle, rounded corners=3pt, draw, minimum height=0.65cm,
-               minimum width=3cm, align=center, font=\small},
-  arrow/.style={-{Stealth}, thick},
-  darrow/.style={-{Stealth}, thick, dashed}
-]
+\vspace{8pt}
+When FDA inspects a facility and finds quality violations, the inspection is already late. Product manufactured before the visit is in the market. The 483 documents what was already happening, not what is about to start.
 
-% Technical pathway
-\node[node, fill=techBlue!20, draw=techBlue] (labctrl) at (0, 1.2)
-  {\tech{Lab Controls / DI}\\\tech{failures in 483}};
-\node[node, fill=techBlue!10, draw=techBlue] (dist) at (4.5, 1.2)
-  {Pre-inspection\\bad product distributed};
-\node[node, fill=techBlue!20, draw=techBlue] (ae) at (9, 1.2)
-  {\tech{AEs at t+1, t+2}\\(patient harm)};
+\vspace{8pt}
+AEs from pre-inspection product surface in the following year, often before corrective action takes effect. The inspection is a detection event, not a causal trigger.
 
-\draw[arrow, color=techBlue] (labctrl) -- (dist)
-  node[midway, above, font=\scriptsize]{OAI issued, but too late};
-\draw[arrow, color=techBlue] (dist) -- (ae)
-  node[midway, above, font=\scriptsize]{market clearance lag};
+\vspace{8pt}
+This means we are predicting harm already in the pipeline. The 483 text carries the signal; the harm follows.
 
-% Governance pathway
-\node[node, fill=govGreen!20, draw=govGreen] (qsys) at (0, -0.4)
-  {\gov{Quality System /}\\\gov{Governance gaps in 483}};
-\node[node, fill=govGreen!10, draw=govGreen] (oai) at (4.5, -0.4)
-  {OAI issued\\(systemic risk)};
-\node[node, fill=govGreen!20, draw=govGreen] (noharm) at (9, -0.4)
-  {\gov{Minimal AEs}\\(product quality intact)};
-
-\draw[arrow, color=govGreen] (qsys) -- (oai)
-  node[midway, above, font=\scriptsize]{FDA escalates};
-\draw[arrow, color=govGreen] (oai) -- (noharm)
-  node[midway, above, font=\scriptsize]{no bad product released};
-
-% Labels
-\node[font=\scriptsize\itshape, color=techBlue] at (0, 0.55) {Chain 1};
-\node[font=\scriptsize\itshape, color=govGreen] at (0, -1.0) {Chain 3};
-
-\end{tikzpicture}
+\column{0.45\textwidth}
+\textbf{How we operationalize it:}
 
 \vspace{6pt}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Chain 1 (Technical $\to$ AEs):}
-\begin{itemize}
-  \item Lab Controls / DI / contamination found in 483
-  \item OAI is issued and corrective action required
-  \item But product made \emph{before} inspection already in market
-  \item $\Rightarrow$ AEs appear at t+1/t+2 from pre-inspection distribution
-\end{itemize}
-\column{0.48\textwidth}
-\textbf{Chain 3 (Governance $\to$ OAI only):}
-\begin{itemize}
-  \item Quality system gaps: missing SOPs, no management review
-  \item FDA escalates because systemic risk is present
-  \item Actual product quality may be intact (no bad batches released)
-  \item $\Rightarrow$ OAI without elevated AEs
-\end{itemize}
+\begin{tabular}{ll}
+\toprule
+Element & Design \\
+\midrule
+Features & 483 text snapshot at year $t$ \\
+Outcome & Serious AEs at year $t+1$ \\
+As-of join & Latest inspection with \\
+ & date $\le$ Dec\,31$(t)$ \\
+CV & GroupKFold ($k{=}5$) on FEI \\
+\bottomrule
+\end{tabular}
+
+\vspace{8pt}
+\textbf{Empirical question:} which features in 483 text predict AEs one year out, beyond what inspection frequency alone captures?
 \end{columns}
 \end{frame}
 
