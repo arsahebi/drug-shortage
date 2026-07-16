@@ -708,81 +708,83 @@ Lo-sig VAI (59) & 469 & 548 & 579 & 1.06 \\
 
 \begin{frame}{Reverse Flow: Cluster AE Trajectories, Characterize by Inspection}
 \begin{columns}[T]
-\column{0.55\textwidth}
-\textbf{Method}: KMeans ($k=4$) on trajectory features per FEI (median across panel years):
-\begin{itemize}
-  \item \texttt{slope\_pre}: OLS slope $t_{-2} \to t_0$
-  \item \texttt{slope\_post}: OLS slope $t_0 \to t_{+2}$
-  \item \texttt{persist}: $n\_ae_{t+2} / n\_ae_{t0}$
-  \item \texttt{pre\_rise}: $n\_ae_{t0} / n\_ae_{t-2}$
-\end{itemize}
+\column{0.54\textwidth}
+{\small Each facility summarized as one row (median across inspection events); \textbf{t here is years}, not quarters.}
 
-\vspace{6pt}
-\begin{tabular}{lcccccc}
-\toprule
-Cluster & $n$ & AE $t_0$ & persist & pre & tech & OAI \\
-\midrule
-Flat/rising & 3 & 51 & \highlight{0.96} & \highlight{4.63} & 0.39 & 0 \\
-Spike-correct & 28 & 3420 & 0.93 & 1.14 & \highlight{0.62} & 0.14 \\
-Slow-decline & 66 & 2264 & 0.87 & 1.02 & 0.33 & 0.21 \\
-Flat-low & 2 & 7386 & 0.30 & 1.11 & 0.42 & 0 \\
-\bottomrule
-\end{tabular}
-{\small tech = composite LabControls/DI score; OAI = share ever-OAI}
+\vspace{5pt}
+{\small KMeans ($k=4$) on slope\_pre, slope\_post, persist, pre\_rise:}
 
-\column{0.42\textwidth}
-\textbf{Cluster interpretation:}
-\begin{itemize}
-  \item \textbf{Flat/rising (3 FEIs)}: AEs were 4.6$\times$ higher at inspection than 2 years prior, keep rising, \emph{zero OAI ever}. Top candidate: FEI 3002608066 (vc\_labcontrols=0.67, DI=0.67, persist=1.20, any\_oai=0). \highlight{Strategic leniency candidates.}
-  \item \textbf{Spike-correct (28)}: Highest technical signals (0.62), rising pre-inspection, some OAI. Classic Chain 1 facilities.
-  \item \textbf{Slow-decline (66)}: Majority cluster. Gradual decline, moderate signals, 21\% ever-OAI. Typical biennial inspection cycle.
-  \item \textbf{Flat-low (2)}: Extreme AE counts ($>$7,000) collapsing to persist=0.30. Likely market event (recall/withdrawal), not inspection-driven.
-\end{itemize}
-\end{columns}
-\end{frame}
-
-\begin{frame}{Strategic Leniency Candidates: High-Signal VAI Facilities}
-\begin{columns}[T]
-\column{0.55\textwidth}
-\textbf{High-signal VAI facilities} (top-quartile technical score, never OAI), ranked by AE persistence:
-
-\vspace{4pt}
+\vspace{3pt}
 {\small
-\begin{tabular}{lccccc}
+\begin{tabular}{lcccc>{\columncolor{lightGray}}c}
 \toprule
-FEI & AE $t_0$ & AE $t+2$ & persist & tech & OAI? \\
+Cluster & $n$ & pre\_rise & persist & tech & OAI \\
 \midrule
-3011033544 & 2850 & 2754 & \highlight{1.00} & 0.4 & No \\
-3013567704 & 2772 & 2668 & 1.00 & 0.4 & No \\
-3003157498 & 3781 & 3612 & 1.00 & 0.6 & No \\
-3004554612 & 4755 & 4363 & 0.92 & 0.7 & No \\
-3006370524 & 5949 & 5381 & 0.90 & 1.3 & No \\
-3008298016 & 8159 & 6990 & 0.86 & 0.4 & No \\
-\ldots & & & & & \\
+\highlight{Flat/rising} & 3 & \highlight{4.63} & \highlight{0.96} & 0.39 & 0\% \\
+Spike-correct & 28 & 1.14 & 0.93 & \highlight{0.62} & 14\% \\
+Slow-decline & 66 & 1.02 & 0.87 & 0.33 & 21\% \\
+Flat-low & 2 & 1.11 & 0.30 & 0.42 & 0\% \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{4pt}
-Plus \textbf{Flat/rising cluster} FEI 3002608066:\\
-\quad vc\_labcontrols = 0.67, DI = 0.67, persist = 1.20, AEs rising
+{\scriptsize tech = composite Lab Controls + DI score; OAI = share ever-OAI\\
+pre\_rise = AE$_{t0}$/AE$_{t-2}$; persist = AE$_{t+2}$/AE$_{t0}$}
 
-\column{0.42\textwidth}
-\textbf{What ``strategic leniency'' means here:}
-\begin{itemize}
-  \item These facilities carry 483 text that looks like an OAI case: high Lab Controls and DI shares
-  \item FDA assigned VAI or NAI in every visit
-  \item Three competing explanations:
-  \begin{enumerate}
-    \item Inspectors judged severity below the OAI threshold
-    \item FDA avoided escalation because the facility is a critical sole supplier
-    \item Inspections were not deep enough to surface the full picture
-  \end{enumerate}
-\end{itemize}
+\column{0.43\textwidth}
+{\small
+\textbf{Flat/rising (3 FEIs):} AEs 4.6$\times$ higher at inspection than 2 years prior, keep rising after. Zero OAI ever. These are the silent cases the clustering finds without any text label.
+
+\vspace{6pt}
+\textbf{Spike-correct (28):} Highest tech score (0.62), some OAI, AEs declining post-inspection. System responding.
+
+\vspace{6pt}
+\textbf{Slow-decline (66):} Majority. Gradual decline, moderate signals.
+
+\vspace{6pt}
+\textbf{Flat-low (2):} Extreme AEs collapsing 70\% post-inspection. Likely a recall, not enforcement-driven.
+}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Strategic Leniency Candidates}
+\begin{columns}[T]
+\column{0.54\textwidth}
+{\small Top-quartile tech score, never OAI, ranked by persistence (yearly panel):}
 
 \vspace{4pt}
-\begin{alertblock}{How to test this}
-Cross-reference with market concentration data. If these FEIs are dominant suppliers of the relevant generic, explanation (2) becomes much more plausible.
+{\small
+\begin{tabular}{lcccc}
+\toprule
+FEI & AE $t_0$ & AE $t{+2}$ & persist & tech \\
+\midrule
+3003157498 & 3781 & 3612 & \highlight{1.00} & 0.6 \\
+3004554612 & 4755 & 4363 & 0.92 & 0.7 \\
+3006370524 & 5949 & 5381 & 0.90 & 1.3 \\
+3008298016 & 8159 & 6990 & 0.86 & 0.4 \\
+\ldots & & & & \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{5pt}
+{\small Plus \textbf{Flat/rising} FEI 3002608066: vc\_labcontrols = 0.67, DI = 0.67, persist = 1.20, AEs still rising.}
+
+\column{0.43\textwidth}
+{\small High Lab Controls + DI in every 483. FDA classified VAI or NAI in every visit. AEs not declining.}
+
+\vspace{7pt}
+{\small Three explanations:
+\begin{enumerate}
+  \item Inspectors found observations below the OAI threshold
+  \item FDA held back on escalation because the facility is a critical supplier
+  \item Inspections were not deep enough
+\end{enumerate}}
+
+\vspace{5pt}
+\begin{alertblock}{}
+\small Cross-reference with market concentration. If these FEIs are dominant suppliers, explanation (2) is the most plausible.
 \end{alertblock}
 \end{columns}
 \end{frame}
