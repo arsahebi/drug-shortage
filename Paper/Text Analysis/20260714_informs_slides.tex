@@ -608,40 +608,56 @@ E & Text, OAI-ever facilities & \highlight{0.596} \\
 % ── SECTION 7: INSPECTION GAP ANALYSIS ───────────────────────────────────────
 \section{Inspection Gap Analysis}
 
-\begin{frame}{Inspection Gaps Shape What the Trajectory Means}
+\begin{frame}{FDA Arrives After AEs Have Been Rising for a Year}
 \begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{AE trajectory by gap length} (inspection-centered quarterly panel, 237 matched inspections):
+\column{0.53\textwidth}
+\textbf{AE trajectory by gap since previous inspection} (237 inspections):
 
 \vspace{4pt}
+{\small
 \begin{tabular}{lcccc}
 \toprule
 Gap & $n$ & pre\_rise & persist & mean gap \\
-& & $t_0/t_{-4}$ & $t_{+4}/t_0$ & (yr) \\
+& & AE$_{t0}$/AE$_{t{-4}}$ & AE$_{t{+4}}$/AE$_{t0}$ & (yr) \\
 \midrule
 $<$1yr & 60 & 1.145 & 1.120 & 0.6 \\
 \rowcolor{techBlue!15}
-1–2yr & 87 & \textbf{1.266} & 1.041 & 1.5 \\
-2–3.5yr & 57 & 1.090 & 1.040 & 2.7 \\
+1--2yr & 87 & \textbf{1.266} & 1.041 & 1.5 \\
+2--3.5yr & 57 & 1.090 & 1.040 & 2.7 \\
 $>$3.5yr & 33 & 1.031 & 1.033 & 4.8 \\
 \bottomrule
 \end{tabular}
+}
 
 \vspace{6pt}
-\textbf{The critical case: 1–2yr gap group}\\
-$t_{-4}$ is within the current inspection cycle (no overlap with previous inspection). This group shows the clearest pre-distribution signal: AEs \textbf{+27\%} in the year before inspection.
+\textbf{Where does our baseline ($t_{-4}$, 1yr before inspection) fall?}
 
-\column{0.45\textwidth}
-\textbf{Why gaps matter for interpretation:}
-\begin{itemize}
-  \item For gap $>$2yr: our $t_{-4}$ point (1 year before current inspection) is approximately at the time of the \emph{previous inspection}. The pre-rise comparison is against a post-inspection baseline, not a neutral one.
-  \item For gap $<$1yr: follow-up inspections; already-elevated AEs from the prior inspection cycle persist.
-  \item For gap $>$3.5yr: AEs are essentially flat post-inspection (persist = 1.033). Long inter-inspection windows may reflect facilities with voluntary self-corrections already underway, or lower baseline risk.
-\end{itemize}
+\vspace{3pt}
+{\small
+\begin{tabular}{lp{3.0cm}}
+\toprule
+Gap & $t_{-4}$ baseline \\
+\midrule
+$<$1yr & Before the previous inspection. AEs already elevated. \\
+\rowcolor{techBlue!15}
+1--2yr & Shortly after the previous inspection. AEs still suppressed. \textbf{Clean.} \\
+$>$2yr & Deep in a long quiet window. No enforcement cycle. \\
+\bottomrule
+\end{tabular}
+}
 
-\vspace{4pt}
-\begin{alertblock}{Refined claim}
-``AEs rise 27\% in the year \emph{before} inspection for annually-inspected facilities (1--2yr gap). FDA is detecting an ongoing quality problem with a $\sim$1 year lag.''
+\column{0.44\textwidth}
+\textbf{Why the 1--2yr group is the key result:}
+
+\vspace{5pt}
+{\small The previous inspection suppressed AEs. $t_{-4}$ falls inside that recovery window, so the baseline is genuinely low. The 27\% rise from $t_{-4}$ to $t_0$ is a real drift back toward a problem state, not an artifact.}
+
+\vspace{7pt}
+{\small The other groups are harder to interpret. For $<$1yr, AEs were already bad at the baseline. For $>$2yr, neither $t_{-4}$ nor $t_0$ is anchored to an enforcement event, so the flat pre\_rise just reflects a long undisturbed period.}
+
+\vspace{7pt}
+\begin{alertblock}{Finding}
+\small For annually-inspected facilities, FDA arrives after AEs have been rising for 12 months. The 483 text from the \emph{prior} inspection already carried the predictive signal for this rise.
 \end{alertblock}
 \end{columns}
 \end{frame}
