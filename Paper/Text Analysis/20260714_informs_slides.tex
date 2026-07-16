@@ -663,17 +663,17 @@ $>$2yr & deep in a quiet window; no enforcement anchor \\
 % ── SECTION 8: TRAJECTORY ANALYSIS ──────────────────────────────────────────
 \section{Trajectory Analysis}
 
-\begin{frame}{483 Text Separates High-Risk VAI Facilities Where Classification Fails}
+\begin{frame}{The Silent Problem: VAI Facilities 483 Text Flags but FDA Misses}
 \begin{columns}[T]
 \column{0.54\textwidth}
-\textbf{Quarterly window ($\pm$4 quarters) by facility group} (246 inspections, 98 FEIs):
+\textbf{AE trajectory by facility group} (246 inspections, 98 FEIs):
 
 \vspace{4pt}
 {\small
 \begin{tabular}{lcccc}
 \toprule
 Group & Q$-$4 & Q0 & Q+4 & persist \\
- & (1yr before) & (insp.) & (1yr after) & \\
+ & (1yr before) & (insp.) & (1yr after) & AE$_{t+4}$/AE$_{t0}$ \\
 \midrule
 OAI-ever (25) & 567 & 644 & \highlight{662} & \highlight{1.03} \\
 Hi-sig VAI (14) & 661 & 797 & \highlight{869} & \highlight{1.09} \\
@@ -682,65 +682,22 @@ Lo-sig VAI (59) & 469 & 548 & 579 & 1.06 \\
 \end{tabular}
 }
 
-\vspace{4pt}
-{\small ``Hi-sig VAI'' = top-quartile composite of vc\_labcontrols\_share, data\_integrity\_share, joint\_labcontrols\_di; never OAI.}
+\vspace{5pt}
+{\small \textbf{Hi-sig VAI:} top-quartile Lab Controls + DI text signals, never OAI.}
 
-\vspace{6pt}
-pre\_rise: OAI 1.14, Hi-sig VAI \highlight{1.21}, Lo-sig VAI 1.17
+\vspace{4pt}
+{\small pre\_rise (AE$_{t0}$/AE$_{t-4}$): OAI 1.14 \quad Hi-sig VAI \highlight{1.21} \quad Lo-sig 1.17}
 
 \column{0.43\textwidth}
-\begin{itemize}
-  \item OAI facilities: AEs persist near the inspection level (persist = 1.03). A 1-year window is not long enough to see enforcement correction clear the pipeline.
-  \item High-signal VAI: AEs at Q+4 are \highlight{9\% above} the inspection quarter and \highlight{32\% above} 1 year prior. These facilities look worse at Q+4 than any OAI facility. FDA rated them identically to the VAI group.
-  \item Low-signal VAI: persist = 1.05, a modest rise with no correction signal.
-\end{itemize}
+{\small These 14 facilities were classified VAI in every inspection. FDA found observations but took no enforcement action. Their AEs at Q+4 are 9\% above the inspection quarter and 32\% above a year prior. OAI-ever facilities persist at only 1.03.}
 
-\vspace{4pt}
-\begin{alertblock}{The gap this fills}
-Hi-sig VAI facilities (identified by 483 text alone) show more sustained harm than OAI facilities. FDA classification misses them entirely.
+\vspace{7pt}
+{\small 483 text (Lab Controls + DI co-occurrence) identifies them. FDA's classification does not. These are the silent cases.}
+
+\vspace{7pt}
+\begin{alertblock}{}
+\small Can we find all such facilities systematically? Cluster AE trajectories across all 98 FEIs and ask which trajectory shapes map to high 483 text signals.
 \end{alertblock}
-\end{columns}
-\end{frame}
-
-\begin{frame}{Quarterly Trajectory: AEs Persist in Both Groups, Pre-Inspection Rise Differs}
-\begin{columns}[T]
-\column{0.55\textwidth}
-\textbf{Inspection-centered panel} (246 events, $\pm$4 quarters):
-
-\vspace{4pt}
-\begin{tabular}{lccc}
-\toprule
-Quarter & All & VAI/NAI & OAI \\
-& (246) & (213) & (33) \\
-\midrule
-$t-4$ & 522 & 513 & 580 \\
-$t-3$ & 565 & & \\
-$t-2$ & 583 & & \\
-$t-1$ & 579 & & \\
-$t=0$ & 605 & 604 & 613 \\
-$t+1$ & 627 & & \\
-$t+2$ & \textbf{646} & & \\
-$t+3$ & 644 & & \\
-$t+4$ & 635 & \highlight{634} & \highlight{640} \\
-\midrule
-pre\_rise & & 1.177 & 1.057 \\
-persist & & \highlight{1.050} & \highlight{1.044} \\
-\bottomrule
-\end{tabular}
-
-\vspace{4pt}
-{\scriptsize
-\textbf{pre\_rise} = AE($t_0$) / AE($t_{-4}$): how much AEs rose in the year \emph{before} inspection.\\
-\textbf{persist} = AE($t_{+4}$) / AE($t_0$): how much AEs held in the year \emph{after} inspection.}
-
-\column{0.42\textwidth}
-\begin{enumerate}
-  \item \textbf{Both groups persist.} persist $\approx$ 1.05 for both OAI and VAI/NAI. Enforcement takes more than one year to clear pre-inspection product from the market.
-
-  \item \textbf{Pre-inspection rise differs.} VAI/NAI facilities had AEs 18\% higher at inspection than a year prior (pre\_rise = 1.18). OAI facilities only 6\% higher (1.06). FDA escalates based on what inspectors see on-site, not on FAERS trends.
-
-  \item \textbf{Implication:} inspection outcome alone does not separate which facilities improve. 483 text adds signal the OAI/VAI label misses.
-\end{enumerate}
 \end{columns}
 \end{frame}
 
@@ -994,6 +951,48 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
 \appendix
 \section*{Backup Slides}
+
+\begin{frame}{Backup: Quarterly Trajectory by OAI vs VAI/NAI Classification}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{Inspection-centered panel} (246 events, $\pm$4 quarters):
+
+\vspace{4pt}
+\begin{tabular}{lccc}
+\toprule
+Quarter & All & VAI/NAI & OAI \\
+& (246) & (213) & (33) \\
+\midrule
+$t-4$ & 522 & 513 & 580 \\
+$t-3$ & 565 & & \\
+$t-2$ & 583 & & \\
+$t-1$ & 579 & & \\
+$t=0$ & 605 & 604 & 613 \\
+$t+1$ & 627 & & \\
+$t+2$ & \textbf{646} & & \\
+$t+3$ & 644 & & \\
+$t+4$ & 635 & \highlight{634} & \highlight{640} \\
+\midrule
+pre\_rise & & 1.177 & 1.057 \\
+persist & & \highlight{1.050} & \highlight{1.044} \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+{\scriptsize
+\textbf{pre\_rise} = AE($t_0$) / AE($t_{-4}$): rise in the year before inspection.\\
+\textbf{persist} = AE($t_{+4}$) / AE($t_0$): persistence in the year after.}
+
+\column{0.42\textwidth}
+\begin{enumerate}
+  \item \textbf{Both groups persist.} persist $\approx$ 1.05 for both OAI and VAI/NAI. Enforcement takes more than one year to clear pre-inspection product from the market.
+
+  \item \textbf{Pre-inspection rise differs.} VAI/NAI pre\_rise = 1.18 vs OAI 1.06. FDA escalates based on what inspectors see, not on FAERS trends.
+
+  \item \textbf{Implication:} OAI label alone does not separate which facilities improve. This motivates using 483 text instead.
+\end{enumerate}
+\end{columns}
+\end{frame}
 
 \begin{frame}{Backup: FAERS Filtering — Design Rationale}
 \begin{columns}[T]
