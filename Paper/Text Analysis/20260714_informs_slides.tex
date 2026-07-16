@@ -572,13 +572,13 @@ Column & Meaning \\
 \toprule
 Config & Features & LR AUC & RF AUC \\
 \midrule
-A & \highlight{Text only} (17 LLM) & \highlight{0.533} & 0.514 \\
-B & Text + OAI flag & 0.538 & 0.515 \\
-C & OAI flag only & 0.517 & 0.517 \\
+A & \highlight{Text only} (17 LLM) & \highlight{0.528} & 0.502 \\
+B & Text + OAI flag & 0.522 & 0.496 \\
+C & OAI flag only & 0.489 & 0.489 \\
 \midrule
 \multicolumn{4}{l}{\textit{Stratified subgroups}} \\
-D & Text, VAI-only FEIs & 0.523 & 0.489 \\
-E & Text, OAI-ever FEIs & \highlight{0.626} & 0.431 \\
+D & Text, VAI-only FEIs & 0.499 & 0.461 \\
+E & Text, OAI-ever FEIs & \highlight{0.788} & 0.581 \\
 \midrule
 \multicolumn{4}{l}{\textit{Random baseline = 0.500}} \\
 \bottomrule
@@ -586,8 +586,8 @@ E & Text, OAI-ever FEIs & \highlight{0.626} & 0.431 \\
 
 \vspace{6pt}
 \begin{itemize}
-  \item Text-only LR beats the OAI flag baseline by \highlight{+1.6 AUC points}. Knowing this inspection was OAI tells you little about which patients get hurt next year; the text does more.
-  \item Adding the OAI flag to text (config B) barely moves the needle. Text already captures what the classification captures.
+  \item Text-only LR beats the OAI flag baseline by \highlight{+3.9 AUC points} (0.528 vs 0.489). The OAI classification falls \emph{below} the random baseline — knowing a facility was cited OAI tells you nothing about which patients get hurt.
+  \item Adding OAI flag to text (config B) hurts performance (0.522 $<$ 0.528). The label adds noise, not signal.
   \item RF underperforms LR throughout: 246 rows, the ensemble overfits.
 \end{itemize}
 
@@ -595,13 +595,13 @@ E & Text, OAI-ever FEIs & \highlight{0.626} & 0.431 \\
 \textbf{Config D vs E:}
 
 \begin{itemize}
-  \item \textbf{Config D (VAI-only, 81 FEIs, 184 rows)}: AUC = 0.523. Text is a weaker predictor for facilities FDA never escalated. Violations are less severe on average.
-  \item \textbf{Config E (OAI-ever, 17 FEIs, 62 rows)}: LR AUC = \highlight{0.626}, AP = \highlight{0.703}. Strongest result in the ablation. For facilities with confirmed quality failures, 483 text predicts which inspections precede elevated patient harm.
+  \item \textbf{Config D (VAI-only, 78 FEIs, 177 rows)}: AUC = 0.499 — essentially random. For facilities FDA never escalated, text has no predictive power on average.
+  \item \textbf{Config E (OAI-ever, 20 FEIs, 69 rows)}: LR AUC = \highlight{0.788}, AP = \highlight{0.817}. For facilities with at least one confirmed OAI, 483 text strongly predicts which specific inspections precede elevated patient harm.
 \end{itemize}
 
 \vspace{6pt}
 \begin{block}{Implication}
-Predictive signal concentrates in OAI facilities: confirmed quality problems, bad product already distributed. Text beats structured inspection outcome alone.
+Predictive signal concentrates in OAI facilities. Text AUC = 0.788 vs 0.489 OAI-flag baseline: inspectors' written observations predict harm far better than their own classification labels.
 \end{block}
 \end{columns}
 \end{frame}
@@ -637,7 +637,7 @@ $t_{-4}$ is within the current inspection cycle (no overlap with previous inspec
 \begin{itemize}
   \item For gap $>$2yr: our $t_{-4}$ point (1 year before current inspection) is approximately at the time of the \emph{previous inspection}. The pre-rise comparison is against a post-inspection baseline, not a neutral one.
   \item For gap $<$1yr: follow-up inspections; already-elevated AEs from the prior inspection cycle persist.
-  \item For gap $>$3.5yr: AEs actually \emph{decline} post-inspection (persist = 0.962) — long inter-inspection windows may allow voluntary corrections, or rare inspections target already-declining facilities.
+  \item For gap $>$3.5yr: AEs are essentially flat post-inspection (persist = 1.033). Long inter-inspection windows may reflect facilities with voluntary self-corrections already underway, or lower baseline risk.
 \end{itemize}
 
 \vspace{4pt}
@@ -650,7 +650,7 @@ $t_{-4}$ is within the current inspection cycle (no overlap with previous inspec
 % ── SECTION 8: TRAJECTORY ANALYSIS ──────────────────────────────────────────
 \section{Trajectory Analysis}
 
-\begin{frame}{AE Trajectory by Facility Group: OAI Corrects, High-Signal VAI Persists}
+\begin{frame}{483 Text Separates High-Risk VAI Facilities Where Classification Fails}
 \begin{columns}[T]
 \column{0.54\textwidth}
 \textbf{Quarterly window ($\pm$4 quarters) by facility group} (246 inspections, 98 FEIs):
@@ -662,9 +662,9 @@ $t_{-4}$ is within the current inspection cycle (no overlap with previous inspec
 Group & Q$-$4 & Q0 & Q+4 & persist \\
  & (1yr before) & (insp.) & (1yr after) & \\
 \midrule
-OAI-ever (17) & 614 & 674 & \highlight{655} & \highlight{0.97} \\
-Hi-sig VAI (16) & 791 & 959 & \highlight{1055} & \highlight{1.10} \\
-Lo-sig VAI (65) & 568 & 632 & 669 & 1.06 \\
+OAI-ever (20) & 549 & 604 & \highlight{616} & \highlight{1.02} \\
+Hi-sig VAI (16) & 706 & 862 & \highlight{944} & \highlight{1.10} \\
+Lo-sig VAI (62) & 471 & 554 & 582 & 1.05 \\
 \bottomrule
 \end{tabular}
 }
@@ -673,18 +673,18 @@ Lo-sig VAI (65) & 568 & 632 & 669 & 1.06 \\
 {\small ``Hi-sig VAI'' = top-quartile composite of vc\_labcontrols\_share, data\_integrity\_share, joint\_labcontrols\_di; never OAI.}
 
 \vspace{6pt}
-pre\_rise: OAI 1.10, Hi-sig VAI \highlight{1.21}, Lo-sig VAI 1.11
+pre\_rise: OAI 1.10, Hi-sig VAI \highlight{1.22}, Lo-sig VAI 1.18
 
 \column{0.43\textwidth}
 \begin{itemize}
-  \item OAI facilities: AEs peak near inspection, then fall back below the pre-inspection baseline (persist = 0.97). Forced corrective action works.
-  \item High-signal VAI: AEs at Q+4 are \highlight{10\% above} the inspection quarter and \highlight{33\% above} 1 year prior. Without enforcement pressure, the quality problem stays in the market.
-  \item Low-signal VAI shows a modest rise too (persist = 1.06), but the text signal correctly separates the two VAI groups.
+  \item OAI facilities: AEs peak at Q+2, then decline toward baseline (persist = 1.02). Partial correction is visible in the 1-year window.
+  \item High-signal VAI: AEs at Q+4 are \highlight{10\% above} the inspection quarter and \highlight{34\% above} 1 year prior. These facilities look worse at Q+4 than any OAI facility. FDA rated them identically to the VAI group.
+  \item Low-signal VAI: persist = 1.05, a modest rise with no correction signal.
 \end{itemize}
 
 \vspace{4pt}
 \begin{alertblock}{The gap this fills}
-FDA rated these facilities identically (VAI). 483 text identifies which ones keep harming patients.
+Hi-sig VAI facilities (identified by 483 text alone) show more sustained harm than OAI facilities. FDA classification misses them entirely.
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -952,7 +952,7 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 \begin{enumerate}
   \setlength{\itemsep}{8pt}
   \item \textbf{LLM text signals predict patient harm.}\\
-    483-derived features achieve AUC = \highlight{0.533} vs 0.517 OAI-flag baseline. For OAI-ever facilities, AUC = 0.626, AP = 0.703. Text beats structured inspection outcome alone.
+    483-derived features achieve AUC = \highlight{0.528} vs 0.489 OAI-flag baseline (+3.9 points; OAI flag is below random). For OAI-ever facilities, AUC = 0.788, AP = 0.817. Inspectors' written observations predict harm far better than their own classification labels.
 
   \item \textbf{Five text signals carry AE-predictive information; twelve do not.}\\
     Lab Controls count, DI flag, and their joint co-occurrence predict AEs one year out. Quality System share, severity tier, and cultural root cause do not. The split tracks which failures leave bad product in the market.
@@ -960,8 +960,8 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
   \item \textbf{Inspection is a lagging indicator.}\\
     AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +27\% in the 4 quarters before inspection.
 
-  \item \textbf{Classification does not predict post-inspection trajectory; text does.}\\
-    OAI and VAI/NAI facilities persist at nearly the same level (1.041 vs 1.049) — a 1-year window is too short to observe enforcement correction. High-signal VAI identified by 483 text: AEs at Q+4 are 10\% above inspection level (persist = 1.10), versus 5\% for low-signal VAI.
+  \item \textbf{483 text separates high-risk VAI facilities that classification misses.}\\
+    Hi-signal VAI (top-quartile Lab Controls + DI text): AEs at Q+4 are 10\% above inspection level (persist = 1.10) and 34\% above 1 year prior. OAI-ever facilities, by contrast, show partial correction (persist = 1.02). FDA rated both groups the same — text identified the worse outcome.
 
   \item \textbf{Strategic leniency candidates are identifiable.}\\
     3 FEIs show rising AEs, high technical 483 signals, and zero OAI ever. Cross-referencing with market concentration will test the shortage-avoidance hypothesis.
