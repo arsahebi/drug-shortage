@@ -486,30 +486,41 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 
 % ── FAERS DETAIL SLIDE ────────────────────────────────────────────────────────
 
-\begin{frame}{How We Construct the FAERS AE Signal}
+\begin{frame}{How We Filter FAERS Reports}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Four-step processing funnel:}
+\textbf{ANDA (generic) reports only}\\[4pt]
+Branded drug reports excluded — our facilities are ANDA manufacturers.
 
-\vspace{4pt}
-\begin{enumerate}
-  \item \textbf{ANDA filter} (parquet build): keep generic drug reports only. Branded reports are excluded; our FEIs are ANDA facilities.
-  \item \textbf{Primary Suspect only} (\texttt{role\_cod = PS}): the reporter named this drug as the primary cause. Concomitant and interacting drugs are dropped.
-  \item \textbf{Serious outcomes only}: keep reports where the worst outcome is Death, Hospitalization, Life-threatening, Disability, Congenital anomaly, Required intervention, or Other serious. ``No outcome reported'' is excluded (14.6\% of rows, $\approx$24,700 reports dropped).
-  \item \textbf{Name matching}: first word of \texttt{prod\_ai}, lowercased $\to$ \texttt{api\_key}. Inner join to the Valisure FEI map (14 APIs $\times$ 129 FEIs). Match rate: \highlight{99.1\%}.
-\end{enumerate}
+\vspace{10pt}
+\textbf{Primary Suspect (PS) only}\\[4pt]
+Each FAERS report lists every drug the patient was taking. We keep only reports where this drug was named the primary cause of the event.
+
+\vspace{10pt}
+\textbf{Serious outcomes only}\\[4pt]
+We keep reports with at least one of:
+\begin{itemize}
+  \item Death
+  \item Hospitalization
+  \item Life-threatening
+  \item Disability / incapacity
+  \item Congenital anomaly
+  \item Required intervention
+  \item Other serious outcome
+\end{itemize}
+``No outcome reported'' excluded (\highlight{14.6\%} of reports).
 
 \column{0.47\textwidth}
-\textbf{Design rationale:}
+\textbf{Drug name matching}\\[4pt]
+First word of \texttt{prod\_ai} $\to$ \texttt{api\_key}.\\
+Joined to the 14-drug FEI map.\\
+Match rate: \highlight{99.1\%}.
 
-\vspace{6pt}
-\textbf{Why PS only?} FAERS reports list all drugs a patient was taking. Only the Primary Suspect was judged by the reporter to have caused the event. Including concomitant drugs would attribute AEs to bystander medications.
-
-\vspace{6pt}
-\textbf{Why first-word match?} ``Atorvastatin Calcium'' in \texttt{prod\_ai} has two words. Any-word matching recovers a handful of missed combination products but mis-attributes ``Calcium'' rows to Calcium Gluconate FEIs. First-word-only is the safer tradeoff; the unmatched 0.9\% is negligible.
-
-\vspace{6pt}
-\textbf{Why not a rate?} SDUD volume covers only 69\% of FEI-years. Dividing by a partially missing denominator introduces systematic bias. AE count enters as the raw outcome; $\log(\text{SDUD units})$ enters as a covariate.
+\vspace{12pt}
+\begin{block}{Result}
+168,955 PS reports $\to$ \textbf{144,286} after serious-only filter.\\[4pt]
+Aggregated to quarterly counts per FEI.
+\end{block}
 \end{columns}
 \end{frame}
 
@@ -977,6 +988,26 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
 \appendix
 \section*{Backup Slides}
+
+\begin{frame}{Backup: FAERS Filtering — Design Rationale}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Why Primary Suspect only?}\\[4pt]
+FAERS reports list all drugs a patient was taking. Only the PS was judged by the reporter to have caused the event. Including concomitant or interacting drugs would attribute AEs to bystander medications and inflate counts at every facility.
+
+\vspace{8pt}
+\textbf{Why first-word name match?}\\[4pt]
+``Atorvastatin Calcium'' in \texttt{prod\_ai} has two words. Any-word matching recovers a handful of missed combination products but mis-attributes ``Calcium'' rows to Calcium Gluconate FEIs. First-word-only is the safer tradeoff; the unmatched 0.9\% is negligible.
+
+\column{0.47\textwidth}
+\textbf{Why not a rate (AEs / volume)?}\\[4pt]
+SDUD Medicaid volume covers only 69\% of FEI-years. Dividing by a partially missing denominator introduces systematic bias — facilities with missing SDUD look artificially high-risk. AE count enters as the raw outcome; $\log(\text{SDUD units})$ enters as a covariate when available.
+
+\vspace{8pt}
+\textbf{Why serious outcomes only?}\\[4pt]
+Non-serious reports are subject to much higher underreporting variability. Serious AEs have mandatory reporting paths (MedWatch, expedited), making the count more comparable across facilities and time periods.
+\end{columns}
+\end{frame}
 
 \begin{frame}{Backup: Correlation Heatmap — All Features, All Lags}
 \begin{center}
