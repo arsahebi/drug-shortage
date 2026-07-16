@@ -224,7 +224,7 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 % Step 2
 \node[box] (s2) at (6.4,0) {Step 02\\Aggregate to\\FEI $\times$ inspection};
 % Panel
-\node[box, fill=ncsuRed!15] (panel) at (9.6,0) {Panel\\FEI $\times$ year/qtr\\{\tiny script 01}};
+\node[box, fill=ncsuRed!15] (panel) at (9.6,0) {Panel\\FEI $\times$ inspection\\{\tiny script 01}};
 % Model
 \node[box, fill=techBlue!15] (model) at (12.8,0) {Model\\{\tiny scripts 03–04}};
 
@@ -240,7 +240,7 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 \end{tikzpicture}
 
 \vspace{8pt}
-{\small \textbf{Input:} 1,067 FDA 483 observations across 246 inspections and 98 FEIs. Redica FOIA'd the source documents from FDA — richer and more complete than the public inspection dashboard.}
+{\small \textbf{Input:} 1,067 FDA 483 observations across 246 inspections and 98 FEIs. Redica FOIA'd these directly from FDA; the coverage is substantially better than the public inspection dashboard.}
 
 \end{frame}
 
@@ -313,11 +313,11 @@ Redica's GMP specialists reviewed our prompt definitions and confirmed:
 \end{itemize}
 
 \vspace{6pt}
-Step 02 aggregates these per-observation labels into per-inspection feature vectors used in the predictive model.
+Step 02 rolls these observation-level labels into one row per inspection. That feature vector goes directly into the correlation analysis and the prediction model.
 \end{columns}
 \end{frame}
 
-\begin{frame}{Step 01: How the LLM Extracts Signals — A Concrete Example}
+\begin{frame}{Step 01: How the LLM Extracts Signals, a Concrete Example}
 \begin{columns}[T]
 \column{0.58\textwidth}
 \begin{block}{Input: verbatim 483 observation text}
@@ -347,7 +347,7 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \column{0.39\textwidth}
 \textbf{Prompt design:}
 \begin{itemize}
-  \item Strict JSON schema — model cannot hallucinate fields
+  \item Strict JSON schema: the model cannot hallucinate fields
   \item Each of the 10 dimensions has its own rule and anchor examples
   \item All 10 extracted in one pass per observation
   \item Model: Claude Haiku (cost-efficient at scale)
@@ -364,24 +364,24 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \textbf{Three types of features per inspection:}
 
 \vspace{4pt}
-\textbf{Type 1 — Share} (normalized by observation count):
+\textbf{Type 1: Share} (normalized by observation count):
 \begin{itemize}
   \item \texttt{vc\_labcontrols\_share}: fraction of observations in Lab Controls domain
-  \item Captures what \emph{kind} of inspection this was
+  \item Captures what kind of inspection this was
 \end{itemize}
 
 \vspace{4pt}
-\textbf{Type 2 — Count} (absolute intensity):
+\textbf{Type 2: Count} (absolute intensity):
 \begin{itemize}
   \item \texttt{n\_labcontrols\_obs}: raw number of Lab Controls observations
-  \item Captures how much was cited, not just whether
+  \item Captures how much was cited, not just whether it was cited at all
 \end{itemize}
 
 \vspace{4pt}
-\textbf{Type 3 — Joint co-occurrence}:
+\textbf{Type 3: Joint co-occurrence}:
 \begin{itemize}
   \item \texttt{joint\_labctrl\_di}: 1 if both Lab Controls and DI appear in the same inspection
-  \item Highest predictor of future AEs ($\varrho = 0.23$, $p < .001$)
+  \item Highest predictor of future AEs ($\rho = 0.23$, $p < .001$)
 \end{itemize}
 
 \column{0.45\textwidth}
@@ -389,9 +389,9 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 
 \vspace{4pt}
 {\small
-Lab Controls alone $\to$ a QC process failed.\\[2pt]
-DI alone $\to$ a record was altered.\\[2pt]
-\textbf{Both together} $\to$ bad product was likely made \emph{and} the evidence was manipulated. Higher probability that subpotent or contaminated product reached patients.
+Lab Controls alone: a QC process failed.\\[2pt]
+DI alone: a record was altered.\\[2pt]
+\textbf{Both together:} bad product was likely made and the evidence was manipulated. The probability that subpotent or contaminated product reached patients is higher when both are present.
 }
 
 \vspace{8pt}
@@ -443,13 +443,13 @@ CV & FEI-grouped 5-fold \\
 \begin{frame}{483 Text Signals: Do They Lead or Lag Patient Harm?}
 \begin{columns}[T]
 \column{0.56\textwidth}
-\textbf{Spearman $\varrho$ at inspection quarter (Q0) vs.\ one year later (Q+4), $n \approx 224$:}
+\textbf{Spearman $\rho$ at inspection quarter (Q0) vs.\ one year later (Q+4), $n \approx 224$:}
 
 \vspace{4pt}
 {\small
 \begin{tabular}{lcclcc}
 \toprule
-Feature & $\varrho_{\text{Q0}}$ & & $\varrho_{\text{Q+4}}$ & & \\
+Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 \midrule
 \texttt{joint\_labctrl\_di}     & +0.16 & * & \tech{+0.23} & *** & $\uparrow$ \\
 \texttt{n\_labcontrols\_obs}    & +0.16 & * & \tech{+0.20} & **  & $\uparrow$ \\
@@ -466,14 +466,14 @@ Feature & $\varrho_{\text{Q0}}$ & & $\varrho_{\text{Q+4}}$ & & \\
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item All five predictive features get \emph{stronger} from Q0 to Q+4. Correlations don't fade — they grow. This is the detection lag: text captures quality failures that produce AEs over the following year.
-  \item DI flag is not significant at Q0 but reaches $p{<}.05$ at Q+4. Data integrity problems take time to surface as patient harm.
-  \item Quality System share and severity carry no predictive information at any lag.
+  \item All five predictive features strengthen from Q0 to Q+4. The correlations grow. That's the detection lag: 483 text captures quality failures that won't show up as patient harm for another year.
+  \item The DI flag is not significant at Q0 but reaches $p{<}.05$ at Q+4. Falsified records take time to translate into reported adverse events.
+  \item Quality System and severity are flat across all four lags. They describe the inspection but don't predict patient outcomes.
 \end{itemize}
 
 \vspace{4pt}
 \begin{block}{Takeaway}
-Lab Controls and DI signals are leading indicators. The $\uparrow$ column is the key: every significant feature predicts harm better at 9–12 months out than at the inspection itself.
+Lab Controls and DI are leading indicators. Every significant feature is a stronger predictor at Q+4 than at Q0.
 \end{block}
 \end{columns}
 \end{frame}
@@ -948,7 +948,7 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 \includegraphics[width=0.86\textwidth]{../figures/lag_heatmap.png}
 \end{center}
 \vspace{-6pt}
-{\scriptsize Top 12 features by $|\varrho|$ at Q+4. Correlations grow from Q0 to Q+4 for the Lab Controls cluster — consistent with the detection lag mechanism.}
+{\scriptsize Top 12 features by $|\rho|$ at Q+4. Correlations grow from Q0 to Q+4 for the Lab Controls cluster, consistent with the detection lag.}
 \end{frame}
 
 \begin{frame}{Backup: Full Feature List (17 LLM Features)}
