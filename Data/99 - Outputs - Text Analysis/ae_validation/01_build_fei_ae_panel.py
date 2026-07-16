@@ -50,6 +50,7 @@ TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_feat
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
 REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
+FDA_INSP_XLSX   = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 SDUD_PARQ    = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDcanonical.parquet"
 NDC_FEI_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
 
@@ -252,6 +253,7 @@ def _add_lags_quarterly(panel: pd.DataFrame, ae_q: pd.DataFrame) -> pd.DataFrame
 # ── Inspection outcomes ───────────────────────────────────────────────────────
 
 def _load_inspection_outcomes() -> pd.DataFrame:
+    """Year-level aggregation for yearly/quarterly panel builders."""
     df = pd.read_csv(REDICA_COMBINED)
     df.columns = [c.strip() for c in df.columns]
     df["fei"]  = pd.to_numeric(df["FEI"], errors="coerce").astype("Int64")
@@ -264,6 +266,47 @@ def _load_inspection_outcomes() -> pd.DataFrame:
              .agg(n_oai=("is_oai", "sum"), n_vai=("is_vai", "sum"), n_nai=("is_nai", "sum")))
     agg["any_oai"] = (agg["n_oai"] > 0).astype(int)
     return agg  # columns: fei, year, n_oai, n_vai, n_nai, any_oai
+
+
+def _load_inspection_outcomes_by_date() -> pd.DataFrame:
+    """Redica outcomes keyed by (fei, insp_date).
+    Includes classifications inferred from enforcement signals (Warning Letter
+    / Non-Compliant → OAI; Compliant → NAI) via the build script.
+    Returns fei, insp_date (normalized to midnight), n_oai, n_vai, n_nai, any_oai.
+    """
+    df = pd.read_csv(REDICA_COMBINED)
+    df.columns = [c.strip() for c in df.columns]
+    df["fei"]       = pd.to_numeric(df["FEI"], errors="coerce").astype("Int64")
+    df["insp_date"] = pd.to_datetime(df["Event Date"], errors="coerce").dt.normalize()
+    df = df.dropna(subset=["fei", "insp_date", "Classification"])
+    cls = df["Classification"].str.upper()
+    df["n_oai"]   = (cls == "OAI").astype(int)
+    df["n_vai"]   = (cls == "VAI").astype(int)
+    df["n_nai"]   = (cls == "NAI").astype(int)
+    df["any_oai"] = df["n_oai"]
+    return df[["fei", "insp_date", "n_oai", "n_vai", "n_nai", "any_oai"]].copy()
+
+
+def _load_fda_drug_outcomes() -> pd.DataFrame:
+    """FDA Drug Quality Assurance inspection outcomes.
+    Used as fallback for inspections not matched in Redica Red Flag Events.
+    Returns fei, insp_date (normalized), n_oai, n_vai, n_nai, any_oai.
+    """
+    fda = pd.read_excel(FDA_INSP_XLSX,
+                        usecols=["FEI Number", "Inspection End Date",
+                                 "Classification", "Project Area"])
+    fda = fda[fda["Project Area"] == "Drug Quality Assurance"].copy()
+    fda["fei"]       = pd.to_numeric(fda["FEI Number"], errors="coerce").astype("Int64")
+    fda["insp_date"] = pd.to_datetime(fda["Inspection End Date"], errors="coerce").dt.normalize()
+    fda = fda.dropna(subset=["fei", "insp_date", "Classification"])
+    cls = fda["Classification"].str.upper()
+    fda["n_oai"]   = cls.str.contains("OFFICIAL ACTION").astype(int)
+    fda["n_vai"]   = cls.str.contains("VOLUNTARY ACTION").astype(int)
+    fda["n_nai"]   = cls.str.contains("NO ACTION").astype(int)
+    fda["any_oai"] = fda["n_oai"]
+    return (fda[["fei", "insp_date", "n_oai", "n_vai", "n_nai", "any_oai"]]
+            .drop_duplicates(subset=["fei", "insp_date"])
+            .copy())
 
 
 # ── SDUD volume ───────────────────────────────────────────────────────────────
@@ -561,11 +604,73 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame) -> N
     panel = pd.DataFrame(rows)
     print(f"  {len(panel)} inspection-event rows built")
 
-    # Join OAI outcomes (FEI-year level)
-    outcomes = _load_inspection_outcomes()
-    outcomes_yr = outcomes.rename(columns={"year": "insp_year"})
-    panel = panel.merge(outcomes_yr[["fei", "insp_year", "n_oai", "n_vai", "n_nai", "any_oai"]],
-                        on=["fei", "insp_year"], how="left")
+    # ── Inspection outcome resolution (3-pass) ───────────────────────────────
+    # Pass 1: Redica exact date (includes inferred OAI from Warning Letter /
+    #         Non-Compliant, inferred NAI from Compliant)
+    panel["_date_key"] = pd.to_datetime(panel["insp_date"]).dt.normalize()
+    outcomes = _load_inspection_outcomes_by_date().rename(columns={"insp_date": "_date_key"})
+    panel = panel.merge(outcomes, on=["fei", "_date_key"], how="left")
+    n_after_redica = panel["any_oai"].isna().sum()
+    print(f"  After Redica exact match: {n_after_redica} unmatched")
+
+    # Pass 2 & 3: FDA Drug QA fallback (exact date, then ±30-day nearest)
+    # Covers cases where Redica uses inspection start date but FDA uses end date.
+    if n_after_redica > 0:
+        print("  Loading FDA Drug QA fallback…")
+        fda = _load_fda_drug_outcomes()
+
+        def _apply_fda_fill(panel, fda_rows, label):
+            """Fill unmatched panel rows from fda_rows via (fei, _date_key) join.
+            Uses reset_index / set_index to preserve original panel row indices."""
+            unmatched_mask = panel["any_oai"].isna()
+            if unmatched_mask.sum() == 0:
+                return panel, 0
+            fda_keyed = fda_rows.rename(columns={"insp_date": "_date_key"})
+            tmp = (panel.loc[unmatched_mask, ["fei", "_date_key"]]
+                   .reset_index()
+                   .merge(fda_keyed, on=["fei", "_date_key"], how="left")
+                   .set_index("index"))
+            n_filled = 0
+            for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
+                hits = tmp.index[tmp[col].notna()]
+                if len(hits):
+                    panel.loc[hits, col] = tmp.loc[hits, col]
+                    n_filled = max(n_filled, len(hits))
+            if n_filled:
+                print(f"  {label} filled {n_filled} rows")
+            return panel, n_filled
+
+        # Pass 2: exact FDA date
+        panel, _ = _apply_fda_fill(panel, fda, "FDA exact match")
+
+        # Pass 3: ±30-day nearest FDA match (start-vs-end date gap)
+        still_unmatched = panel["any_oai"].isna()
+        if still_unmatched.sum() > 0:
+            near_rows = []
+            for idx, row in panel[still_unmatched].iterrows():
+                fei = row["fei"]; idate = row["_date_key"]
+                candidates = fda[fda["fei"] == fei].copy()
+                if candidates.empty:
+                    continue
+                candidates["gap"] = (candidates["insp_date"] - idate).abs().dt.days
+                best = candidates[candidates["gap"] <= 30].nsmallest(1, "gap")
+                if best.empty:
+                    continue
+                b = best.iloc[0]
+                cls = "OAI" if b["n_oai"] else ("VAI" if b["n_vai"] else "NAI")
+                print(f"    FDA near match: FEI {fei} text={idate.date()} "
+                      f"FDA={b['insp_date'].date()} gap={int(b['gap'])}d → {cls}")
+                for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
+                    panel.at[idx, col] = b[col]
+                near_rows.append(idx)
+            if near_rows:
+                print(f"  FDA near match (±30d) filled {len(near_rows)} rows")
+
+    panel = panel.drop(columns=["_date_key"])
+    n_remaining = panel["any_oai"].isna().sum()
+    if n_remaining:
+        print(f"  {n_remaining} inspections still unresolved after all passes "
+              f"(no Redica or FDA Drug QA record) — defaulted to 0")
     for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
         panel[col] = panel[col].fillna(0).astype(int)
 

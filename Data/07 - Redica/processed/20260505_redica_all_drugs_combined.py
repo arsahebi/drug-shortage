@@ -11,9 +11,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 # 1. PATHS & SETTINGS
 # =============================================================================
 BASE_DIR = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-REDICA_DETAILED = BASE_DIR / "Data/07 - Redica/raw/Valisure_Sites_Red_Flag_Events.xlsx"
-DATA_AVAILABILITY = BASE_DIR / "Data/07 - Redica/raw/Valisure_Sites_Data_Availability.xlsx"
-SITE_LIST = BASE_DIR / "Data/07 - Redica/raw/Site List.xlsx"
+REDICA_DETAILED = BASE_DIR / "Data/07 - Redica/raw/Valisure14_Sites_Red_Flag_Events.xlsx"
+DATA_AVAILABILITY = BASE_DIR / "Data/07 - Redica/raw/Valisure14_Sites_Data_Availability.xlsx"
+SITE_LIST = BASE_DIR / "Data/07 - Redica/raw/Valisure14_Site_List.xlsx"
 
 # Output Paths
 OUT_DIR = BASE_DIR / "Data/07 - Redica/processed/redica_all_drugs_combined.csv"
@@ -95,6 +95,21 @@ for (site_id, site_name, event_date), group in grouped:
                     crit_483 = v.get('critical', 0)
                     maj_483 = v.get('major', 0)
                     oth_483 = v.get('other', 0)
+
+    # Infer classification from enforcement signals when no formal OAI/VAI/NAI
+    # was recorded. "Warning Letter" and "Non-Compliant" are issued as follow-up
+    # to OAI findings; "Compliant" is Redica's term for a clean inspection (NAI).
+    if classification is None:
+        all_vals_flat = [
+            v for _, row in group.iterrows()
+            for v in row['Risk Event Attribute Value']
+            if isinstance(v, str)
+        ]
+        if (any("Warning Letter" in v for v in all_vals_flat)
+                or "Non-Compliant" in all_vals_flat):
+            classification = "OAI"
+        elif "Compliant" in all_vals_flat:
+            classification = "NAI"
 
     extracted_rows.append({
         'Site Redica Id': site_id,
