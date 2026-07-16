@@ -406,7 +406,15 @@ This matrix feeds the correlation analysis and the prediction model directly.
 \end{frame}
 
 % ── SECTION 5: THEORY ────────────────────────────────────────────────────────
-\section{Detection Lag}
+\section{Analysis}
+
+\begin{frame}
+\begin{center}
+\vspace{1.8cm}
+{\Large \textbf{Analysis}}\\[10pt]
+{\normalsize Do 483 text signals predict patient harm?\\ How well does a text-only model classify high-AE inspections?\\ What does the AE trajectory look like around an inspection?}
+\end{center}
+\end{frame}
 
 \begin{frame}{From 483 Text to Future Harm: The Detection Lag}
 \begin{columns}[T]
@@ -466,15 +474,13 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item All five predictive features strengthen from Q0 to Q+4. The correlations grow. That's the detection lag: 483 text captures quality failures that won't show up as patient harm for another year.
-  \item The DI flag is not significant at Q0 but reaches $p{<}.05$ at Q+4. Falsified records take time to translate into reported adverse events.
-  \item Quality System and severity are flat across all four lags. They describe the inspection but don't predict patient outcomes.
+  \item All five significant features strengthen from Q0 to Q+4. The correlations grow, not fade. That's the detection lag.
+  \item DI flag: not significant at Q0, reaches $p{<}.05$ at Q+4. Falsified records take time to surface as harm.
+  \item Quality System and severity are flat across all lags. They describe the inspection type but predict nothing about outcomes.
 \end{itemize}
 
-\vspace{4pt}
-\begin{block}{Takeaway}
-Lab Controls and DI are leading indicators. Every significant feature is a stronger predictor at Q+4 than at Q0.
-\end{block}
+\vspace{6pt}
+\textbf{Lab Controls and DI are leading indicators.} Every significant feature predicts harm better at 9--12 months out than at the inspection itself.
 \end{columns}
 \end{frame}
 
