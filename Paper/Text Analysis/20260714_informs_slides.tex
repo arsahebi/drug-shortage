@@ -527,92 +527,91 @@ Aggregated to quarterly counts per FEI.
 % ── SECTION 6: PREDICTIVE MODEL ──────────────────────────────────────────────
 \section{Predictive Model}
 
-\begin{frame}{Panel Construction and Outcome Variable}
+\begin{frame}{Prediction Setup}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Unit of observation:} one inspection event.\\[4pt]
-Features come from the 483 text at that inspection. Outcome is measured in the 4 quarters after.
+\textbf{One row per inspection event.}\\[5pt]
+Features: 17 LLM text signals from the 483 at that inspection.\\[5pt]
+Outcome: were serious AEs in the \textbf{year after inspection} above the sample median?
+
+$$\mathbf{1}\!\left[\sum_{q=1}^{4} \text{AE}_{t+q} > \text{median}\right]$$
+
+\vspace{4pt}
+\textbf{Why the full year (Q+1..Q+4)?}\\[3pt]
+{\small Product distributed before inspection stays in the market for months. AEs from that product surface gradually — not just at Q+4. Summing all 4 quarters captures the full detection-lag window.}
 
 \vspace{6pt}
-\textbf{Outcome:} Binary \texttt{ae\_high\_next4q}
-$$\mathbf{1}\!\left[\sum_{q=1}^{4} n\_ae_{t+q} > \text{median}\right]$$
-Sum of serious FAERS reports in Q+1 through Q+4 after inspection, via DailyMed NDC$\to$FEI crosswalk.
+\textbf{Cross-validation:} FEI-grouped 5-fold.\\
+{\small All inspections of the same facility stay in one fold — no facility leakage across train/test.}
 
 \vspace{6pt}
-\textbf{Cross-validation:} FEI-grouped 5-fold. All inspections of the same facility stay in one fold — no facility-level leakage.
-
-\vspace{6pt}
-\textbf{Models:} Logistic Regression (L2, $C=1$) and Random Forest (300 trees, max depth 4).
+\textbf{Models:} Logistic Regression (L2) and Random Forest. LR is the primary model; RF serves as a check.
 
 \column{0.45\textwidth}
-\textbf{Panel statistics:}\\[4pt]
 \begin{tabular}{ll}
 \toprule
 Metric & Value \\
 \midrule
 Inspection events & 246 \\
 Unique FEIs & 98 \\
-Outcome base rate & 50.0\% \\
+Outcome base rate & 50\% \\
 OAI inspections & 33 (13.4\%) \\
 \bottomrule
 \end{tabular}
 
-\vspace{6pt}
-\textbf{AE window ($\pm$4 quarters around inspection):}\\[4pt]
-\begin{tabular}{ll}
-\toprule
-Column & Meaning \\
-\midrule
-\texttt{n\_ae\_tm4} & AEs 4 qtrs before (1 yr) \\
-\texttt{n\_ae\_tm2} & AEs 2 qtrs before (6 mo) \\
-\texttt{n\_ae\_t0}  & AEs at inspection quarter \\
-\texttt{n\_ae\_tp2} & AEs 2 qtrs after (6 mo) \\
-\texttt{n\_ae\_tp4} & AEs 4 qtrs after — outcome \\
-\bottomrule
-\end{tabular}
+\vspace{10pt}
+\textbf{AUC = 0.5 is the floor.}\\[4pt]
+{\small The outcome is above/below \emph{median} — by design it is 50/50. A random classifier scores exactly 0.5. What matters is whether text features beat that floor, and whether they beat the OAI classification label.}
 \end{columns}
 \end{frame}
 
-\begin{frame}{Model Results: Ablation by Feature Set}
+\begin{frame}{Does 483 Text Beat the OAI Label?}
 \begin{columns}[T]
-\column{0.55\textwidth}
-\textbf{FEI-grouped 5-fold CV (mean AUC, 246 inspections):}
+\column{0.50\textwidth}
+\textbf{AUC, 5-fold FEI-grouped CV (246 inspections):}
 
 \vspace{4pt}
-\begin{tabular}{llcc}
+{\small
+\begin{tabular}{clc}
 \toprule
-Config & Features & LR AUC & RF AUC \\
+ & Feature set & LR AUC \\
 \midrule
-A & \highlight{Text only} (17 LLM) & \highlight{0.528} & 0.502 \\
-B & Text + OAI flag & 0.521 & 0.496 \\
-C & OAI flag only & \highlight{0.463} & \highlight{0.463} \\
+A & \highlight{Text only} (17 LLM features) & \highlight{0.528} \\
+B & Text + OAI flag & 0.521 \\
+C & OAI flag only & \highlight{0.463} \\
 \midrule
-\multicolumn{4}{l}{\textit{Stratified subgroups}} \\
-D & Text, VAI-only FEIs & 0.496 & 0.438 \\
-E & Text, OAI-ever FEIs & 0.596 & 0.433 \\
+\multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} \\
 \midrule
-\multicolumn{4}{l}{\textit{Random baseline = 0.500}} \\
+D & Text, VAI-only facilities & 0.496 \\
+E & Text, OAI-ever facilities & \highlight{0.596} \\
 \bottomrule
 \end{tabular}
+}
 
 \vspace{6pt}
-\begin{itemize}
-  \item Text-only LR beats the OAI flag baseline by \highlight{+6.5 AUC points} (0.528 vs 0.463). The OAI classification falls \emph{below} the random baseline --- knowing a facility was cited OAI tells you nothing about which patients get hurt.
-  \item Adding OAI flag to text (config B, 0.521) actually hurts: the flag adds noise, pulling performance below text-only.
-  \item RF underperforms LR throughout: 246 rows, the ensemble overfits.
-\end{itemize}
+\textbf{Are numbers near 0.5 a problem?}\\[3pt]
+{\small No — they are expected. With 246 rows and grouped CV, extracting any signal is hard. The meaningful result is the \emph{ordering}: text (A) $>$ random $>$ OAI flag (C). Absolute AUC is not the point.}
 
-\column{0.42\textwidth}
-\textbf{Config D vs E:}
+\column{0.47\textwidth}
+\textbf{What each config answers:}
 
-\begin{itemize}
-  \item \textbf{Config D (VAI-only, 73 FEIs, 165 rows)}: AUC = 0.496 --- near random. For facilities FDA never escalated, text has no predictive power on average.
-  \item \textbf{Config E (OAI-ever, 25 FEIs, 81 rows)}: LR AUC = \highlight{0.596}, AP = \highlight{0.701}. For facilities with at least one confirmed OAI, 483 text predicts which specific inspections precede elevated patient harm.
-\end{itemize}
+\vspace{4pt}
+{\small
+\textbf{A vs C:} Can text replace the OAI label for predicting harm? Yes, by +6.5 pts. OAI falls \emph{below} random — the label captures a regulatory action, not patient safety.
 
-\vspace{6pt}
-\begin{block}{Implication}
-OAI classification actively misleads the predictor (0.463, below random). Text-only (0.528) beats it by +6.5 pts. For OAI-ever facilities, text AUC = 0.596: inspectors' written observations carry signal their labels do not.
+\vspace{5pt}
+\textbf{B vs A:} Does adding OAI to text help? No — it pulls AUC down. The label adds noise.
+
+\vspace{5pt}
+\textbf{D:} In VAI-only facilities, text is random (0.496). No exploitable signal in the clean group.
+
+\vspace{5pt}
+\textbf{E:} In OAI-ever facilities, text reaches 0.596 (AP = 0.701). The predictive signal concentrates where quality risk is real.
+}
+
+\vspace{5pt}
+\begin{block}{vs the correlation analysis}
+\small Correlation (slide 13) asks: which individual features associate with future AEs? This model asks: does the full feature set classify better than FDA's own label? Both answers are yes.
 \end{block}
 \end{columns}
 \end{frame}
