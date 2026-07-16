@@ -691,7 +691,7 @@ Hi-sig VAI facilities (identified by 483 text alone) show more sustained harm th
 \begin{frame}{Quarterly Trajectory: AEs Persist in Both Groups, Pre-Inspection Rise Differs}
 \begin{columns}[T]
 \column{0.55\textwidth}
-\textbf{Inspection-centered quarterly panel} (246 inspection events, $\pm$4 quarters = $\pm$1 year):
+\textbf{Inspection-centered panel} (246 events, $\pm$4 quarters):
 
 \vspace{4pt}
 \begin{tabular}{lccc}
@@ -700,28 +700,32 @@ Quarter & All & VAI/NAI & OAI \\
 & (246) & (213) & (33) \\
 \midrule
 $t-4$ & 522 & 513 & 580 \\
-$t-3$ & 565 & — & — \\
-$t-2$ & 583 & — & — \\
-$t-1$ & 579 & — & — \\
+$t-3$ & 565 & & \\
+$t-2$ & 583 & & \\
+$t-1$ & 579 & & \\
 $t=0$ & 605 & 604 & 613 \\
-$t+1$ & 627 & — & — \\
-$t+2$ & \textbf{646} & — & — \\
-$t+3$ & 644 & — & — \\
+$t+1$ & 627 & & \\
+$t+2$ & \textbf{646} & & \\
+$t+3$ & 644 & & \\
 $t+4$ & 635 & \highlight{634} & \highlight{640} \\
 \midrule
-pre\_rise & — & 1.177 & 1.057 \\
-persist & — & \highlight{1.050} & \highlight{1.044} \\
+pre\_rise & & 1.177 & 1.057 \\
+persist & & \highlight{1.050} & \highlight{1.044} \\
 \bottomrule
 \end{tabular}
 
+\vspace{4pt}
+{\scriptsize
+\textbf{pre\_rise} = AE($t_0$) / AE($t_{-4}$): how much AEs rose in the year \emph{before} inspection.\\
+\textbf{persist} = AE($t_{+4}$) / AE($t_0$): how much AEs held in the year \emph{after} inspection.}
+
 \column{0.42\textwidth}
-\textbf{What the quarterly panel shows:}
 \begin{enumerate}
-  \item \textbf{Both groups persist near baseline.} OAI persist = 1.044, VAI/NAI persist = 1.050. A 1-year window is not long enough to see enforcement correction clear the pipeline; product already in the market continues generating reports.
+  \item \textbf{Both groups persist.} persist $\approx$ 1.05 for both OAI and VAI/NAI. Enforcement takes more than one year to clear pre-inspection product from the market.
 
-  \item \textbf{The pre-inspection rise differs.} AEs rise faster before VAI/NAI inspections (pre\_rise = 1.177) than OAI ones (1.057). FDA escalates based on what inspectors observe in the facility, not on FAERS trends.
+  \item \textbf{Pre-inspection rise differs.} VAI/NAI facilities had AEs 18\% higher at inspection than a year prior (pre\_rise = 1.18). OAI facilities only 6\% higher (1.06). FDA escalates based on what inspectors see on-site, not on FAERS trends.
 
-  \item \textbf{Policy implication:} inspection classification alone does not separate which facilities improve. 483 text (Lab Controls, DI co-occurrence) adds predictive information the OAI/VAI label misses.
+  \item \textbf{Implication:} inspection outcome alone does not separate which facilities improve. 483 text adds signal the OAI/VAI label misses.
 \end{enumerate}
 \end{columns}
 \end{frame}
