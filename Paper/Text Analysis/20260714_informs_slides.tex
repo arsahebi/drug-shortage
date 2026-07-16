@@ -789,17 +789,94 @@ FEI & AE $t_0$ & AE $t{+2}$ & persist & tech \\
 \end{columns}
 \end{frame}
 
-% ── SECTION 10: VOLUME ───────────────────────────────────────────────────────
-\section{Volume Normalization}
+% ── SECTION 10: SUMMARY ──────────────────────────────────────────────────────
+\section{Summary}
 
-\begin{frame}{Volume Control: SDUD Medicaid Utilization}
+\begin{frame}{Summary: Five Key Messages}
+
+\begin{enumerate}
+  \setlength{\itemsep}{6pt}
+  \item \textbf{LLM text signals predict patient harm; OAI classification does not.}\\
+    Text-only LR AUC = \highlight{0.528} vs 0.463 OAI-flag baseline. OAI flag falls below random. For OAI-ever facilities, text AUC = 0.596, AP = 0.701.
+
+  \item \textbf{Five signals carry predictive information; twelve do not.}\\
+    Lab Controls, DI flag, and their co-occurrence predict AEs one year out. Quality System, severity tier, and cultural root cause do not.
+
+  \item \textbf{Inspection is a lagging indicator.}\\
+    For annually-inspected facilities, AEs rise +27\% in the year before FDA arrives. FDA detects a problem already in place.
+
+  \item \textbf{483 text finds high-risk VAI facilities that classification misses.}\\
+    Hi-sig VAI: persist = 1.09, 32\% above 1 year prior. OAI-ever: persist = 1.03. FDA rated both the same.
+
+  \item \textbf{Strategic leniency candidates are identifiable.}\\
+    3 FEIs show rising AEs, high 483 text signals, zero OAI ever. Market concentration data will test whether FDA held back on escalation.
+\end{enumerate}
+
+\vspace{6pt}
+\begin{center}
+\textit{Code: \texttt{github.com/arsahebi/drug-shortage} \quad Contact: \texttt{amirreza.sahebi@gmail.com}}
+\end{center}
+\end{frame}
+
+% ── SECTION 11: LIMITATIONS & NEXT STEPS ─────────────────────────────────────
+\section{Limitations \& Next Steps}
+
+\begin{frame}{Limitations}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\begin{itemize}
+  \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. Subgroup results are hypothesis-generating, not confirmatory.
+  \item \textbf{COVID gap:} 2020--21 moratorium left 4-year inter-inspection windows; post-2022 baselines are confounded.
+  \item \textbf{FAERS bias:} serious AEs only; underreporting is non-random and unadjusted.
+\end{itemize}
+
+\column{0.47\textwidth}
+\begin{itemize}
+  \item \textbf{LLM circularity:} validated against Redica, which reads the same 483 text. Neither is inspector ground truth.
+  \item \textbf{Volume:} SDUD covers 69\% of FEI-years; Medicaid is $\sim$20\% of the market. Commercial volume not integrated.
+  \item \textbf{Causal:} all associations are correlational. Strategic leniency interpretation needs market concentration data.
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Next Steps}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Before submission:}
+\begin{enumerate}
+  \item Add $\log(\text{sdud\_units})$ as covariate (Config F)
+  \item Rerun excluding 2020--21 COVID years
+  \item Drug-level analysis: do results hold per API?
+  \item Cross-check leniency candidates with recall and import refusal records
+\end{enumerate}
+
+\column{0.47\textwidth}
+\textbf{Future work:}
+\begin{enumerate}
+  \item IQVIA commercial data for volume and market concentration
+  \item Extend outcome to drug shortage (UUtah pipeline ready)
+  \item Paid LLM re-extraction with 4-tier severity + scope field
+  \item Real-time facility risk dashboard post-inspection
+\end{enumerate}
+
+\vspace{6pt}
+\begin{block}{}
+\small Target: INFORMS 2026 (full paper); AAAI 2027 (AI/policy angle)
+\end{block}
+\end{columns}
+\end{frame}
+
+% ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
+\appendix
+\section*{Backup Slides}
+
+\begin{frame}{Backup: Volume Control — SDUD Medicaid Utilization}
 \begin{columns}[T]
 \column{0.52\textwidth}
 A larger manufacturer generates more FAERS reports at the same defect rate. Raw AE counts conflate facility size with quality.
 
 \vspace{6pt}
-\textbf{CMS SDUD}: all 50 states, quarterly, 2015–2024\\
-Join: labeler + product code $\to$ DailyMed NDC-FEI crosswalk
+\textbf{CMS SDUD}: all 50 states, quarterly, 2015--2024. Join: labeler + product code $\to$ DailyMed NDC-FEI crosswalk.
 
 \vspace{6pt}
 \begin{tabular}{ll}
@@ -813,7 +890,7 @@ Median AE rate & 49 AEs / M units \\
 \end{tabular}
 
 \vspace{6pt}
-\textbf{Recommendation}: use $\log(\text{sdud\_units})$ as a covariate in the model, not a rate denominator — 31\% missing coverage biases the rate.
+Use $\log(\text{sdud\_units})$ as a covariate, not a rate denominator. 31\% missing coverage biases the rate.
 
 \column{0.45\textwidth}
 \begin{tabular}{lcc}
@@ -826,7 +903,7 @@ Ever-OAI  & 203M & 8,925/M \\
 \end{tabular}
 
 \vspace{8pt}
-Rate is \emph{inverted} vs.\ raw counts: a matching artifact from the 31\% gap, not a real quality signal.
+Rate is inverted vs.\ raw counts: a matching artifact from the 31\% gap, not a real quality signal.
 
 \vspace{8pt}
 \begin{block}{Limitation}
@@ -834,127 +911,6 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 \end{block}
 \end{columns}
 \end{frame}
-
-% ── SECTION 11: LIMITATIONS ──────────────────────────────────────────────────
-\section{Limitations \& Next Steps}
-
-\begin{frame}{Limitations}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Sample size:}
-\begin{itemize}
-  \item 98 FEIs, 246 inspections, only \textbf{33 OAI inspections}
-  \item Subgroup analyses (Config D, E, clusters) are underpowered
-  \item Treat cluster findings as hypothesis-generating, not confirmatory
-\end{itemize}
-
-\vspace{6pt}
-\textbf{COVID inspection gap:}
-\begin{itemize}
-  \item 2020–2021: only 26 inspections (moratorium)
-  \item Post-2022 inspections have 4-year prior gap — the $t_{-2}$ baseline is in COVID, a very different environment
-  \item AE trends during COVID are confounded by healthcare utilization changes
-\end{itemize}
-
-\vspace{6pt}
-\textbf{FAERS reporting bias:}
-\begin{itemize}
-  \item Serious AEs only; underreporting is non-random
-  \item Reporting rates vary by drug class, year, and market events
-  \item No adjustment for reporting trends
-\end{itemize}
-
-\column{0.47\textwidth}
-\textbf{LLM extraction circularity:}
-\begin{itemize}
-  \item LLM validated against Redica, which uses the same 483 text. Both are human-coded; neither is inspector ground truth.
-  \item True external validation requires FDA inspector notes or a direct clinical outcome linkage.
-\end{itemize}
-
-\vspace{6pt}
-\textbf{SDUD volume:}
-\begin{itemize}
-  \item 31\% of FEI-years have no SDUD match, biasing the AE rate denominator
-  \item Medicaid covers $\sim$20\% of the market; commercial volume (IQVIA) is not yet integrated
-\end{itemize}
-
-\vspace{6pt}
-\textbf{Causal identification:}
-\begin{itemize}
-  \item All associations are correlational; unobserved confounders (R\&D investment, country of origin, API source) are not controlled
-  \item The strategic leniency interpretation rests on market concentration data we do not yet have
-\end{itemize}
-\end{columns}
-\end{frame}
-
-\begin{frame}{Next Steps}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Immediate (before submission):}
-\begin{enumerate}
-  \item Add $\log(\text{sdud\_units})$ as volume covariate in prediction model (Config F)
-  \item Check whether results hold after excluding 2020–2021 COVID years
-  \item Drug-level analysis: do results hold for each of the 14 APIs separately?
-  \item Expert review of top strategic leniency candidates (FEI 3002608066) — cross-check with recall/import refusal records
-\end{enumerate}
-
-\vspace{6pt}
-\textbf{Medium-term:}
-\begin{enumerate}
-  \item Integrate IQVIA commercial sales for market concentration
-  \item Extend to shortage outcome (UUtah shortage database) — shortage prediction pipeline already built (m01–m10 modules)
-  \item Run paid LLM re-extraction with updated 4-tier severity + scope field
-\end{enumerate}
-
-\column{0.47\textwidth}
-\textbf{Longer-term:}
-\begin{enumerate}
-  \item Link to FDA enforcement actions (warning letters, consent decrees) as additional outcomes
-  \item Build real-time dashboard for FDA/industry use: facility risk score updated after each inspection
-  \item Expand beyond the 14 target drugs to the broader generic market
-  \item Natural experiment: use the COVID inspection moratorium as an exogenous shock. Did facilities with high-risk pre-COVID 483 signals show worse outcomes during the 2020--2022 gap?
-\end{enumerate}
-
-\vspace{4pt}
-\begin{block}{Target venue}
-INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
-\end{block}
-\end{columns}
-\end{frame}
-
-% ── SECTION 12: SUMMARY ──────────────────────────────────────────────────────
-\section{Summary}
-
-\begin{frame}{Summary: Five Key Messages}
-
-\begin{enumerate}
-  \setlength{\itemsep}{8pt}
-  \item \textbf{LLM text signals predict patient harm; OAI classification does not.}\\
-    Text-only LR AUC = \highlight{0.528} vs 0.463 OAI-flag baseline (+6.5 points; OAI flag falls below random). For OAI-ever facilities, text AUC = 0.596, AP = 0.701. Trajectory evidence is sharper: Hi-sig VAI facilities (identified by 483 text alone) show AE persistence of 1.09 vs 1.03 for OAI-ever facilities.
-
-  \item \textbf{Five text signals carry AE-predictive information; twelve do not.}\\
-    Lab Controls count, DI flag, and their joint co-occurrence predict AEs one year out. Quality System share, severity tier, and cultural root cause do not. The split tracks which failures leave bad product in the market.
-
-  \item \textbf{Inspection is a lagging indicator.}\\
-    AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +27\% in the 4 quarters before inspection.
-
-  \item \textbf{483 text separates high-risk VAI facilities that classification misses.}\\
-    Hi-signal VAI (top-quartile Lab Controls + DI text): AEs at Q+4 are 9\% above inspection level (persist = 1.09) and 32\% above 1 year prior. OAI-ever facilities show partial correction (persist = 1.03). FDA rated both groups the same; text identified the worse outcome.
-
-  \item \textbf{Strategic leniency candidates are identifiable.}\\
-    3 FEIs show rising AEs, high technical 483 signals, and zero OAI ever. Cross-referencing with market concentration will test the shortage-avoidance hypothesis.
-\end{enumerate}
-
-\vspace{8pt}
-\begin{center}
-\textit{Code and pipeline: \texttt{github.com/arsahebi/drug-shortage}}\\
-\textit{Contact: \texttt{amirreza.sahebi@gmail.com}}
-\end{center}
-\end{frame}
-
-% ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
-\appendix
-\section*{Backup Slides}
 
 \begin{frame}{Backup: Quarterly Trajectory by OAI vs VAI/NAI Classification}
 \begin{columns}[T]
