@@ -17,6 +17,7 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{tabularx}
 \usepackage{multirow}
 \usepackage{xcolor}
 \usepackage{tikz}
@@ -615,7 +616,7 @@ E & Text, OAI-ever facilities & \highlight{0.596} \\
 
 \vspace{3pt}
 {\small
-\begin{tabular}{lcccc}
+\begin{tabularx}{\linewidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
 \toprule
 Gap & $n$ & pre\_rise & persist & mean gap \\
 & & AE$_{t0}$/AE$_{t{-4}}$ & AE$_{t{+4}}$/AE$_{t0}$ & (yr) \\
@@ -626,7 +627,7 @@ $<$1yr & 60 & 1.145 & 1.120 & 0.6 \\
 2--3.5yr & 57 & 1.090 & 1.040 & 2.7 \\
 $>$3.5yr & 33 & 1.031 & 1.033 & 4.8 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 }
 
 \vspace{5pt}
@@ -634,7 +635,7 @@ $>$3.5yr & 33 & 1.031 & 1.033 & 4.8 \\
 
 \vspace{2pt}
 {\small
-\begin{tabular}{lp{4.2cm}}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
 Gap & $t_{-4}$ lands\ldots \\
 \midrule
@@ -643,7 +644,7 @@ $<$1yr & before the previous inspection; AEs already elevated \\
 1--2yr & after the previous inspection; AEs suppressed. \textbf{Clean.} \\
 $>$2yr & deep in a quiet window; no enforcement anchor \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 }
 
 \column{0.35\textwidth}
