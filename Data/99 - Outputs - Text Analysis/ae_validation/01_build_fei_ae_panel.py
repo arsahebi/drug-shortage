@@ -49,7 +49,7 @@ OUT    = HERE / "outputs"
 TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica.csv"
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
-INSP_DETAILS = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
+REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
 SDUD_PARQ    = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDcanonical.parquet"
 NDC_FEI_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
 
@@ -252,15 +252,14 @@ def _add_lags_quarterly(panel: pd.DataFrame, ae_q: pd.DataFrame) -> pd.DataFrame
 # ── Inspection outcomes ───────────────────────────────────────────────────────
 
 def _load_inspection_outcomes() -> pd.DataFrame:
-    df = pd.read_excel(INSP_DETAILS)
+    df = pd.read_csv(REDICA_COMBINED)
     df.columns = [c.strip() for c in df.columns]
-    df["fei"]  = pd.to_numeric(df["FEI Number"], errors="coerce").astype("Int64")
-    df["year"] = pd.to_numeric(df["Fiscal Year"], errors="coerce").astype("Int64")
+    df["fei"]  = pd.to_numeric(df["FEI"], errors="coerce").astype("Int64")
+    df["year"] = pd.to_datetime(df["Event Date"], errors="coerce").dt.year
     df = df.dropna(subset=["fei", "year", "Classification"])
-    df = df[df["Project Area"].str.contains("Drug", na=False, case=False)].copy()
-    df["is_oai"] = df["Classification"].str.contains("OAI", na=False).astype(int)
-    df["is_vai"] = df["Classification"].str.contains("VAI", na=False).astype(int)
-    df["is_nai"] = df["Classification"].str.contains("NAI", na=False).astype(int)
+    df["is_oai"] = (df["Classification"].str.upper() == "OAI").astype(int)
+    df["is_vai"] = (df["Classification"].str.upper() == "VAI").astype(int)
+    df["is_nai"] = (df["Classification"].str.upper() == "NAI").astype(int)
     agg = (df.groupby(["fei", "year"], as_index=False)
              .agg(n_oai=("is_oai", "sum"), n_vai=("is_vai", "sum"), n_nai=("is_nai", "sum")))
     agg["any_oai"] = (agg["n_oai"] > 0).astype(int)
