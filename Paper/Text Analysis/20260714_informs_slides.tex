@@ -249,39 +249,40 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 
 \begin{frame}{Step 00: What Raw 483 Text Looks Like}
 \begin{columns}[T]
-\column{0.55\textwidth}
-\textbf{A 2022 FDA inspection — 4 observations (paraphrased):}
+\column{0.56\textwidth}
+\textbf{Two observations from the same 2022 inspection (paraphrased):}
 
-\vspace{4pt}
-{\scriptsize
+\vspace{5pt}
+{\small
 \textbf{Obs.\ 1.} ``Batch production records were not completed at the time of manufacture. Entries were reconstructed from memory 2 days after processing.''
 
-\vspace{3pt}
-\textbf{Obs.\ 2.} ``Investigations into out-of-specification results are not conducted with a scientifically sound and thorough approach. Five OOS potency results were invalidated without adequate justification.''
-
-\vspace{3pt}
-\textbf{Obs.\ 3.} ``The equipment cleaning validation program does not cover all equipment used in drug production. Residue limits have not been established for three shared-use mixing tanks.''
-
-\vspace{3pt}
-\textbf{Obs.\ 4.} ``Laboratory controls do not include the establishment of scientifically sound specifications for raw materials used in the manufacture of finished drug products.''
+\vspace{5pt}
+\textbf{Obs.\ 2.} ``Investigations into out-of-specification results are not conducted with a scientifically sound and thorough approach. Five OOS potency results were invalidated without adequate scientific justification.''
 }
 
-\column{0.42\textwidth}
-\textbf{The problem:}
-\begin{itemize}
-  \item No standard schema — each inspector writes differently
-  \item Domain, severity, and root cause are all implicit in the prose
-  \item 1,067 observations across 246 inspections — hand-coding is infeasible
-\end{itemize}
+\vspace{8pt}
+{\footnotesize One inspection may have 3--15 observations. No standard schema across inspectors or facilities. Domain, severity, and root cause are all implicit in the prose.}
 
-\vspace{6pt}
-\textbf{Step 01 solution:}\\[2pt]
-{\small Claude Haiku reads each observation and outputs a strict JSON schema: domain (8 CFR\,211 areas), severity, DI flag, patient risk, scope, root cause, investigation failure, and recurrence.}
+\column{0.41\textwidth}
+\textbf{What we need to extract:}
 
-\vspace{6pt}
-\begin{alertblock}{Scale}
-\small 98 FEIs · 246 inspections · 1,067 observations processed in a single LLM pass per observation.
-\end{alertblock}
+\vspace{4pt}
+{\small
+\begin{tabular}{ll}
+\toprule
+Question & Example answer \\
+\midrule
+Domain? & Lab Controls, DI \\
+Severity? & Major (bad product made) \\
+Patient risk? & Yes \\
+Data integrity? & Yes (reconstructed) \\
+Scope? & Facility-wide \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{8pt}
+Step 01 runs Claude Haiku on each observation and outputs a strict JSON covering all five dimensions. 98 FEIs, 246 inspections, 1,067 observations total.
 \end{columns}
 \end{frame}
 
