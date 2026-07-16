@@ -530,22 +530,17 @@ Aggregated to quarterly counts per FEI.
 \begin{frame}{Prediction Setup}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{One row per inspection event.}\\[5pt]
-Features: 17 LLM text signals from the 483 at that inspection.\\[5pt]
-Outcome: were serious AEs in the \textbf{year after inspection} above the sample median?
-
+\textbf{Unit:} One row per inspection.\\[4pt]
+\textbf{Features:} 17 LLM text signals from the 483 at that inspection.\\[4pt]
+\textbf{Outcome:} Were serious AEs in the year after inspection above the sample median?
 $$\mathbf{1}\!\left[\sum_{q=1}^{4} \text{AE}_{t+q} > \text{median}\right]$$
+{\small Pre-inspection product stays in the market for months. Summing Q+1 through Q+4 captures the full distribution window.}
+
+\vspace{6pt}
+\textbf{CV:} FEI-grouped 5-fold. All inspections of one facility stay in one fold.
 
 \vspace{4pt}
-\textbf{Why the full year (Q+1..Q+4)?}\\[3pt]
-{\small Product distributed before inspection stays in the market for months. AEs from that product surface gradually — not just at Q+4. Summing all 4 quarters captures the full detection-lag window.}
-
-\vspace{6pt}
-\textbf{Cross-validation:} FEI-grouped 5-fold.\\
-{\small All inspections of the same facility stay in one fold — no facility leakage across train/test.}
-
-\vspace{6pt}
-\textbf{Models:} Logistic Regression (L2) and Random Forest. LR is the primary model; RF serves as a check.
+\textbf{Model:} Logistic Regression (primary), Random Forest (check).
 
 \column{0.45\textwidth}
 \begin{tabular}{ll}
@@ -561,7 +556,7 @@ OAI inspections & 33 (13.4\%) \\
 
 \vspace{10pt}
 \textbf{AUC = 0.5 is the floor.}\\[4pt]
-{\small The outcome is above/below \emph{median} — by design it is 50/50. A random classifier scores exactly 0.5. What matters is whether text features beat that floor, and whether they beat the OAI classification label.}
+{\small Outcome is 50/50 by construction. A random classifier scores exactly 0.5. What matters is whether text features beat that floor, and whether they beat the OAI label.}
 \end{columns}
 \end{frame}
 
@@ -589,30 +584,24 @@ E & Text, OAI-ever facilities & \highlight{0.596} \\
 }
 
 \vspace{6pt}
-\textbf{Are numbers near 0.5 a problem?}\\[3pt]
-{\small No — they are expected. With 246 rows and grouped CV, extracting any signal is hard. The meaningful result is the \emph{ordering}: text (A) $>$ random $>$ OAI flag (C). Absolute AUC is not the point.}
+{\small Numbers near 0.5 are expected at this sample size. The result is the \emph{ordering}: text (A) beats random; OAI flag (C) does not.}
 
 \column{0.47\textwidth}
-\textbf{What each config answers:}
-
-\vspace{4pt}
 {\small
-\textbf{A vs C:} Can text replace the OAI label for predicting harm? Yes, by +6.5 pts. OAI falls \emph{below} random — the label captures a regulatory action, not patient safety.
+\textbf{A vs C:} Text beats the OAI label by +6.5 pts. OAI falls \emph{below} random: it records a regulatory action, not patient harm.
 
 \vspace{5pt}
-\textbf{B vs A:} Does adding OAI to text help? No — it pulls AUC down. The label adds noise.
+\textbf{B vs A:} Adding the OAI flag to text pulls AUC down. The label adds noise.
 
 \vspace{5pt}
-\textbf{D:} In VAI-only facilities, text is random (0.496). No exploitable signal in the clean group.
+\textbf{D:} Text is at random in VAI-only facilities (0.496). No signal in the clean group.
 
 \vspace{5pt}
-\textbf{E:} In OAI-ever facilities, text reaches 0.596 (AP = 0.701). The predictive signal concentrates where quality risk is real.
+\textbf{E:} In OAI-ever facilities, text reaches 0.596 (AP\,=\,0.701). The signal concentrates where quality risk is real.
+
+\vspace{5pt}
+\textbf{vs correlation:} The correlation analysis identifies which individual features associate with future AEs. This model asks whether the full feature set classifies better than FDA's own label. Both answers are yes.
 }
-
-\vspace{5pt}
-\begin{block}{vs the correlation analysis}
-\small Correlation (slide 13) asks: which individual features associate with future AEs? This model asks: does the full feature set classify better than FDA's own label? Both answers are yes.
-\end{block}
 \end{columns}
 \end{frame}
 
