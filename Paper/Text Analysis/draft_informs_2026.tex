@@ -115,32 +115,118 @@ those indicative of persistent organizational misconduct.
 generate testable predictions on recovery dynamics---with cultural violations
 expected to produce more persistent and volatile disruption patterns.
 
-\todo{2--3 sentences on prior literature: structured regulatory signals for
-shortage prediction; LLM for regulatory/clinical text; supply chain risk
-in pharmaceuticals.}
+Prior work has established that FDA inspection outcomes predict downstream drug
+shortages \citep{Stomberg2018, Wang2025MSOM} and that machine learning can
+forecast shortages from pharmacy demand signals \citep{Liu2021, Pall2023}.
+However, the rich narrative text that inspectors generate in Form 483
+observations has not been used as a predictive input, and no study has directly
+linked inspection-text signals to facility-level patient harm measured through
+adverse event reporting \citep{Pazhayattil2020}.
 
-This paper makes four contributions:
+This paper makes five contributions:
 \begin{enumerate}[noitemsep]
   \item A novel multi-source regulatory text dataset covering 1,280 regulatory
         events across 129 facilities and five FDA databases, linked by FEI.
-  \item A validated LLM extraction pipeline (GPT-5-mini with strict JSON schema
+  \item A validated LLM extraction pipeline (Claude with strict JSON schema
         output, validated on a stratified sample before full deployment) that
         converts Form 483 observation narratives into structured, reproducible
         risk signals---with LLMs substantially outperforming rule-based
-        extraction on contamination and patient-risk inference.
+        extraction on contamination and patient-risk inference
+        \citep{Li2026LLMDevice}.
   \item A time-aware facility-level feature panel: cumulative text-signal
         snapshots at each (FEI, inspection date), preventing future-information
         leakage in prediction, plus a cross-inspection repeat detector that
         identifies facilities cited for the same deficiency across inspections
-        years apart---encoding behavioral taxonomy consistent with Agency
-        Theory and Remediation Economics.
-  \item Empirical validation showing that LLM-graded severity tracks real
-        inspection outcomes (Critical+Major share separates OAI from VAI
-        inspections by 20 percentage points), and that text-derived features
-        carry information absent from structured databases.
-        \todo{Re-run shortage model with revised raw text features and update
-        the importance claim.}
+        years apart.
+  \item Empirical validation that LLM-graded severity tracks real inspection
+        outcomes (Critical+Major share separates OAI from VAI inspections by
+        20 percentage points), and that text-derived features carry information
+        absent from structured databases.
+  \item Discovery of two distinct failure modes encoded in 483 text: governance
+        failures (quality system violations) predict regulatory escalation but
+        not patient harm; technical failures (lab controls, data integrity)
+        predict elevated serious adverse event rates but evade regulatory
+        escalation---a distinction invisible to structured inspection outcome
+        data alone.
 \end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════
+\section{Related Work}
+\label{sec:lit}
+
+\subsection{NLP and LLMs for FDA Regulatory Text}
+
+Applying machine learning to FDA regulatory documents has concentrated on drug
+labels and adverse-event reports.
+Fine-tuned BERT models (PubMedBERT, BioBERT) reached F1 $\approx 0.90$ on
+adverse drug reaction extraction from drug labels \citep{Tatonetti2025OnSIDES,
+Bayer2021} and 0.84--0.87 MCC on drug-induced liver injury classification
+\citep{Wu2021BERT}.
+This domain-adaptation advantage has narrowed sharply: \citet{Li2026LLMDevice}
+demonstrated that GPT-4-class models extract structured data from FDA medical
+device adverse-event reports at 93--97\% human agreement \emph{without
+fine-tuning}, and \citet{Hassani2025} found GPT-4o achieves 89\% precision on
+regulatory text classification without task-specific training.
+Applied to FDA recall narratives, multi-task BERT achieves 0.963 accuracy on
+recall triage \citep{Atalay2026RecallRisk}, confirming that FDA regulatory
+free text supports automated classification at scale.
+
+On FDA inspection text specifically, \citet{Pazhayattil2020} conducted the
+only published quantitative study of Form 483 data using pre-structured
+citation frequency counts (2014--2018)---not natural language processing of
+observation narratives.
+Warning-letter text has been analyzed descriptively for domain and data
+integrity trends \citep{Rathore2022, Park2025DataIntegrity, Kwiecinski2024}
+but not used for feature extraction or prediction.
+No prior study applies LLM extraction to Form 483 observation narratives to
+generate structured quality-risk features.
+
+\subsection{Inspection Outcomes and Drug Quality Events}
+
+\citet{Stomberg2018} provided the first regression-based evidence that
+inspection and citation intensity are significantly associated with drug
+shortage rates.
+\citet{Wang2025MSOM} extended this with instrumental variable analysis: OAI
+outcomes predict a 96.4\% lower shortage likelihood in the subsequent
+12~months.
+Interpreted together, inspections appear to trigger corrective action that
+stabilizes supply---but the \emph{severity of the underlying quality problem
+before inspection} is not captured by binary OAI/VAI classifications.
+Machine learning shortage prediction achieves C-statistic 0.69--0.93 using
+pharmacy demand signals and drug characteristics \citep{Liu2021, Pall2023};
+neither model incorporates inspection text or quality features.
+\citet{Kosmas2023} modeled FDA inspection timing as a POMDP to maximize
+value of inspecting high-risk facilities; their model assumes quality is
+revealed by inspection but cannot observe it from text.
+We provide the supply-side text features these models assume but cannot
+currently observe.
+
+\subsection{Adverse Events as a Manufacturing Quality Outcome}
+
+FAERS adverse event reports are widely used for disproportionality analysis
+but rarely deployed as a \emph{facility-level manufacturing quality metric}.
+\citet{Sardella2021} provided the conceptual foundation: the nitrosamine
+contamination crisis and heparin adulteration scandal were both first detected
+through pharmacovigilance signal clustering tracing to facility-level
+manufacturing decisions.
+\citet{Brown2020} called for systematic use of FAERS for facility-level
+quality surveillance and noted that the FDA already folds FAERS ``hazard
+signals'' into its risk-based facility site-selection model for inspections.
+\citet{Rahman2017FAERS} and \citet{Alatawi2018} developed authorized-generic
+comparison methodology to control for perception bias in manufacturer-level
+FAERS comparisons; our design largely sidesteps this confound because we
+compare facilities manufacturing the \emph{same} API.
+Consistent with \citet{Potter2025}, we treat FAERS counts as a predictive
+correlate of quality, not a causal indicator.
+
+We validate FAERS as a quality proxy against Valisure independent chemical
+testing: drugs with higher Valisure analytical failure rates show
+significantly more serious FAERS adverse events per million Medicaid
+prescriptions (Spearman $\rho = 0.86$, $p = 0.014$, $n = 7$ drugs),
+supporting \citet{Brown2020} and \citet{Sardella2021} empirically.
+No prior study links FDA inspection text signals to facility-level FAERS
+counts, or validates FAERS as a quality proxy against third-party chemical
+testing.
 
 % ══════════════════════════════════════════════════════════════════════════
 \section{Data}
@@ -470,6 +556,116 @@ explicit harm pathway exists under the strict prompt definition.
 repeat\_cross\_insp\_share with firm name (or anonymized).
 Add: correlation of severity\_critmajor\_share with n\_oai,
 correlation with MQRI.}
+
+\subsection{Validation: FAERS as a Manufacturing Quality Proxy}
+
+Before linking 483 text signals to adverse event outcomes, we validate that
+FAERS serious AE counts track manufacturing quality rather than pharmacological
+effects alone.
+For each of the seven generic drugs with published Valisure analytical quality
+scores, we compute the fraction of ANDA-holders with score $< 90$ (Valisure
+failure rate) and the drug's FAERS serious adverse event count per million
+Medicaid prescriptions (using CMS SDUD prescription volume as denominator).
+Spearman correlation across seven drugs yields $\rho = 0.86$, $p = 0.014$:
+drugs with higher proportions of analytically deficient products generate more
+serious adverse events per patient exposed, even after controlling for
+prescribing volume (Table~\ref{tab:valisure_val}).
+The SDUD-normalized metric is stronger than the raw AE count ($\rho = 0.79$),
+indicating that prescription volume was attenuating, not inflating, the
+quality signal.
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Valisure failure rate vs.\ FAERS serious AEs per million Medicaid Rx
+         ($n = 7$ drugs; Spearman $\rho = 0.86$, $p = 0.014$)}
+\label{tab:valisure_val}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Drug} & \textbf{Valisure fail rate} & \textbf{Serious AEs / M Rx} \\
+\midrule
+Tacrolimus         & 69\% & 1{,}738 \\
+Metformin          & 48\% &   133 \\
+Metoprolol         & 46\% &    61 \\
+Potassium chloride & 41\% &    21 \\
+Magnesium sulfate  &  0\% &    19 \\
+Lisinopril         & 17\% &    16 \\
+Calcium gluconate  & 33\% &     7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Two Failure Modes: Governance vs.\ Technical Failures}
+
+We test whether the same text signals that predict regulatory escalation also
+predict patient harm, or whether inspection text encodes two distinct failure
+pathways.
+For each of 98 FEIs with 483 text features, we compute Spearman correlations
+of each text signal against three outcomes: (1)~OAI inspection rate
+(regulatory escalation), (2)~Class~I recall count (product-level regulatory
+action), and (3)~mean FAERS serious AEs at lag $+$1~year (patient harm).
+
+Results reveal a clear divergence (Table~\ref{tab:two_modes}):
+
+\paragraph{Governance failures $\to$ regulatory action, not patient harm.}
+\emph{Quality system violations} are the strongest predictor of OAI rate
+across all ten text features ($\rho = +0.33$, $p < 0.001$) and show no
+significant relationship with serious AEs ($\rho = -0.08$, $p > 0.4$).
+Quality system observations cite inadequate oversight, missing review
+procedures, and quality-unit authority failures---exactly the systemic
+indicators FDA uses to justify OAI classification.
+The regulatory response (mandatory CAPA, import alerts, product holds) limits
+patient exposure, attenuating the harm signal.
+\emph{Repeat observations} trend toward both OAI and recalls ($\rho \approx
++0.20$ for both), consistent with repeat citations building a regulatory
+history that accelerates escalation.
+
+\paragraph{Technical failures $\to$ patient harm, evading regulatory escalation.}
+\emph{Lab controls violations}---inadequate test methods, OOS investigation
+failures, missing specifications---are the strongest predictor of FAERS
+serious AEs ($\rho = +0.32$, $p < 0.01$) and show essentially no relationship
+with OAI rate ($\rho = +0.01$).
+Lab controls are the gatekeeping function: when they fail, defective product
+passes QC without generating the governance-level signals that trigger OAI.
+\emph{Data integrity violations} follow the same pattern ($\rho = +0.22$ for
+AEs, $p < 0.05$; $\rho = +0.10$ for OAI, $p > 0.3$).
+DI failures are by design difficult to detect and slow to escalate---falsified
+records suppress the evidence trail that inspectors use to assign OAI.
+
+\paragraph{Removed products.}
+\emph{Contamination flags} show negative correlations with both OAI
+($\rho = -0.05$) and AEs ($\rho = -0.19$), consistent with contamination
+findings triggering recalls that remove product from the market before
+widespread patient harm materializes.
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Spearman $\rho$ — each 483 text signal vs.\ regulatory action and
+         patient harm outcomes ($n = 98$ FEIs)}
+\label{tab:two_modes}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Text signal} & \textbf{OAI rate} & \textbf{Class~I recalls}
+                     & \textbf{Serious AEs (lag+1)} \\
+\midrule
+\multicolumn{4}{l}{\textit{Governance failures → regulatory action}} \\
+\quad Quality system violations & $+0.33$*** & $-0.02$ & $-0.08$ \\
+\quad Repeat observations       & $+0.20$    & $+0.19$ & $+0.13$ \\
+\quad Investigation failures    & $+0.17$    & $+0.04$ & $+0.13$ \\
+\midrule
+\multicolumn{4}{l}{\textit{Technical failures → patient harm}} \\
+\quad Lab controls violations   & $+0.01$    & $+0.18$ & $+0.32$** \\
+\quad Data integrity violations & $+0.10$    & $-0.09$ & $+0.22$* \\
+\quad Scope: facility-wide      & $+0.10$    & $-0.10$ & $+0.10$ \\
+\midrule
+\multicolumn{4}{l}{\textit{Removed products}} \\
+\quad Contamination flag        & $-0.05$    & $-0.07$ & $-0.19$ \\
+\quad Patient risk flag         & $+0.14$    & $-0.03$ & $-0.06$ \\
+\bottomrule
+\multicolumn{4}{l}{\footnotesize * $p<0.05$; ** $p<0.01$; *** $p<0.001$} \\
+\end{tabular}
+\end{table}
 
 \subsection{Predictive Validity: Text Features vs.\ Valisure Outcomes}
 

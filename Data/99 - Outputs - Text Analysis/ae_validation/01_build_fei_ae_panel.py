@@ -165,6 +165,17 @@ def _load_faers_raw(fei_drug_map: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip() for c in df.columns]
     df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
     df = df.dropna(subset=["year", "prod_ai"])
+    # Keep serious outcomes only. "No outcome reported" (14.6% of rows) is not
+    # patient harm and would dilute the signal we are trying to predict.
+    SERIOUS = {
+        "Death", "Hospitalization", "Life-threatening",
+        "Disability", "Congenital anomaly", "Required intervention",
+        "Other serious",
+    }
+    before = len(df)
+    df = df[df["severity"].isin(SERIOUS)]
+    print(f"  Severity filter: {before} → {len(df)} rows "
+          f"(dropped {before - len(df)} 'No outcome reported')")
     df["api_key"] = df["prod_ai"].str.strip().str.lower().str.split().str[0]
     joined = df.merge(
         fei_drug_map[["api_key", "fei", "api"]].drop_duplicates(),

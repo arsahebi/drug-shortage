@@ -147,7 +147,7 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 Source & Content \\
 \midrule
 Redica & 483 text; OAI/VAI/NAI outcomes \\
-FAERS & Serious adverse events \\
+FAERS & Serious AEs only (death, hospitalization, disability, other serious; ``no outcome'' excluded) \\
 SDUD & Medicaid utilization volume \\
 DailyMed & NDC$\to$FEI crosswalk \\
 ProPublica & Facility--drug linkage (supplement) \\
@@ -381,7 +381,7 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \textbf{Type 3: Joint co-occurrence}:
 \begin{itemize}
   \item \texttt{joint\_labctrl\_di}: 1 if both Lab Controls and DI appear in the same inspection
-  \item Highest predictor of future AEs ($\rho = 0.23$, $p < .001$)
+  \item Highest predictor of future AEs ($\rho = 0.22$, $p < .01$)
 \end{itemize}
 
 \column{0.45\textwidth}
@@ -459,28 +459,28 @@ CV & FEI-grouped 5-fold \\
 \toprule
 Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 \midrule
-\texttt{joint\_labctrl\_di}     & +0.16 & * & \tech{+0.23} & *** & $\uparrow$ \\
-\texttt{n\_labcontrols\_obs}    & +0.16 & * & \tech{+0.20} & **  & $\uparrow$ \\
-\texttt{vc\_labcontrols\_share} & +0.15 & * & \tech{+0.17} & **  & $\uparrow$ \\
-\texttt{joint\_contam\_labctrl} & +0.12 &   & \tech{+0.17} & **  & $\uparrow$ \\
-\texttt{data\_integrity\_flag}  & +0.06 &   & \tech{+0.13} & *   & $\uparrow$ \\
+\texttt{joint\_labctrl\_di}     & +0.15 & * & \tech{+0.22} & **  & $\uparrow$ \\
+\texttt{n\_labcontrols\_obs}    & +0.14 & * & \tech{+0.19} & **  & $\uparrow$ \\
+\texttt{vc\_labcontrols\_share} & +0.14 & * & \tech{+0.17} & *   & $\uparrow$ \\
+\texttt{joint\_contam\_labctrl} & +0.11 &   & \tech{+0.17} & *   & $\uparrow$ \\
+\texttt{data\_integrity\_flag}  & +0.06 &   & +0.13 & $\dagger$ & $\uparrow$ \\
 \midrule
-\texttt{vc\_qualitysystem}      & $-$0.02 & & $-$0.03 & & \\
-\texttt{cultural\_root\_cause}  & $-$0.09 & & $-$0.10 & & \\
+\texttt{vc\_qualitysystem}      & $-$0.01 & & $-$0.03 & & \\
+\texttt{cultural\_root\_cause}  & $-$0.08 & & $-$0.11 & & \\
 \bottomrule
-\multicolumn{6}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$ \quad Full heatmap: backup slide}
+\multicolumn{6}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad $\dagger$ $p{<}.10$ \quad Full heatmap: backup slide}
 \end{tabular}
 }
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item All five significant features strengthen from Q0 to Q+4. The correlations grow, not fade. That's the detection lag.
-  \item DI flag: not significant at Q0, reaches $p{<}.05$ at Q+4. Falsified records take time to surface as harm.
-  \item Quality System and severity are flat across all lags. They describe the inspection type but predict nothing about outcomes.
+  \item Four features reach significance at Q+4; all five correlations grow from Q0 to Q+4. That's the detection lag.
+  \item DI flag misses $p{<}.05$ at Q+4 ($p = 0.06$, serious-only sample). Direction stays positive.
+  \item Quality System and severity are flat across all lags. They describe what kind of inspection happened, not what happens next.
 \end{itemize}
 
 \vspace{6pt}
-\textbf{Lab Controls and DI are leading indicators.} Every significant feature predicts harm better at 9--12 months out than at the inspection itself.
+\textbf{Lab Controls signals are leading indicators.} Correlations grow from Q0 to Q+4 for every feature in the table; four reach significance by one year out.
 \end{columns}
 \end{frame}
 
@@ -583,7 +583,7 @@ Predictive signal concentrates in OAI facilities: confirmed quality problems, ba
 \begin{frame}{Inspection Gaps Shape What the Trajectory Means}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{AE trajectory by gap length} (inspection-centered quarterly panel, 166 matched inspections):
+\textbf{AE trajectory by gap length} (inspection-centered quarterly panel, 237 matched inspections):
 
 \vspace{4pt}
 \begin{tabular}{lcccc}
@@ -591,17 +591,17 @@ Predictive signal concentrates in OAI facilities: confirmed quality problems, ba
 Gap & $n$ & pre\_rise & persist & mean gap \\
 & & $t_0/t_{-4}$ & $t_{+4}/t_0$ & (yr) \\
 \midrule
-$<$1yr & 22 & 1.189 & 1.054 & 0.6 \\
+$<$1yr & 60 & 1.145 & 1.120 & 0.6 \\
 \rowcolor{techBlue!15}
-1–2yr & 48 & \textbf{1.193} & 1.044 & 1.5 \\
-2–3.5yr & 50 & 1.038 & 1.063 & 2.7 \\
-$>$3.5yr & 46 & 1.042 & 0.962 & 4.8 \\
+1–2yr & 87 & \textbf{1.266} & 1.041 & 1.5 \\
+2–3.5yr & 57 & 1.090 & 1.040 & 2.7 \\
+$>$3.5yr & 33 & 1.031 & 1.033 & 4.8 \\
 \bottomrule
 \end{tabular}
 
 \vspace{6pt}
 \textbf{The critical case: 1–2yr gap group}\\
-$t_{-4}$ is within the current inspection cycle (no overlap with previous inspection). This group shows the clearest pre-distribution signal: AEs \textbf{+28\%} in the year before inspection.
+$t_{-4}$ is within the current inspection cycle (no overlap with previous inspection). This group shows the clearest pre-distribution signal: AEs \textbf{+27\%} in the year before inspection.
 
 \column{0.45\textwidth}
 \textbf{Why gaps matter for interpretation:}
@@ -613,7 +613,7 @@ $t_{-4}$ is within the current inspection cycle (no overlap with previous inspec
 
 \vspace{4pt}
 \begin{alertblock}{Refined claim}
-``AEs rise 28\% in the year \emph{before} inspection for annually-inspected facilities (1–2yr gap). FDA is detecting an ongoing quality problem with a $\sim$1 year lag.''
+``AEs rise 27\% in the year \emph{before} inspection for annually-inspected facilities (1--2yr gap). FDA is detecting an ongoing quality problem with a $\sim$1 year lag.''
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -671,27 +671,27 @@ FDA rated these facilities identically (VAI). 483 text identifies which ones kee
 Quarter & All & VAI/NAI & OAI \\
 & (246) & (223) & (23) \\
 \midrule
-$t-4$ & 607 & 608 & 591 \\
-$t-3$ & 647 & — & — \\
-$t-2$ & 674 & — & — \\
-$t-1$ & 669 & — & — \\
-$t=0$ & 682 & 687 & 629 \\
-$t+1$ & 702 & — & — \\
-$t+2$ & \textbf{735} & — & — \\
-$t+3$ & 739 & — & — \\
-$t+4$ & 712 & \highlight{724} & \highlight{604} \\
+$t-4$ & 522 & 524 & 504 \\
+$t-3$ & 565 & — & — \\
+$t-2$ & 583 & — & — \\
+$t-1$ & 579 & — & — \\
+$t=0$ & 605 & 612 & 543 \\
+$t+1$ & 627 & — & — \\
+$t+2$ & \textbf{646} & — & — \\
+$t+3$ & 644 & — & — \\
+$t+4$ & 635 & \highlight{646} & \highlight{532} \\
 \midrule
-pre\_rise & — & 1.130 & 1.065 \\
-persist & — & \highlight{1.053} & \highlight{0.961} \\
+pre\_rise & — & 1.168 & 1.078 \\
+persist & — & \highlight{1.055} & \highlight{0.979} \\
 \bottomrule
 \end{tabular}
 
 \column{0.42\textwidth}
 \textbf{What the quarterly panel shows:}
 \begin{enumerate}
-  \item \textbf{OAI correction is real but slow.} AEs keep rising for two more quarters after inspection — product already in the market takes time to clear. By $t+4$, AEs fall below the pre-inspection level, consistent with corrective action plan timelines.
+  \item \textbf{OAI correction is real but slow.} AEs keep rising for two more quarters after inspection; product already in the market takes time to clear. By $t+4$, AEs fall below the pre-inspection level, consistent with corrective action plan timelines.
 
-  \item \textbf{VAI/NAI shows no comparable correction.} AEs peak around $t+3$, pull back slightly, and never return to baseline (persist $= 1.053$). Without enforcement pressure, the quality problem persists.
+  \item \textbf{VAI/NAI shows no comparable correction.} AEs peak around $t+3$, pull back slightly, and never return to baseline (persist $= 1.055$). Without enforcement pressure, the quality problem persists.
 
   \item \textbf{Policy implication:} a VAI rating is not sufficient for facilities where Lab Controls and DI signals are elevated. 483 text identifies exactly which VAI cases should be escalated.
 \end{enumerate}
@@ -929,10 +929,10 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
     Lab Controls count, DI flag, and their joint co-occurrence predict AEs one year out. Quality System share, severity tier, and cultural root cause do not. The split tracks which failures leave bad product in the market.
 
   \item \textbf{Inspection is a lagging indicator.}\\
-    AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +28\% in the 4 quarters before inspection.
+    AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +27\% in the 4 quarters before inspection.
 
   \item \textbf{OAI corrects; high-signal VAI shows sustained harm.}\\
-    OAI facilities: AEs fall below the pre-inspection baseline by Q+4 (persist = 0.97). High-signal VAI: AEs at Q+4 are 10\% above the inspection quarter (persist = 1.10). FDA rated both groups the same.
+    OAI facilities: AEs fall below the pre-inspection baseline by Q+4 (persist = 0.979). High-signal VAI: AEs at Q+4 are 10\% above the inspection quarter (persist = 1.10). FDA rated both groups the same.
 
   \item \textbf{Strategic leniency candidates are identifiable.}\\
     3 FEIs show rising AEs, high technical 483 signals, and zero OAI ever. Cross-referencing with market concentration will test the shortage-avoidance hypothesis.
