@@ -542,7 +542,7 @@ Metric & Value \\
 Inspection events & 246 \\
 Unique FEIs & 98 \\
 Outcome base rate & 50.0\% \\
-OAI inspections & 23 (9.3\%) \\
+OAI inspections & 29 (11.8\%) \\
 \bottomrule
 \end{tabular}
 
@@ -689,7 +689,7 @@ FDA rated these facilities identically (VAI). 483 text identifies which ones kee
 \end{columns}
 \end{frame}
 
-\begin{frame}{Quarterly Trajectory: Timing of OAI Correction vs.\ VAI Persistence}
+\begin{frame}{Quarterly Trajectory: AEs Persist in Both Groups, Pre-Inspection Rise Differs}
 \begin{columns}[T]
 \column{0.55\textwidth}
 \textbf{Inspection-centered quarterly panel} (246 inspection events, $\pm$4 quarters = $\pm$1 year):
@@ -698,31 +698,31 @@ FDA rated these facilities identically (VAI). 483 text identifies which ones kee
 \begin{tabular}{lccc}
 \toprule
 Quarter & All & VAI/NAI & OAI \\
-& (246) & (223) & (23) \\
+& (246) & (217) & (29) \\
 \midrule
-$t-4$ & 522 & 524 & 504 \\
+$t-4$ & 522 & 517 & 556 \\
 $t-3$ & 565 & — & — \\
 $t-2$ & 583 & — & — \\
 $t-1$ & 579 & — & — \\
-$t=0$ & 605 & 612 & 543 \\
+$t=0$ & 605 & 608 & 585 \\
 $t+1$ & 627 & — & — \\
 $t+2$ & \textbf{646} & — & — \\
 $t+3$ & 644 & — & — \\
-$t+4$ & 635 & \highlight{646} & \highlight{532} \\
+$t+4$ & 635 & \highlight{638} & \highlight{609} \\
 \midrule
-pre\_rise & — & 1.168 & 1.078 \\
-persist & — & \highlight{1.055} & \highlight{0.979} \\
+pre\_rise & — & 1.175 & 1.052 \\
+persist & — & \highlight{1.049} & \highlight{1.041} \\
 \bottomrule
 \end{tabular}
 
 \column{0.42\textwidth}
 \textbf{What the quarterly panel shows:}
 \begin{enumerate}
-  \item \textbf{OAI correction is real but slow.} AEs keep rising for two more quarters after inspection; product already in the market takes time to clear. By $t+4$, AEs fall below the pre-inspection level, consistent with corrective action plan timelines.
+  \item \textbf{Both groups persist near baseline.} OAI persist = 1.041, VAI/NAI persist = 1.049. A 1-year window is not long enough to see enforcement correction clear the pipeline; product already in the market continues generating reports.
 
-  \item \textbf{VAI/NAI shows no comparable correction.} AEs peak around $t+3$, pull back slightly, and never return to baseline (persist $= 1.055$). Without enforcement pressure, the quality problem persists.
+  \item \textbf{The pre-inspection rise differs.} AEs rise faster before VAI/NAI inspections (pre\_rise = 1.175) than OAI ones (1.052). FDA escalates based on what inspectors observe in the facility, not on FAERS trends.
 
-  \item \textbf{Policy implication:} a VAI rating is not sufficient for facilities where Lab Controls and DI signals are elevated. 483 text identifies exactly which VAI cases should be escalated.
+  \item \textbf{Policy implication:} inspection classification alone does not separate which facilities improve. 483 text (Lab Controls, DI co-occurrence) adds predictive information the OAI/VAI label misses.
 \end{enumerate}
 \end{columns}
 \end{frame}
@@ -960,8 +960,8 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
   \item \textbf{Inspection is a lagging indicator.}\\
     AEs peak \emph{at} the inspection year, rising 1–2 years before FDA arrives. For facilities inspected every 1–2 years, AEs rise +27\% in the 4 quarters before inspection.
 
-  \item \textbf{OAI corrects; high-signal VAI shows sustained harm.}\\
-    OAI facilities: AEs fall below the pre-inspection baseline by Q+4 (persist = 0.979). High-signal VAI: AEs at Q+4 are 10\% above the inspection quarter (persist = 1.10). FDA rated both groups the same.
+  \item \textbf{Classification does not predict post-inspection trajectory; text does.}\\
+    OAI and VAI/NAI facilities persist at nearly the same level (1.041 vs 1.049) — a 1-year window is too short to observe enforcement correction. High-signal VAI identified by 483 text: AEs at Q+4 are 10\% above inspection level (persist = 1.10), versus 5\% for low-signal VAI.
 
   \item \textbf{Strategic leniency candidates are identifiable.}\\
     3 FEIs show rising AEs, high technical 483 signals, and zero OAI ever. Cross-referencing with market concentration will test the shortage-avoidance hypothesis.
