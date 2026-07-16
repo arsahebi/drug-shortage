@@ -154,7 +154,7 @@ def _load_faers_raw(fei_drug_map: pd.DataFrame) -> pd.DataFrame:
 
     Match rate: ~99.1% of pre-filtered FAERS rows join successfully.
     The remaining ~0.9% are combination products whose prod_ai backslash-
-    concatenates two drugs (e.g. "METFORMIN\SITAGLIPTIN") so the first
+    concatenates two drugs (e.g. "METFORMIN\\SITAGLIPTIN") so the first
     word resolves to the combo string rather than the single API name.
     Switching to an any-word match recovers those rows but mis-attributes
     them — "ATORVASTATIN CALCIUM" contains "calcium", which would match
