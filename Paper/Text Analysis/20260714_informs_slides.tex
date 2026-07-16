@@ -542,7 +542,7 @@ Metric & Value \\
 Inspection events & 246 \\
 Unique FEIs & 98 \\
 Outcome base rate & 50.0\% \\
-OAI inspections & 29 (11.8\%) \\
+OAI inspections & 26 (10.6\%) \\
 \bottomrule
 \end{tabular}
 
@@ -573,12 +573,12 @@ Column & Meaning \\
 Config & Features & LR AUC & RF AUC \\
 \midrule
 A & \highlight{Text only} (17 LLM) & \highlight{0.528} & 0.502 \\
-B & Text + OAI flag & 0.522 & 0.496 \\
-C & OAI flag only & 0.489 & 0.489 \\
+B & Text + OAI flag & 0.531 & 0.499 \\
+C & OAI flag only & 0.518 & 0.518 \\
 \midrule
 \multicolumn{4}{l}{\textit{Stratified subgroups}} \\
-D & Text, VAI-only FEIs & 0.499 & 0.461 \\
-E & Text, OAI-ever FEIs & \highlight{0.788} & 0.581 \\
+D & Text, VAI-only FEIs & 0.513 & 0.494 \\
+E & Text, OAI-ever FEIs & 0.525 & 0.425 \\
 \midrule
 \multicolumn{4}{l}{\textit{Random baseline = 0.500}} \\
 \bottomrule
@@ -586,8 +586,8 @@ E & Text, OAI-ever FEIs & \highlight{0.788} & 0.581 \\
 
 \vspace{6pt}
 \begin{itemize}
-  \item Text-only LR beats the OAI flag baseline by \highlight{+3.9 AUC points} (0.528 vs 0.489). The OAI classification falls \emph{below} the random baseline — knowing a facility was cited OAI tells you nothing about which patients get hurt.
-  \item Adding OAI flag to text (config B) hurts performance (0.522 $<$ 0.528). The label adds noise, not signal.
+  \item Text-only LR beats the OAI flag baseline by \highlight{+1.0 AUC points} (0.528 vs 0.518). The gap is modest; the trajectory analysis (Hi-sig VAI persist = 1.10) shows stronger discrimination than the supervised model at this sample size.
+  \item Adding OAI flag to text (config B, 0.531) gives a marginal boost over text alone. The label carries some signal but not much beyond what text already captures.
   \item RF underperforms LR throughout: 246 rows, the ensemble overfits.
 \end{itemize}
 
@@ -595,13 +595,13 @@ E & Text, OAI-ever FEIs & \highlight{0.788} & 0.581 \\
 \textbf{Config D vs E:}
 
 \begin{itemize}
-  \item \textbf{Config D (VAI-only, 78 FEIs, 177 rows)}: AUC = 0.499 — essentially random. For facilities FDA never escalated, text has no predictive power on average.
-  \item \textbf{Config E (OAI-ever, 20 FEIs, 69 rows)}: LR AUC = \highlight{0.788}, AP = \highlight{0.817}. For facilities with at least one confirmed OAI, 483 text strongly predicts which specific inspections precede elevated patient harm.
+  \item \textbf{Config D (VAI-only, 79 FEIs, 182 rows)}: AUC = 0.513 — near random. For facilities FDA never escalated, text has no predictive power on average.
+  \item \textbf{Config E (OAI-ever, 19 FEIs, 64 rows)}: LR AUC = 0.525. With 19 FEIs in a 5-fold CV, results are unstable. Treat as exploratory; the trajectory analysis is a more reliable signal.
 \end{itemize}
 
 \vspace{6pt}
 \begin{block}{Implication}
-Predictive signal concentrates in OAI facilities. Text AUC = 0.788 vs 0.489 OAI-flag baseline: inspectors' written observations predict harm far better than their own classification labels.
+Text-only model marginally outperforms the OAI-flag baseline (+1 AUC pt). The trajectory evidence is stronger: Hi-sig VAI facilities show more sustained harm than OAI facilities, identified by 483 text alone.
 \end{block}
 \end{columns}
 \end{frame}
@@ -662,9 +662,9 @@ $t_{-4}$ is within the current inspection cycle (no overlap with previous inspec
 Group & Q$-$4 & Q0 & Q+4 & persist \\
  & (1yr before) & (insp.) & (1yr after) & \\
 \midrule
-OAI-ever (20) & 549 & 604 & \highlight{616} & \highlight{1.02} \\
+OAI-ever (19) & 523 & 561 & \highlight{579} & \highlight{1.03} \\
 Hi-sig VAI (16) & 706 & 862 & \highlight{944} & \highlight{1.10} \\
-Lo-sig VAI (62) & 471 & 554 & 582 & 1.05 \\
+Lo-sig VAI (63) & 485 & 574 & 598 & 1.04 \\
 \bottomrule
 \end{tabular}
 }
@@ -673,11 +673,11 @@ Lo-sig VAI (62) & 471 & 554 & 582 & 1.05 \\
 {\small ``Hi-sig VAI'' = top-quartile composite of vc\_labcontrols\_share, data\_integrity\_share, joint\_labcontrols\_di; never OAI.}
 
 \vspace{6pt}
-pre\_rise: OAI 1.10, Hi-sig VAI \highlight{1.22}, Lo-sig VAI 1.18
+pre\_rise: OAI 1.07, Hi-sig VAI \highlight{1.22}, Lo-sig VAI 1.19
 
 \column{0.43\textwidth}
 \begin{itemize}
-  \item OAI facilities: AEs peak at Q+2, then decline toward baseline (persist = 1.02). Partial correction is visible in the 1-year window.
+  \item OAI facilities: AEs peak at Q+2, then decline toward baseline (persist = 1.03). Partial correction is visible in the 1-year window.
   \item High-signal VAI: AEs at Q+4 are \highlight{10\% above} the inspection quarter and \highlight{34\% above} 1 year prior. These facilities look worse at Q+4 than any OAI facility. FDA rated them identically to the VAI group.
   \item Low-signal VAI: persist = 1.05, a modest rise with no correction signal.
 \end{itemize}
@@ -698,29 +698,29 @@ Hi-sig VAI facilities (identified by 483 text alone) show more sustained harm th
 \begin{tabular}{lccc}
 \toprule
 Quarter & All & VAI/NAI & OAI \\
-& (246) & (217) & (29) \\
+& (246) & (220) & (26) \\
 \midrule
-$t-4$ & 522 & 517 & 556 \\
+$t-4$ & 522 & 519 & 544 \\
 $t-3$ & 565 & — & — \\
 $t-2$ & 583 & — & — \\
 $t-1$ & 579 & — & — \\
-$t=0$ & 605 & 608 & 585 \\
+$t=0$ & 605 & 612 & 550 \\
 $t+1$ & 627 & — & — \\
 $t+2$ & \textbf{646} & — & — \\
 $t+3$ & 644 & — & — \\
-$t+4$ & 635 & \highlight{638} & \highlight{609} \\
+$t+4$ & 635 & \highlight{642} & \highlight{578} \\
 \midrule
-pre\_rise & — & 1.175 & 1.052 \\
-persist & — & \highlight{1.049} & \highlight{1.041} \\
+pre\_rise & — & 1.179 & 1.011 \\
+persist & — & \highlight{1.049} & \highlight{1.051} \\
 \bottomrule
 \end{tabular}
 
 \column{0.42\textwidth}
 \textbf{What the quarterly panel shows:}
 \begin{enumerate}
-  \item \textbf{Both groups persist near baseline.} OAI persist = 1.041, VAI/NAI persist = 1.049. A 1-year window is not long enough to see enforcement correction clear the pipeline; product already in the market continues generating reports.
+  \item \textbf{Both groups persist near baseline.} OAI persist = 1.051, VAI/NAI persist = 1.049. A 1-year window is not long enough to see enforcement correction clear the pipeline; product already in the market continues generating reports.
 
-  \item \textbf{The pre-inspection rise differs.} AEs rise faster before VAI/NAI inspections (pre\_rise = 1.175) than OAI ones (1.052). FDA escalates based on what inspectors observe in the facility, not on FAERS trends.
+  \item \textbf{The pre-inspection rise differs.} AEs rise faster before VAI/NAI inspections (pre\_rise = 1.179) than OAI ones (1.011). FDA escalates based on what inspectors observe in the facility, not on FAERS trends.
 
   \item \textbf{Policy implication:} inspection classification alone does not separate which facilities improve. 483 text (Lab Controls, DI co-occurrence) adds predictive information the OAI/VAI label misses.
 \end{enumerate}
@@ -865,7 +865,7 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 \column{0.50\textwidth}
 \textbf{Sample size:}
 \begin{itemize}
-  \item 98 FEIs, 246 inspections, only \textbf{23 OAI inspections}
+  \item 98 FEIs, 246 inspections, only \textbf{26 OAI inspections}
   \item Subgroup analyses (Config D, E, clusters) are underpowered
   \item Treat cluster findings as hypothesis-generating, not confirmatory
 \end{itemize}
@@ -951,8 +951,8 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 
 \begin{enumerate}
   \setlength{\itemsep}{8pt}
-  \item \textbf{LLM text signals predict patient harm.}\\
-    483-derived features achieve AUC = \highlight{0.528} vs 0.489 OAI-flag baseline (+3.9 points; OAI flag is below random). For OAI-ever facilities, AUC = 0.788, AP = 0.817. Inspectors' written observations predict harm far better than their own classification labels.
+  \item \textbf{LLM text signals carry AE-predictive information beyond the OAI flag.}\\
+    Text-only LR AUC = \highlight{0.528} vs 0.518 OAI-flag baseline (+1.0 point). The supervised model result is modest at 246 rows. Trajectory evidence is stronger: Hi-sig VAI facilities (identified by 483 text alone) show AE persistence of 1.10 vs 1.03 for OAI-ever facilities.
 
   \item \textbf{Five text signals carry AE-predictive information; twelve do not.}\\
     Lab Controls count, DI flag, and their joint co-occurrence predict AEs one year out. Quality System share, severity tier, and cultural root cause do not. The split tracks which failures leave bad product in the market.
