@@ -156,11 +156,8 @@ ProPublica & Facility--drug linkage (supplement) \\
 }
 
 \vspace{6pt}
-\textbf{Panel structure:}
-\begin{itemize}
-  \item \textbf{Yearly}: 645 FEI$\times$year rows (2018--2025)
-  \item \textbf{Inspection-centered}: 246 rows, $\pm$4 quarters around each inspection
-\end{itemize}
+\textbf{Panel structure:}\\[2pt]
+Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year) around each visit. 246 rows total.
 \end{columns}
 \end{frame}
 
@@ -250,6 +247,44 @@ FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
 % ── SECTION 4: LLM EXTRACTION ────────────────────────────────────────────────
 \section{LLM Extraction Pipeline}
 
+\begin{frame}{Step 00: What Raw 483 Text Looks Like}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\textbf{A 2022 FDA inspection — 4 observations (paraphrased):}
+
+\vspace{4pt}
+{\scriptsize
+\textbf{Obs.\ 1.} ``Batch production records were not completed at the time of manufacture. Entries were reconstructed from memory 2 days after processing.''
+
+\vspace{3pt}
+\textbf{Obs.\ 2.} ``Investigations into out-of-specification results are not conducted with a scientifically sound and thorough approach. Five OOS potency results were invalidated without adequate justification.''
+
+\vspace{3pt}
+\textbf{Obs.\ 3.} ``The equipment cleaning validation program does not cover all equipment used in drug production. Residue limits have not been established for three shared-use mixing tanks.''
+
+\vspace{3pt}
+\textbf{Obs.\ 4.} ``Laboratory controls do not include the establishment of scientifically sound specifications for raw materials used in the manufacture of finished drug products.''
+}
+
+\column{0.42\textwidth}
+\textbf{The problem:}
+\begin{itemize}
+  \item No standard schema — each inspector writes differently
+  \item Domain, severity, and root cause are all implicit in the prose
+  \item 1,067 observations across 246 inspections — hand-coding is infeasible
+\end{itemize}
+
+\vspace{6pt}
+\textbf{Step 01 solution:}\\[2pt]
+{\small Claude Haiku reads each observation and outputs a strict JSON schema: domain (8 CFR\,211 areas), severity, DI flag, patient risk, scope, root cause, investigation failure, and recurrence.}
+
+\vspace{6pt}
+\begin{alertblock}{Scale}
+\small 98 FEIs · 246 inspections · 1,067 observations processed in a single LLM pass per observation.
+\end{alertblock}
+\end{columns}
+\end{frame}
+
 \begin{frame}{What the LLM Extracts and Why}
 \begin{columns}[T]
 \column{0.50\textwidth}
@@ -322,8 +357,55 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \end{columns}
 \end{frame}
 
+\begin{frame}{Step 02: From Observation Labels to Inspection Feature Vectors}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Three types of features per inspection:}
+
+\vspace{4pt}
+\textbf{Type 1 — Share} (normalized by observation count):
+\begin{itemize}
+  \item \texttt{vc\_labcontrols\_share}: fraction of observations in Lab Controls domain
+  \item Captures what \emph{kind} of inspection this was
+\end{itemize}
+
+\vspace{4pt}
+\textbf{Type 2 — Count} (absolute intensity):
+\begin{itemize}
+  \item \texttt{n\_labcontrols\_obs}: raw number of Lab Controls observations
+  \item Captures how much was cited, not just whether
+\end{itemize}
+
+\vspace{4pt}
+\textbf{Type 3 — Joint co-occurrence}:
+\begin{itemize}
+  \item \texttt{joint\_labctrl\_di}: 1 if both Lab Controls and DI appear in the same inspection
+  \item Highest predictor of future AEs ($\varrho = 0.23$, $p < .001$)
+\end{itemize}
+
+\column{0.45\textwidth}
+\textbf{Why co-occurrence is the strongest signal:}
+
+\vspace{4pt}
+{\small
+Lab Controls alone $\to$ a QC process failed.\\[2pt]
+DI alone $\to$ a record was altered.\\[2pt]
+\textbf{Both together} $\to$ bad product was likely made \emph{and} the evidence was manipulated. Higher probability that subpotent or contaminated product reached patients.
+}
+
+\vspace{8pt}
+\begin{block}{Output}
+\small 246 inspections $\times$ 17 features.\\
+This matrix feeds the correlation analysis and the prediction model directly.
+\end{block}
+
+\vspace{4pt}
+{\scriptsize Share and count are complementary: share is robust to long inspections; count captures absolute burden. Both enter the model.}
+\end{columns}
+\end{frame}
+
 % ── SECTION 5: THEORY ────────────────────────────────────────────────────────
-\section{Two Failure Mode Theory}
+\section{Detection Lag}
 
 \begin{frame}{From 483 Text to Future Harm: The Detection Lag}
 \begin{columns}[T]
@@ -357,42 +439,40 @@ CV & FEI-grouped 5-fold \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{Spearman Correlations: 483 Text Signals vs.\ AEs One Year After Inspection}
+\begin{frame}{483 Text Signals: Do They Lead or Lag Patient Harm?}
 \begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{Spearman $\varrho$ with Q+4 AEs, $n = 224$ inspections:}
+\column{0.56\textwidth}
+\textbf{Spearman $\varrho$ at inspection quarter (Q0) vs.\ one year later (Q+4), $n \approx 224$:}
 
 \vspace{4pt}
 {\small
-\begin{tabular}{lcc}
+\begin{tabular}{lcclcc}
 \toprule
-Feature & $\varrho$ & \\
+Feature & $\varrho_{\text{Q0}}$ & & $\varrho_{\text{Q+4}}$ & & \\
 \midrule
-\texttt{joint\_labctrl\_di} & \tech{+0.231} & *** \\
-\texttt{n\_labcontrols\_obs} & \tech{+0.201} & ** \\
-\texttt{vc\_labcontrols\_share} & \tech{+0.176} & ** \\
-\texttt{joint\_contam\_labctrl} & \tech{+0.174} & ** \\
-\texttt{data\_integrity\_share} & \tech{+0.133} & * \\
+\texttt{joint\_labctrl\_di}     & +0.16 & * & \tech{+0.23} & *** & $\uparrow$ \\
+\texttt{n\_labcontrols\_obs}    & +0.16 & * & \tech{+0.20} & **  & $\uparrow$ \\
+\texttt{vc\_labcontrols\_share} & +0.15 & * & \tech{+0.18} & **  & $\uparrow$ \\
+\texttt{joint\_contam\_labctrl} & +0.12 &   & \tech{+0.17} & **  & $\uparrow$ \\
+\texttt{data\_integrity\_flag}  & +0.06 &   & \tech{+0.13} & *   & $\uparrow$ \\
 \midrule
-\texttt{vc\_qualitysystem\_share} & $-$0.032 & \\
-\texttt{cultural\_root\_cause} & $-$0.100 & \\
-\texttt{joint\_qsys\_production} & $-$0.042 & \\
-\texttt{contamination\_share} & $-$0.088 & \\
+\texttt{vc\_qualitysystem}      & $-$0.02 & & $-$0.03 & & \\
+\texttt{cultural\_root\_cause}  & $-$0.09 & & $-$0.10 & & \\
 \bottomrule
-\multicolumn{3}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$}
+\multicolumn{6}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$ \quad Full heatmap: backup slide}
 \end{tabular}
 }
 
-\column{0.45\textwidth}
+\column{0.41\textwidth}
 \begin{itemize}
-  \item Lab Controls count, DI flag, and their joint co-occurrence all predict elevated AEs one year after inspection
-  \item Quality System share, severity tier, and cultural root cause show no significant correlation with future AEs
-  \item The joint flag (Lab Controls + DI) outperforms either feature alone, consistent with the detection lag story: when both are present, bad product was more likely already distributed
+  \item All five predictive features get \emph{stronger} from Q0 to Q+4. Correlations don't fade — they grow. This is the detection lag: text captures quality failures that produce AEs over the following year.
+  \item DI flag is not significant at Q0 but reaches $p{<}.05$ at Q+4. Data integrity problems take time to surface as patient harm.
+  \item Quality System share and severity carry no predictive information at any lag.
 \end{itemize}
 
 \vspace{4pt}
 \begin{block}{Takeaway}
-Five text features carry signal for future harm. Thirteen do not. The split is not about which features are ``bad'' — it is about which failures leave bad product in the market.
+Lab Controls and DI signals are leading indicators. The $\uparrow$ column is the key: every significant feature predicts harm better at 9–12 months out than at the inspection itself.
 \end{block}
 \end{columns}
 \end{frame}
@@ -861,6 +941,14 @@ INFORMS Annual Meeting 2026 (full paper); AAAI 2027 (AI/policy angle)
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
 \appendix
 \section*{Backup Slides}
+
+\begin{frame}{Backup: Correlation Heatmap — All Features, All Lags}
+\begin{center}
+\includegraphics[width=0.86\textwidth]{../figures/lag_heatmap.png}
+\end{center}
+\vspace{-6pt}
+{\scriptsize Top 12 features by $|\varrho|$ at Q+4. Correlations grow from Q0 to Q+4 for the Lab Controls cluster — consistent with the detection lag mechanism.}
+\end{frame}
 
 \begin{frame}{Backup: Full Feature List (17 LLM Features)}
 \begin{columns}[T]

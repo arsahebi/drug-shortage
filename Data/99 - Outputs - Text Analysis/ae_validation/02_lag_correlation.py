@@ -59,11 +59,12 @@ import matplotlib.pyplot as plt
 from scipy import stats
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-HERE     = Path(__file__).resolve().parent
-OUT      = HERE / "outputs"
-OUT_TABS = OUT / "tables"
-OUT_FIGS = OUT / "figures"
-PANEL    = OUT / "fei_ae_panel_inspection_centered.parquet"
+HERE      = Path(__file__).resolve().parent
+OUT       = HERE / "outputs"
+OUT_TABS  = OUT / "tables"
+OUT_FIGS  = OUT / "figures"
+PANEL     = OUT / "fei_ae_panel_inspection_centered.parquet"
+PAPER_FIGS = HERE.parents[2] / "Paper" / "figures"
 
 TEXT_FEATURES = [
     # individual shares / rates
@@ -88,23 +89,23 @@ TEXT_FEATURES = [
 ]
 
 FEATURE_LABELS = {
-    "severity_critmajor_share":        "Severity: Maj+Crit share",
-    "contamination_llm_share":         "Contamination flag rate",
-    "data_integrity_llm_share":        "Data integrity flag rate",
-    "patient_risk_llm_share":          "Patient risk flag rate",
-    "investigation_llm_share":         "Invest. failure flag rate",
-    "repeat_cross_insp_share":         "Repeat obs. rate",
-    "scope_facilitywide_share":        "Scope: facility-wide share",
-    "cultural_root_cause_share":       "Root cause: Cultural share",
-    "vc_labcontrols_share":            "Domain: Lab controls share",
-    "vc_qualitysystem_share":          "Domain: Quality system share",
-    "n_labcontrols_obs":               "Lab controls obs count",
-    "n_qualitysystem_obs":             "Quality system obs count",
-    "joint_labcontrols_dataintegrity": "Joint: Lab ctrl + DI",
-    "joint_contamination_labcontrols": "Joint: Contamination + Lab ctrl",
-    "joint_qualitysystem_production":  "Joint: Quality sys + Production",
-    "joint_labcontrols_qualitysystem": "Joint: Lab ctrl + Quality sys",
-    "multi_domain_insp":               "Multi-domain inspection (≥3)",
+    "severity_critmajor_share":        "Major/Critical severity",
+    "contamination_llm_share":         "Contamination flag",
+    "data_integrity_llm_share":        "Data integrity flag",
+    "patient_risk_llm_share":          "Patient risk flag",
+    "investigation_llm_share":         "Investigation failure flag",
+    "repeat_cross_insp_share":         "Repeat observations",
+    "scope_facilitywide_share":        "Facility-wide scope",
+    "cultural_root_cause_share":       "Cultural root cause",
+    "vc_labcontrols_share":            "Lab controls (share)",
+    "vc_qualitysystem_share":          "Quality system (share)",
+    "n_labcontrols_obs":               "Lab controls (count)",
+    "n_qualitysystem_obs":             "Quality system (count)",
+    "joint_labcontrols_dataintegrity": "Lab ctrl + DI (joint)",
+    "joint_contamination_labcontrols": "Contamination + Lab ctrl (joint)",
+    "joint_qualitysystem_production":  "Quality sys + Production (joint)",
+    "joint_labcontrols_qualitysystem": "Lab ctrl + Quality sys (joint)",
+    "multi_domain_insp":               "Multi-domain (≥3 domains)",
 }
 
 AE_LAGS = {
@@ -150,8 +151,8 @@ def _feature_diagnostics(df: pd.DataFrame, feat: str) -> None:
     if n_valid > 0:
         print(f"    range: [{col.min():.4f}, {col.max():.4f}]  "
               f"mean={col.mean():.4f}  std={col.std():.4f}")
-        q = col.quantile([0.25, 0.50, 0.75])
-        print(f"    Q25={q[0.25]:.4f}  median={q[0.50]:.4f}  Q75={q[0.75]:.4f}")
+        q25, q50, q75 = float(col.quantile(0.25)), float(col.quantile(0.50)), float(col.quantile(0.75))
+        print(f"    Q25={q25:.4f}  median={q50:.4f}  Q75={q75:.4f}")
         if col.nunique() <= 5:
             print(f"    value counts: {col.value_counts().to_dict()}")
 
@@ -189,43 +190,63 @@ def build_correlation_table(
     return pd.DataFrame(rows)
 
 
-def plot_heatmap(corr_tbl: pd.DataFrame, out_path: Path) -> None:
-    pivot = corr_tbl.pivot(index="feature_label", columns="lag_label", values="spearman_r")
+def plot_heatmap(
+    corr_tbl: pd.DataFrame,
+    out_path: Path,
+    paper_path: Path | None = None,
+    top_n: int = 12,
+) -> None:
+    pivot   = corr_tbl.pivot(index="feature_label", columns="lag_label", values="spearman_r")
     pivot_p = corr_tbl.pivot(index="feature_label", columns="lag_label", values="sig")
 
     col_order = list(AE_LAGS.values())
     pivot   = pivot.reindex(columns=col_order)
     pivot_p = pivot_p.reindex(columns=col_order)
 
-    sort_lag  = list(AE_LAGS.values())[-1]  # Q+4 — most forward-looking
-    lag1_vals = corr_tbl[corr_tbl["lag_label"] == sort_lag].set_index("feature_label")["spearman_r"]
-    pivot   = pivot.loc[lag1_vals.abs().sort_values(ascending=False).index]
-    pivot_p = pivot_p.loc[pivot.index]
+    sort_lag  = col_order[-1]  # Q+4 — most forward-looking
+    lag_vals  = corr_tbl[corr_tbl["lag_label"] == sort_lag].set_index("feature_label")["spearman_r"]
+    top_index = lag_vals.abs().sort_values(ascending=False).head(top_n).index
+    pivot     = pivot.loc[top_index]
+    pivot_p   = pivot_p.loc[top_index]
 
-    fig, ax = plt.subplots(figsize=(7, 5))
-    vmax = max(abs(pivot.values[~np.isnan(pivot.values)]).max(), 0.05)
-    im = ax.imshow(pivot.values.astype(float), cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
-    plt.colorbar(im, ax=ax, label="Spearman ρ")
+    # Short x-axis labels: "Q0 (inspection qtr)" → "Q0"
+    short_labels = [v.split(" ")[0] for v in col_order]
 
-    ax.set_xticks(range(len(col_order)))
-    ax.set_xticklabels(col_order, fontsize=10)
-    ax.set_yticks(range(len(pivot.index)))
-    ax.set_yticklabels(pivot.index, fontsize=9)
+    plt.rcParams.update({"font.family": "sans-serif"})
+    n_rows = len(pivot)
+    fig, ax = plt.subplots(figsize=(8, max(4, n_rows * 0.52)), constrained_layout=True)
+
+    vals = pivot.values.astype(float)
+    finite = vals[np.isfinite(vals)]
+    vmax = max(abs(finite).max() if len(finite) else 0.05, 0.05)
+    im = ax.imshow(vals, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+    plt.colorbar(im, ax=ax, label="Spearman ρ", shrink=0.8)
+
+    ax.set_xticks(range(len(short_labels)))
+    ax.set_xticklabels(short_labels, fontsize=11, fontweight="bold")
+    ax.set_yticks(range(n_rows))
+    ax.set_yticklabels(pivot.index, fontsize=10)
+    ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
 
     for i, row_feat in enumerate(pivot.index):
         for j, col_name in enumerate(col_order):
             val = pivot.loc[row_feat, col_name]
             sig = pivot_p.loc[row_feat, col_name]
-            if not np.isnan(val):
-                ax.text(j, i, f"{val:.2f}{sig}", ha="center", va="center",
-                        fontsize=8, color="white" if abs(val) > vmax * 0.5 else "black")
+            if np.isfinite(val):
+                color = "white" if abs(val) > vmax * 0.55 else "black"
+                ax.text(j, i, f"{val:+.2f}{sig}", ha="center", va="center",
+                        fontsize=8.5, color=color)
 
-    ax.set_title("Spearman ρ: text signal vs FAERS AE count by lag\n(* p<.05  ** p<.01  *** p<.001)",
-                 fontsize=10)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved heatmap → {out_path}")
+    ax.set_title(
+        "Spearman ρ: 483 text signals vs. FAERS AE counts by lag after inspection\n"
+        "* p<.05   ** p<.01   *** p<.001   (top 12 by |ρ| at Q+4, n≈224)",
+        fontsize=10, pad=12,
+    )
+    for path in [out_path] + ([paper_path] if paper_path else []):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(path, dpi=150)
+        print(f"  Saved heatmap → {path}")
+    plt.close(fig)
 
 
 def plot_scatter(df: pd.DataFrame, feature: str, ae_col: str, out_path: Path) -> None:
@@ -339,14 +360,18 @@ def main() -> None:
 
     if not args.feature:
         print("\nPlotting heatmap…")
-        plot_heatmap(corr_tbl, OUT_FIGS / "lag_correlation_heatmap.png")
+        plot_heatmap(
+            corr_tbl,
+            OUT_FIGS / "lag_correlation_heatmap.png",
+            paper_path=PAPER_FIGS / "lag_heatmap.png",
+        )
         print("Plotting lag profile…")
         plot_lag_profile(corr_tbl, features, OUT_FIGS / "lag_profile_all_features.png")
 
-    print("Plotting scatter(s) at Q+4…")
+    print("Plotting scatter(s) at Q+1…")
     for feat in features:
         fname = feat.replace("_share", "").replace("_llm", "")
-        plot_scatter(df, feat, "n_ae_tp4", OUT_FIGS / f"scatter_{fname}_qtp4.png")
+        plot_scatter(df, feat, "n_ae_tp1", OUT_FIGS / f"scatter_{fname}_qtp1.png")
 
     print("\nDone.")
 
