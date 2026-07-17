@@ -63,7 +63,7 @@ xlim = (
 # ── Figure ────────────────────────────────────────────────────────────────────
 fig, (ax1, ax2) = plt.subplots(
     2, 1, figsize=(8.0, 5.0),
-    gridspec_kw={"height_ratios": [3, 1.2], "hspace": 0.12},
+    gridspec_kw={"height_ratios": [2.2, 1.8], "hspace": 0.12},
 )
 
 # ── Panel 1: AE trajectory ────────────────────────────────────────────────────
