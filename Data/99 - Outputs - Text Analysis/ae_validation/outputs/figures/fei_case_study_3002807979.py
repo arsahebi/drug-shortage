@@ -136,7 +136,21 @@ legend_patches = [
     mpatches.Patch(color="#1d4ed8", alpha=0.85, label="Lab Controls"),
     mpatches.Patch(color="#dc2626", alpha=0.75, label="Data Integrity"),
 ]
-ax2.legend(handles=legend_patches, fontsize=8.5, loc="upper right",
+# Reference lines: NAI medians across all 15 NAI inspections in the sample
+nai_median_di = 0.357
+nai_median_lc = 0.143
+ax2.axhline(nai_median_di, color="#dc2626", linewidth=1.1, linestyle=":",
+            alpha=0.8, zorder=0)
+ax2.axhline(nai_median_lc, color="#1d4ed8", linewidth=1.1, linestyle=":",
+            alpha=0.8, zorder=0)
+ax2.text(xlim[1] - 20, nai_median_di + 0.03,
+         "NAI median DI: 36%", ha="right", va="bottom",
+         fontsize=7.5, color="#dc2626", style="italic")
+ax2.text(xlim[1] - 20, nai_median_lc + 0.03,
+         "NAI median LC: 14%", ha="right", va="bottom",
+         fontsize=7.5, color="#1d4ed8", style="italic")
+
+ax2.legend(handles=legend_patches, fontsize=8.5, loc="upper left",
            framealpha=0.85, edgecolor="#cccccc")
 
 out_path = OUT / "fei_case_study_3002807979.png"
