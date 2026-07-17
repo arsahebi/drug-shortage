@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.lines import Line2D
+import matplotlib.dates as mdates
 
 OUT = Path(__file__).resolve().parent
 
@@ -41,97 +41,105 @@ inspections = [
 ]
 
 offsets_months = [-12, -9, -6, -3, 0, 3, 6, 9, 12]
-
 outcome_colors = {"NAI": "#6b7280", "VAI": "#d97706", "OAI": "#cc0000"}
 
-# ── Build time series ─────────────────────────────────────────────────────────
+# ── Build deduplicated time series (mdates numbers) ───────────────────────────
 records = {}
 for insp in inspections:
     for months, ae in zip(offsets_months, insp["ae"]):
         dt = insp["date"] + pd.DateOffset(months=months)
         key = dt.to_period("Q").start_time
-        if key not in records:
-            records[key] = []
-        records[key].append(ae)
+        dn = mdates.date2num(key)
+        records.setdefault(dn, []).append(ae)
 
-ts = pd.Series({k: np.mean(v) for k, v in sorted(records.items())})
-ts.index = pd.to_datetime(ts.index)
+ts_dates = sorted(records)
+ts_vals  = [np.mean(records[d]) for d in ts_dates]
+
+xlim = (
+    mdates.date2num(pd.Timestamp("2017-06-01")),
+    mdates.date2num(pd.Timestamp("2024-03-01")),
+)
 
 # ── Figure ────────────────────────────────────────────────────────────────────
 fig, (ax1, ax2) = plt.subplots(
-    2, 1, figsize=(7.5, 4.6),
-    gridspec_kw={"height_ratios": [3, 1.2], "hspace": 0.08},
-    sharex=False,
+    2, 1, figsize=(8.0, 5.0),
+    gridspec_kw={"height_ratios": [3, 1.2], "hspace": 0.12},
 )
 
 # ── Panel 1: AE trajectory ────────────────────────────────────────────────────
-ax1.plot(ts.index, ts.values, color="#1e3a5f", linewidth=2, zorder=3)
-ax1.fill_between(ts.index, ts.values, alpha=0.10, color="#1e3a5f", zorder=2)
+ax1.plot(ts_dates, ts_vals, color="#1e3a5f", linewidth=2.2, zorder=3)
+ax1.fill_between(ts_dates, ts_vals, alpha=0.10, color="#1e3a5f", zorder=2)
 
-# shade gap between NAI and VAI to highlight the unmonitored window
-t_nai = inspections[0]["date"]
-t_vai = inspections[1]["date"]
+# shade gap between NAI and VAI
+t_nai = mdates.date2num(inspections[0]["date"])
+t_vai = mdates.date2num(inspections[1]["date"])
 ax1.axvspan(t_nai, t_vai, alpha=0.07, color="#cc0000", zorder=1)
 ax1.text(
-    t_nai + (t_vai - t_nai) / 2, 820,
-    "AEs rise 50%\nafter NAI",
-    ha="center", va="bottom", fontsize=7, color="#cc0000", style="italic",
+    (t_nai + t_vai) / 2, 845,
+    "AEs +50% after NAI",
+    ha="center", va="bottom", fontsize=8, color="#cc0000", style="italic",
 )
 
 for insp in inspections:
     color = outcome_colors[insp["outcome"]]
-    ax1.axvline(insp["date"], color=color, linewidth=1.6, linestyle="--", zorder=4)
+    dn = mdates.date2num(insp["date"])
+    ax1.axvline(dn, color=color, linewidth=1.8, linestyle="--", zorder=4)
     ax1.text(
-        insp["date"], 900,
+        dn, 912,
         insp["outcome"],
-        ha="center", va="bottom", fontsize=8.5, fontweight="bold",
-        color=color,
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor=color, linewidth=0.8),
+        ha="center", va="bottom", fontsize=9, fontweight="bold", color=color,
+        bbox=dict(boxstyle="round,pad=0.25", facecolor="white",
+                  edgecolor=color, linewidth=0.9),
     )
 
-ax1.set_ylabel("Serious AEs (quarterly)", fontsize=8)
-ax1.set_ylim(100, 1000)
-ax1.set_xlim(pd.Timestamp("2017-06-01"), pd.Timestamp("2024-03-01"))
-ax1.tick_params(axis="both", labelsize=7.5)
+ax1.set_xlim(xlim)
+ax1.set_ylim(100, 1010)
+ax1.set_ylabel("Serious AEs (quarterly)", fontsize=9)
+
+# year ticks on upper panel — no labels (lower panel carries them)
+ax1.xaxis.set_major_locator(mdates.YearLocator())
+ax1.xaxis.set_major_formatter(mdates.DateFormatter(""))   # hide labels
+ax1.tick_params(axis="x", length=4)
+ax1.tick_params(axis="y", labelsize=8.5)
 ax1.spines[["top", "right"]].set_visible(False)
-ax1.set_title("FEI 3002807979 — Inspection outcomes, 483 text signals, and adverse events",
-              fontsize=8.5, loc="left", pad=6)
+ax1.set_title(
+    "FEI 3002807979 — Inspection outcomes, 483 text signals, and adverse events",
+    fontsize=9, loc="left", pad=7,
+)
 
 # ── Panel 2: Text signals ─────────────────────────────────────────────────────
-bar_w = 60  # days
-dates = [insp["date"] for insp in inspections]
-lc_vals = [insp["lc"] for insp in inspections]
-di_vals = [insp["di"] for insp in inspections]
-
-import matplotlib.dates as mdates
-date_nums = mdates.date2num(dates)
-ax2.bar([d - bar_w for d in date_nums], lc_vals, width=bar_w * 0.9,
-        color="#1d4ed8", alpha=0.85, label="Lab Controls", align="edge")
-ax2.bar([d for d in date_nums], di_vals, width=bar_w * 0.9,
-        color="#dc2626", alpha=0.75, label="Data Integrity", align="edge")
+bar_w = 55  # days in date-number units
 
 for insp in inspections:
     color = outcome_colors[insp["outcome"]]
-    ax2.axvline(insp["date"], color=color, linewidth=1.4, linestyle="--", alpha=0.7)
+    dn = mdates.date2num(insp["date"])
+    ax2.axvline(dn, color=color, linewidth=1.5, linestyle="--", alpha=0.6, zorder=1)
 
-ax2.set_ylim(0, 1.35)
+    ax2.bar(dn - bar_w, insp["lc"], width=bar_w * 0.92,
+            color="#1d4ed8", alpha=0.85, align="edge", zorder=2)
+    ax2.bar(dn,          insp["di"], width=bar_w * 0.92,
+            color="#dc2626", alpha=0.75, align="edge", zorder=2)
+
+ax2.set_xlim(xlim)
+ax2.set_ylim(0, 1.38)
 ax2.set_yticks([0, 0.5, 1.0])
-ax2.set_yticklabels(["0%", "50%", "100%"], fontsize=7)
-ax2.set_ylabel("483 signal\nshare", fontsize=7.5)
-ax2.set_xlim(mdates.date2num(pd.Timestamp("2017-06-01")),
-             mdates.date2num(pd.Timestamp("2024-03-01")))
-ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+ax2.set_yticklabels(["0%", "50%", "100%"], fontsize=8.5)
+ax2.set_ylabel("483 signal\nshare", fontsize=8.5)
+
 ax2.xaxis.set_major_locator(mdates.YearLocator())
-ax2.tick_params(axis="both", labelsize=7.5)
+ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+ax2.tick_params(axis="x", labelsize=9, length=4)
+ax2.tick_params(axis="y", labelsize=8.5)
 ax2.spines[["top", "right"]].set_visible(False)
 
 legend_patches = [
-    mpatches.Patch(color="#1d4ed8", alpha=0.85, label="Lab Controls share"),
-    mpatches.Patch(color="#dc2626", alpha=0.75, label="Data Integrity share"),
+    mpatches.Patch(color="#1d4ed8", alpha=0.85, label="Lab Controls"),
+    mpatches.Patch(color="#dc2626", alpha=0.75, label="Data Integrity"),
 ]
-ax2.legend(handles=legend_patches, fontsize=7, loc="upper right", framealpha=0.8)
+ax2.legend(handles=legend_patches, fontsize=8.5, loc="upper right",
+           framealpha=0.85, edgecolor="#cccccc")
 
 out_path = OUT / "fei_case_study_3002807979.png"
-plt.savefig(out_path, dpi=180, bbox_inches="tight")
+plt.savefig(out_path, dpi=220, bbox_inches="tight")
 plt.close()
 print(f"Saved → {out_path}")
