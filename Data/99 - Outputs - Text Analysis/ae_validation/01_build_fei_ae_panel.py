@@ -53,10 +53,12 @@ REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combine
 FDA_INSP_XLSX   = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 SDUD_PARQ    = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDcanonical.parquet"
 NDC_FEI_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
+ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae_counts_quarterly.csv"
 
-OUT_PANEL_YR   = OUT / "fei_ae_panel.parquet"
-OUT_PANEL_QTR  = OUT / "fei_ae_panel_quarterly.parquet"
-OUT_PANEL_INSP = OUT / "fei_ae_panel_inspection_centered.parquet"
+OUT_PANEL_YR        = OUT / "fei_ae_panel.parquet"
+OUT_PANEL_QTR       = OUT / "fei_ae_panel_quarterly.parquet"
+OUT_PANEL_INSP      = OUT / "fei_ae_panel_inspection_centered.parquet"
+OUT_PANEL_INSP_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 
 TEXT_FEATURES = [
     "severity_critmajor_share",
@@ -199,6 +201,27 @@ def _faers_quarterly(joined: pd.DataFrame) -> pd.DataFrame:
     agg["ae_year"] = agg["period"].str[:4].astype(int)
     agg["ae_qtr"]  = agg["period"].str[-1].astype(int)
     agg["ae_idx"]  = agg["ae_year"] * 4 + agg["ae_qtr"]
+    return agg
+
+
+def _load_anda_ae_quarterly() -> pd.DataFrame:
+    """Load ANDA-specific quarterly FAERS counts built by 20260717_build_fei_ndc_anda_crosswalk.py.
+
+    Returns the same shape as _faers_quarterly(): fei, ae_idx, n_ae.
+    When a single FEI holds multiple ANDAs, counts are summed across ANDAs.
+    FEIs with no ANDA match in FAERS naturally return no rows here, so
+    those inspection events will have NaN AEs in the panel.
+    """
+    df = pd.read_csv(ANDA_AE_QTR_CSV, low_memory=False)
+    df["fei"] = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
+    df = df.dropna(subset=["fei", "period", "n_ae_serious"])
+    df["ae_year"] = df["period"].str[:4].astype(int)
+    df["ae_qtr"]  = df["period"].str[-1].astype(int)
+    df["ae_idx"]  = df["ae_year"] * 4 + df["ae_qtr"]
+    agg = (df.groupby(["fei", "ae_idx"], as_index=False)
+             .agg(n_ae=("n_ae_serious", "sum")))
+    print(f"  ANDA-specific AE quarterly: {len(agg)} FEI×quarter rows, "
+          f"{agg['fei'].nunique()} FEIs")
     return agg
 
 
@@ -544,7 +567,8 @@ def build_quarterly(ts: pd.DataFrame, fei_drug_map: pd.DataFrame) -> None:
 
 # ── Inspection-event-centered quarterly panel ─────────────────────────────────
 
-def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame) -> None:
+def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame,
+                               use_anda_ae: bool = False) -> None:
     """
     Build one row per inspection event with AE counts in quarters t-4 → t+4
     relative to the actual inspection quarter.
@@ -565,9 +589,13 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame) -> N
     ts["insp_idx"]  = ts["insp_year"] * 4 + ts["insp_qtr"]  # quarter index for arithmetic
     print(f"  {len(ts)} inspection events, {ts['fei'].nunique()} FEIs")
 
-    print("Loading FAERS (quarterly)…")
-    joined = _load_faers_raw(fei_drug_map)
-    ae_q   = _faers_quarterly(joined)   # has fei, period, ae_idx, n_ae
+    if use_anda_ae:
+        print("Loading FAERS (ANDA-specific quarterly)…")
+        ae_q = _load_anda_ae_quarterly()
+    else:
+        print("Loading FAERS (drug-level quarterly)…")
+        joined = _load_faers_raw(fei_drug_map)
+        ae_q   = _faers_quarterly(joined)   # has fei, period, ae_idx, n_ae
 
     # For each inspection, join AE counts at lags -4 to +4 quarters
     MAX_LAG = 4
@@ -710,8 +738,9 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame) -> N
               f"pre_rise={mid/pre:.3f}  persist={post/mid:.3f}" if pre > 0 else f"    {tag}: pre=0")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    panel.to_parquet(OUT_PANEL_INSP, index=False)
-    print(f"\nSaved → {OUT_PANEL_INSP}")
+    out_path = OUT_PANEL_INSP_ANDA if use_anda_ae else OUT_PANEL_INSP
+    panel.to_parquet(out_path, index=False)
+    print(f"\nSaved → {out_path}")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -728,6 +757,11 @@ def main() -> None:
             "inspection = inspection-event-centered quarterly panel (trajectory analysis); "
             "all = build all three"
         )
+    )
+    parser.add_argument(
+        "--anda-ae", action="store_true",
+        help="Use ANDA-specific FAERS AE counts (from crosswalk) instead of drug-level counts. "
+             "Only applies to the inspection-centered panel."
     )
     args = parser.parse_args()
 
@@ -746,7 +780,7 @@ def main() -> None:
         build_quarterly(ts, fei_drug_map)
 
     if args.granularity in ("inspection", "all"):
-        build_inspection_centered(ts, fei_drug_map)
+        build_inspection_centered(ts, fei_drug_map, use_anda_ae=args.anda_ae)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ Outputs
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import warnings
 import numpy as np
@@ -54,7 +55,8 @@ OUT       = HERE / "outputs"
 OUT_TABS  = OUT / "tables"
 OUT_FIGS  = OUT / "figures"
 OUT_MOD   = OUT / "models"
-PANEL     = OUT / "fei_ae_panel_inspection_centered.parquet"
+PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
+PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 
 # Inspection features from shortage prediction pipeline (optional enrichment)
 SP_CODE   = HERE.parent.parent.parent / "Data" / "99 - Outputs - Shortage Prediction" / "code"
@@ -392,11 +394,17 @@ def _trajectory_analysis(
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    if not PANEL.exists():
-        raise FileNotFoundError(f"Panel not found: {PANEL}\nRun 01_build_fei_ae_panel.py first.")
+    parser = argparse.ArgumentParser(description="Text-signal AE prediction model")
+    parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
+                        help="Use ANDA-specific AE panel instead of drug-level panel")
+    args = parser.parse_args()
+    panel_path = PANEL_ANDA if args.anda_ae else PANEL
 
-    print("Loading panel…")
-    df = pd.read_parquet(PANEL)
+    if not panel_path.exists():
+        raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_fei_ae_panel.py first.")
+
+    print(f"Loading panel ({'ANDA-specific' if args.anda_ae else 'drug-level'})…")
+    df = pd.read_parquet(panel_path)
     df = _build_outcome(df)
     print(f"  {len(df)} inspection events, {df['fei'].nunique()} FEIs")
 

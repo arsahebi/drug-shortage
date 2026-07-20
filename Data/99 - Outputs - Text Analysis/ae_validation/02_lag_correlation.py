@@ -63,7 +63,8 @@ HERE      = Path(__file__).resolve().parent
 OUT       = HERE / "outputs"
 OUT_TABS  = OUT / "tables"
 OUT_FIGS  = OUT / "figures"
-PANEL     = OUT / "fei_ae_panel_inspection_centered.parquet"
+PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
+PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 PAPER_FIGS = HERE.parents[2] / "Paper" / "figures"
 
 TEXT_FEATURES = [
@@ -308,17 +309,20 @@ def parse_args() -> argparse.Namespace:
                    help="Print per-feature distribution stats and each ρ as it is computed")
     p.add_argument("--no-plots", dest="no_plots", action="store_true",
                    help="Skip figure generation (faster for spot-checking correlations)")
+    p.add_argument("--anda-ae", dest="anda_ae", action="store_true",
+                   help="Use ANDA-specific AE panel (built with --anda-ae in 01_build_fei_ae_panel.py)")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    panel_path = PANEL_ANDA if args.anda_ae else PANEL
 
-    if not PANEL.exists():
-        raise FileNotFoundError(f"Panel not found: {PANEL}\nRun 01_build_fei_ae_panel.py first.")
+    if not panel_path.exists():
+        raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_fei_ae_panel.py first.")
 
-    print("Loading panel…")
-    df = pd.read_parquet(PANEL)
+    print(f"Loading panel ({'ANDA-specific' if args.anda_ae else 'drug-level'})…")
+    df = pd.read_parquet(panel_path)
     print(f"  {len(df)} rows, {df['fei'].nunique()} FEIs")
 
     # which features to run
