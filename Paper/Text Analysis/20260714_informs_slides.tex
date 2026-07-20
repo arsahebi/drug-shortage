@@ -544,18 +544,21 @@ FEIs with AE data & 109 \\
 \column{0.52\textwidth}
 \begin{itemize}
   \item \textbf{Unit:} One inspection event
-  \item \textbf{Features:} 17 LLM text signals from the 483 at that inspection
-  \item \textbf{Outcome:} Above-median serious AEs in Q+1..Q+4 (binary)\\
-        {\small OAI inspections: 33 of 246 (13\%)}
-  \item \textbf{CV:} FEI-grouped 5-fold -- all inspections of one facility stay together
+  \item \textbf{Features:} \tech{17 LLM text signals} from the 483 at that inspection
+  \item \textbf{Outcome:} Above-median serious AEs in the post-inspection year
+        $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
+        {\scriptsize OAI inspections: 33 of 246 (13\%)}
+  \item \textbf{CV:} FEI-grouped 5-fold
   \item \textbf{Model:} Logistic regression; random forest as robustness check
 \end{itemize}
 
 \column{0.45\textwidth}
-\textbf{AUC = 0.5 is the floor.}
+\begin{alertblock}{AUC = 0.5 is the floor}
+The outcome is 50/50 by construction. A random classifier scores exactly 0.5.
 
-\vspace{6pt}
-The outcome is 50/50 by construction. A random classifier scores exactly 0.5. The question is whether 483 text beats that floor -- and whether it beats the OAI label alone.
+\vspace{4pt}
+Does 483 text beat that floor -- and does it beat the OAI label alone?
+\end{alertblock}
 \end{columns}
 \end{frame}
 
@@ -583,7 +586,7 @@ E & Text, OAI-ever facilities & 0.537 \\
 }
 
 \vspace{6pt}
-{\small Config D: 73 VAI-only FEIs, 165 inspections. These facilities never received a warning letter. The OAI flag has no variation -- text is the only predictor available.}
+{\small Config D: 73 VAI-only FEIs, 165 inspections. FDA never classified any inspection as OAI at these facilities -- the OAI flag has no variation, so text is the only predictor available.}
 
 \column{0.47\textwidth}
 {\small
