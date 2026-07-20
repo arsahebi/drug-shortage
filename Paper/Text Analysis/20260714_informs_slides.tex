@@ -542,33 +542,20 @@ FEIs with AE data & 109 \\
 \begin{frame}{Prediction Setup}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Unit:} One row per inspection.\\[4pt]
-\textbf{Features:} 17 LLM text signals from the 483 at that inspection.\\[4pt]
-\textbf{Outcome:} Were serious AEs in the year after inspection above the sample median?
-$$\mathbf{1}\!\left[\sum_{q=1}^{4} \text{AE}_{t+q} > \text{median}\right]$$
-{\small Pre-inspection product stays in the market for months. Summing Q+1 through Q+4 captures the full distribution window.}
-
-\vspace{6pt}
-\textbf{CV:} FEI-grouped 5-fold. All inspections of one facility stay in one fold.
-
-\vspace{4pt}
-\textbf{Model:} Logistic Regression (primary), Random Forest (check).
+\begin{itemize}
+  \item \textbf{Unit:} One inspection event
+  \item \textbf{Features:} 17 LLM text signals from the 483 at that inspection
+  \item \textbf{Outcome:} Above-median serious AEs in Q+1..Q+4 (binary)\\
+        {\small OAI inspections: 33 of 246 (13\%)}
+  \item \textbf{CV:} FEI-grouped 5-fold -- all inspections of one facility stay together
+  \item \textbf{Model:} Logistic regression; random forest as robustness check
+\end{itemize}
 
 \column{0.45\textwidth}
-\begin{tabular}{ll}
-\toprule
-Metric & Value \\
-\midrule
-Inspection events & 246 \\
-Unique FEIs & 98 \\
-Outcome base rate & 50\% \\
-OAI inspections & 33 (13.4\%) \\
-\bottomrule
-\end{tabular}
+\textbf{AUC = 0.5 is the floor.}
 
-\vspace{10pt}
-\textbf{AUC = 0.5 is the floor.}\\[4pt]
-{\small Outcome is 50/50 by construction. A random classifier scores exactly 0.5. What matters is whether text features beat that floor, and whether they beat the OAI label.}
+\vspace{6pt}
+The outcome is 50/50 by construction. A random classifier scores exactly 0.5. The question is whether 483 text beats that floor -- and whether it beats the OAI label alone.
 \end{columns}
 \end{frame}
 
