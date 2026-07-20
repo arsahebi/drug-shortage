@@ -725,88 +725,46 @@ Lo-sig VAI & 59 & 34 & 44 & 43 & 1.28 \\
 \end{columns}
 \end{frame}
 
-% ── SECTION 9: REVERSE CLUSTERING ────────────────────────────────────────────
-\section{Reverse Clustering}
-
-\begin{frame}{Reverse Flow: Cluster AE Trajectories, Characterize by Inspection}
-\begin{columns}[T]
-\column{0.54\textwidth}
-{\small Each facility summarized as one row (median across inspection events); \textbf{t here is years}, not quarters.}
-
-\vspace{5pt}
-{\small KMeans ($k=4$) on slope\_pre, slope\_post, persist, pre\_rise:}
-
-\vspace{3pt}
-{\small
-\begin{tabular}{lcccc>{\columncolor{lightGray}}c}
-\toprule
-Cluster & $n$ & pre\_rise & persist & tech & OAI \\
-\midrule
-\highlight{Flat/rising} & 3 & \highlight{4.63} & \highlight{0.96} & 0.39 & 0\% \\
-Spike-correct & 28 & 1.14 & 0.93 & \highlight{0.62} & 14\% \\
-Slow-decline & 66 & 1.02 & 0.87 & 0.33 & 21\% \\
-Flat-low & 2 & 1.11 & 0.30 & 0.42 & 0\% \\
-\bottomrule
-\end{tabular}
-}
-
-\vspace{4pt}
-{\scriptsize tech = composite Lab Controls + DI score; OAI = share ever-OAI\\
-pre\_rise = AE$_{t0}$/AE$_{t-2}$; persist = AE$_{t+2}$/AE$_{t0}$}
-
-\column{0.43\textwidth}
-{\small
-\textbf{Flat/rising (3 FEIs):} AEs 4.6$\times$ higher at inspection than 2 years prior, keep rising after. Zero OAI ever. These are the silent cases the clustering finds without any text label.
-
-\vspace{6pt}
-\textbf{Spike-correct (28):} Highest tech score (0.62), some OAI, AEs declining post-inspection. System responding.
-
-\vspace{6pt}
-\textbf{Slow-decline (66):} Majority. Gradual decline, moderate signals.
-
-\vspace{6pt}
-\textbf{Flat-low (2):} Extreme AEs collapsing 70\% post-inspection. Likely a recall, not enforcement-driven.
-}
-\end{columns}
-\end{frame}
+% ── SECTION 9: STRATEGIC LENIENCY ────────────────────────────────────────────
+\section{Strategic Leniency}
 
 \begin{frame}{Strategic Leniency Candidates}
 \begin{columns}[T]
 \column{0.54\textwidth}
-{\small Top-quartile tech score, never OAI, ranked by persistence (yearly panel):}
+{\small Top-quartile Lab Controls score, never OAI, ranked by AE persistence\\
+(manufacturer-specific quarterly AEs, VAI-only model Config~D):}
 
-\vspace{4pt}
+\vspace{5pt}
 {\small
-\begin{tabular}{lcccc}
+\begin{tabular}{lp{3.2cm}ccc}
 \toprule
-FEI & AE $t_0$ & AE $t{+2}$ & persist & tech \\
+FEI & Manufacturer / Drug & AE $t_0$ & AE $t{+4}$ & persist \\
 \midrule
-3003157498 & 3781 & 3612 & \highlight{1.00} & 0.6 \\
-3004554612 & 4755 & 4363 & 0.92 & 0.7 \\
-3006370524 & 5949 & 5381 & 0.90 & 1.3 \\
-3008298016 & 8159 & 6990 & 0.86 & 0.4 \\
-\ldots & & & & \\
+3009843207 & Lupin / Atorvastatin & 31 & \highlight{44} & \highlight{1.44} \\
+3002949099 & Dr. Reddy's / Metoprolol & 80 & \highlight{97} & \highlight{1.21} \\
+3003952717 & Sun / Atorvastatin & 80 & \highlight{87} & \highlight{1.09} \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{5pt}
-{\small Plus \textbf{Flat/rising} FEI 3002608066: vc\_labcontrols = 0.67, DI = 0.67, persist = 1.20, AEs still rising.}
+{\scriptsize AEs per quarter (manufacturer-specific). persist = AE($t_{+4}$)/AE($t_0$).\\
+Lupin (3009843207): LC\,=\,100\%, DI\,=\,100\% across both inspections.}
 
 \column{0.43\textwidth}
-{\small High Lab Controls + DI in every 483. FDA classified VAI or NAI in every visit. AEs not declining.}
+{\small High Lab Controls signals across repeated inspections. FDA classified VAI or NAI in every visit. Manufacturer-specific AEs still rising one year after inspection.}
 
 \vspace{5pt}
 {\small Three explanations:
 \begin{enumerate}
-  \item \textbf{OAI$\to$VAI downgrade}: FDA reclassified to avoid issuing a warning letter, often under shortage pressure. Prior analysis finds downgraded sites have the worst outcomes (Gray et al.)
+  \item \textbf{OAI$\to$VAI downgrade}: FDA reclassified to avoid issuing a warning letter, often under shortage pressure. Prior analysis finds downgraded sites have worse outcomes (Gray et al.)
   \item Observations stayed below the formal OAI threshold
   \item Inspections were not deep enough to surface the true severity
 \end{enumerate}}
 
 \vspace{4pt}
 \begin{alertblock}{}
-\small Cross-reference with market concentration. If these FEIs are dominant suppliers, explanation (1) is the most plausible.
+\small Cross-reference with market concentration. If these are dominant suppliers, explanation (1) is the most plausible.
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -975,6 +933,51 @@ persist & & 0.965 & 1.073 \\
   \item \textbf{Implication:} OAI label alone does not separate which facilities improve. This motivates using 483 text instead.
 \end{enumerate}
 \end{columns}
+\end{frame}
+
+\begin{frame}{Backup: Reverse Flow -- AE Trajectory Clustering (Drug-Level)}
+\begin{columns}[T]
+\column{0.54\textwidth}
+{\small Each facility summarized as one row (median across inspection events); \textbf{t here is years}, not quarters.}
+
+\vspace{5pt}
+{\small KMeans ($k=4$) on slope\_pre, slope\_post, persist, pre\_rise:}
+
+\vspace{3pt}
+{\small
+\begin{tabular}{lcccc>{\columncolor{lightGray}}c}
+\toprule
+Cluster & $n$ & pre\_rise & persist & tech & OAI \\
+\midrule
+\highlight{Flat/rising} & 3 & \highlight{4.63} & \highlight{0.96} & 0.39 & 0\% \\
+Spike-correct & 28 & 1.14 & 0.93 & \highlight{0.62} & 14\% \\
+Slow-decline & 66 & 1.02 & 0.87 & 0.33 & 21\% \\
+Flat-low & 2 & 1.11 & 0.30 & 0.42 & 0\% \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{4pt}
+{\scriptsize tech = composite Lab Controls + DI score; OAI = share ever-OAI\\
+pre\_rise = AE$_{t0}$/AE$_{t-2}$; persist = AE$_{t+2}$/AE$_{t0}$}
+
+\column{0.43\textwidth}
+{\small
+\textbf{Flat/rising (3 FEIs):} AEs 4.6$\times$ higher at inspection than 2 years prior, keep rising after. Zero OAI ever. These are the silent cases the clustering finds without any text label.
+
+\vspace{6pt}
+\textbf{Spike-correct (28):} Highest tech score (0.62), some OAI, AEs declining post-inspection. System responding.
+
+\vspace{6pt}
+\textbf{Slow-decline (66):} Majority. Gradual decline, moderate signals.
+
+\vspace{6pt}
+\textbf{Flat-low (2):} Extreme AEs collapsing 70\% post-inspection. Likely a recall, not enforcement-driven.
+}
+\end{columns}
+
+\vspace{4pt}
+{\scriptsize Note: drug-level AE counts (all manufacturers pooled). ANDA-specific attribution collapses most clusters; drug-level version shown for reference.}
 \end{frame}
 
 \begin{frame}{Backup: FAERS Filtering — Design Rationale}

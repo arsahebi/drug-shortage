@@ -81,11 +81,13 @@ _TECH_FEATURES = [
 SEED = 42
 
 
-def _panel_config(granularity: str) -> dict:
+def _panel_config(granularity: str, anda_ae: bool = False) -> dict:
     """Return panel path and column config for the given granularity."""
     if granularity == "inspection":
+        fname = "fei_ae_panel_inspection_centered_anda.parquet" if anda_ae else \
+                "fei_ae_panel_inspection_centered.parquet"
         return {
-            "path":     OUT / "fei_ae_panel_inspection_centered.parquet",
+            "path":     OUT / fname,
             "ae_cols":  ["n_ae_tm4", "n_ae_tm3", "n_ae_tm2", "n_ae_tm1",
                          "n_ae_t0",
                          "n_ae_tp1", "n_ae_tp2", "n_ae_tp3", "n_ae_tp4"],
@@ -281,10 +283,14 @@ def main() -> None:
         "--granularity", choices=["yearly", "inspection"], default="inspection",
         help="Panel to use: inspection-centered quarterly (default) or yearly"
     )
+    parser.add_argument(
+        "--anda-ae", dest="anda_ae", action="store_true",
+        help="Use ANDA-specific AE panel (only applies to inspection granularity)"
+    )
     args = parser.parse_args()
 
-    cfg = _panel_config(args.granularity)
-    suffix = cfg["suffix"]
+    cfg = _panel_config(args.granularity, anda_ae=args.anda_ae)
+    suffix = cfg["suffix"] + ("_anda" if args.anda_ae else "")
 
     if not cfg["path"].exists():
         raise FileNotFoundError(
