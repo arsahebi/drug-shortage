@@ -452,7 +452,7 @@ CV & FEI-grouped 5-fold \\
 \begin{frame}{483 Text Signals: Do They Lead or Lag Patient Harm?}
 \begin{columns}[T]
 \column{0.56\textwidth}
-\textbf{Spearman $\rho$ at inspection quarter (Q0) vs.\ one year later (Q+4), $n \approx 224$:}
+\textbf{Spearman $\rho$ at inspection quarter (Q0) vs.\ one year later (Q+4), manufacturer-specific AEs, $n = 151$:}
 
 \vspace{4pt}
 {\small
@@ -460,68 +460,67 @@ CV & FEI-grouped 5-fold \\
 \toprule
 Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 \midrule
-\texttt{joint\_labctrl\_di}     & +0.15 & * & \tech{+0.22} & **  & $\uparrow$ \\
-\texttt{n\_labcontrols\_obs}    & +0.14 & * & \tech{+0.19} & **  & $\uparrow$ \\
-\texttt{vc\_labcontrols\_share} & +0.14 & * & \tech{+0.17} & *   & $\uparrow$ \\
-\texttt{joint\_contam\_labctrl} & +0.11 &   & \tech{+0.17} & *   & $\uparrow$ \\
-\texttt{data\_integrity\_flag}  & +0.06 &   & +0.13 & $\dagger$ & $\uparrow$ \\
+\texttt{n\_labcontrols\_obs}    & +0.10 &   & \tech{+0.28} & *** & $\uparrow$ \\
+\texttt{joint\_labctrl\_di}     & +0.07 &   & \tech{+0.26} & **  & $\uparrow$ \\
+\texttt{joint\_contam\_labctrl} & +0.05 &   & \tech{+0.23} & **  & $\uparrow$ \\
+\texttt{vc\_labcontrols\_share} & +0.07 &   & \tech{+0.20} & *   & $\uparrow$ \\
+\texttt{severity\_critmajor}    & +0.23 & ** & +0.20 & *  & $\rightarrow$ \\
 \midrule
-\texttt{vc\_qualitysystem}      & $-$0.01 & & $-$0.03 & & \\
-\texttt{cultural\_root\_cause}  & $-$0.08 & & $-$0.11 & & \\
+\texttt{data\_integrity\_flag}  & +0.14 &   & +0.06 & & $\downarrow$ \\
+\texttt{cultural\_root\_cause}  & +0.03 &   & +0.01 & & \\
 \bottomrule
-\multicolumn{6}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad $\dagger$ $p{<}.10$ \quad Full heatmap: backup slide}
+\multicolumn{6}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$ \quad Full heatmap: backup slide}
 \end{tabular}
 }
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item Four features reach significance at Q+4; all five correlations grow from Q0 to Q+4. That's the detection lag.
-  \item DI flag misses $p{<}.05$ at Q+4 ($p = 0.06$, serious-only sample). Direction stays positive.
-  \item Quality System and severity are flat across all lags. They describe what kind of inspection happened, not what happens next.
+  \item Lab controls features grow from near-zero at Q0 to 0.20--0.28 at Q+4. Classic leading indicator pattern.
+  \item Severity is contemporaneous: high at Q0, flat thereafter. It describes the inspection, not what comes next.
+  \item Data integrity drops out with manufacturer-specific AE attribution -- it was inflated by the drug-level join.
 \end{itemize}
 
 \vspace{6pt}
-\textbf{Lab Controls signals are leading indicators.} Correlations grow from Q0 to Q+4 for every feature in the table; four reach significance by one year out.
+\textbf{Lab Controls -- not data integrity -- predicts elevated patient harm from a specific manufacturer's product one year later.}
 \end{columns}
 \end{frame}
 
 % ── FAERS DETAIL SLIDE ────────────────────────────────────────────────────────
 
-\begin{frame}{How We Filter FAERS Reports}
+\begin{frame}{How We Attribute FAERS Reports to Manufacturers}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{ANDA (generic) reports only}\\[4pt]
-Branded drug reports excluded — our facilities are ANDA manufacturers.
-
-\vspace{10pt}
-\textbf{Primary Suspect (PS) only}\\[4pt]
-Each FAERS report lists every drug the patient was taking. We keep only reports where this drug was named the primary cause of the event.
-
-\vspace{10pt}
 \textbf{Serious outcomes only}\\[4pt]
-We keep reports with at least one of:
-\begin{itemize}
-  \item Death
-  \item Hospitalization
-  \item Life-threatening
-  \item Disability / incapacity
-  \item Congenital anomaly
-  \item Required intervention
-  \item Other serious outcome
-\end{itemize}
-``No outcome reported'' excluded (\highlight{14.6\%} of reports).
+We keep reports with at least one of: Death, Hospitalization, Life-threatening, Disability, Congenital anomaly, Required intervention, or Other serious outcome.\\
+``No outcome reported'' excluded (14.6\% of reports).
+
+\vspace{8pt}
+\textbf{ANDA-level attribution}\\[4pt]
+Each FAERS report carries \texttt{appl\_no} -- the application number for the specific manufacturer's product. We join on \texttt{appl\_no} to the Valisure NDC-ANDA-FEI crosswalk (built from Valisure's independently tested products).
+
+\vspace{8pt}
+\textbf{Why this matters}\\[4pt]
+Drug-name joining assigns every atorvastatin AE to all 15 atorvastatin manufacturers. ANDA-level joining assigns each AE to the one manufacturer whose product the patient received.
 
 \column{0.47\textwidth}
-\textbf{Drug name matching}\\[4pt]
-First word of \texttt{prod\_ai} $\to$ \texttt{api\_key}.\\
-Joined to the 14-drug FEI map.\\
-Match rate: \highlight{99.1\%}.
-
-\vspace{12pt}
 \begin{block}{Result}
-168,955 PS reports $\to$ \textbf{144,286} after serious-only filter.\\[4pt]
+144,286 serious FAERS reports $\to$ \textbf{68,500} matched to Valisure-tested ANDAs (47.5\%).\\[4pt]
+Unmatched 52.5\% = manufacturers outside Valisure scope, not in analysis.\\[4pt]
 Aggregated to quarterly counts per FEI.
 \end{block}
+
+\vspace{8pt}
+\textbf{Crosswalk coverage}\\[4pt]
+\begin{tabular}{ll}
+\toprule
+Metric & Value \\
+\midrule
+FEIs in crosswalk & 128 \\
+Unique ANDAs & 194 \\
+NDC rows (Valisure-tested) & 501 \\
+FEIs with AE data & 109 \\
+\bottomrule
+\end{tabular}
 \end{columns}
 \end{frame}
 
@@ -561,10 +560,10 @@ OAI inspections & 33 (13.4\%) \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{Does 483 Text Beat the OAI Label?}
+\begin{frame}{483 Text Best Predicts Harm in Facilities FDA Never Penalized}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{AUC, 5-fold FEI-grouped CV (246 inspections):}
+\textbf{AUC, 5-fold FEI-grouped CV (246 inspections, manufacturer-specific AEs):}
 
 \vspace{4pt}
 {\small
@@ -572,36 +571,33 @@ OAI inspections & 33 (13.4\%) \\
 \toprule
  & Feature set & LR AUC \\
 \midrule
-A & \highlight{Text only} (17 LLM features) & \highlight{0.528} \\
-B & Text + OAI flag & 0.521 \\
-C & OAI flag only & \highlight{0.463} \\
+A & Text only (17 LLM features) & 0.503 \\
+B & Text + OAI flag & 0.527 \\
+C & OAI flag only & 0.539 \\
 \midrule
 \multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} \\
 \midrule
-D & Text, VAI-only facilities & 0.496 \\
-E & Text, OAI-ever facilities & \highlight{0.596} \\
+\highlight{D} & \highlight{Text, VAI-only facilities} & \highlight{0.586} \\
+E & Text, OAI-ever facilities & 0.537 \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{6pt}
-{\small Numbers near 0.5 are expected at this sample size. The result is the \emph{ordering}: text (A) beats random; OAI flag (C) does not.}
+{\small Config D: 73 VAI-only FEIs, 165 inspections. These facilities never received a warning letter. The OAI flag has no variation -- text is the only predictor available.}
 
 \column{0.47\textwidth}
 {\small
-\textbf{A vs C:} Text beats the OAI label by +6.5 pts. OAI falls \emph{below} random: it records a regulatory action, not patient harm.
+\textbf{Full population (A vs C):} Text and the OAI flag perform similarly near random. Neither is a strong standalone classifier.
 
 \vspace{5pt}
-\textbf{B vs A:} Adding the OAI flag to text pulls AUC down. The label adds noise.
+\textbf{VAI-only (D):} Text reaches \highlight{AUC\,=\,0.59} -- the strongest result. Among facilities FDA never formally penalized, 483 text is the only signal that separates high- and low-harm producers.
 
 \vspace{5pt}
-\textbf{D:} Text is at random in VAI-only facilities (0.496). No signal in the clean group.
+\textbf{OAI-ever (E):} Text is no better in facilities that did receive enforcement. The enforcement action itself may have resolved the quality problem, flattening future AEs.
 
 \vspace{5pt}
-\textbf{E:} In OAI-ever facilities, text reaches 0.596 (AP\,=\,0.701). The signal concentrates where quality risk is real.
-
-\vspace{5pt}
-\textbf{vs correlation:} The correlation analysis identifies which individual features associate with future AEs. This model asks whether the full feature set classifies better than FDA's own label. Both answers are yes.
+\textbf{Takeaway:} 483 text is most valuable precisely where structured regulatory signals are absent.
 }
 \end{columns}
 \end{frame}
@@ -661,28 +657,28 @@ $>$2yr & deep in a quiet window; no enforcement anchor \\
 \end{frame}
 
 % ── CASE STUDY ───────────────────────────────────────────────────────────────
-\begin{frame}{Illustrative Case: One Facility, Three Inspections (2018--2022)}
+\begin{frame}{Illustrative Case: Mylan Vancomycin, Four Inspections, Always VAI or NAI}
 \begin{columns}[T]
 \column{0.60\textwidth}
-\includegraphics[width=\linewidth]{/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage/Data/99 - Outputs - Text Analysis/ae_validation/outputs/figures/fei_case_study_3002807979.png}
+\includegraphics[width=\linewidth]{/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage/Data/99 - Outputs - Text Analysis/ae_validation/outputs/figures/fei_case_study_3007648351.png}
 
 \column{0.37\textwidth}
 {\small
-\textbf{2018 (NAI):} DI = 100\%, LC = 50\%, all observations critical or major. No enforcement action.
+\textbf{2018 (VAI):} Contamination = 25\%, LC = 25\%, DI = 50\%. Manufacturer-specific AEs: 60/qtr.
 
 \vspace{5pt}
-AEs rose \highlight{50\%} in the following year, consistent with our finding that DI signals predict post-inspection AE increases.
+AEs rose to 130/qtr by early 2020 -- a doubling in two years. The contamination signal appeared a year before the peak.
 
 \vspace{6pt}
-\textbf{2020 (VAI):} FDA returned 17 months later as AEs accumulated. AEs declined somewhat after the visit.
+\textbf{2020 (VAI):} Contamination reached 80\%. AEs at their five-year high. FDA issued VAI.
 
 \vspace{6pt}
-\textbf{2022 (OAI):} LC and DI both elevated. OAI issued. AEs were already declining before the visit.
+\textbf{2023 (NAI):} LC = 100\%, DI = 100\%. Highest text signals of any inspection. FDA found no action needed.
 }
 
 \vspace{5pt}
-\begin{block}{Takeaway (cautious)}
-\small The 2018 signals were atypical for NAI. The pattern is \emph{consistent with} a missed signal; we cannot establish causality.
+\begin{block}{Takeaway}
+\small Four inspections, always VAI or NAI. 483 text flagged contamination risk in 2018. This is the pattern the VAI-only model (AUC\,=\,0.59) is capturing.
 \end{block}
 \end{columns}
 \end{frame}
@@ -693,39 +689,38 @@ AEs rose \highlight{50\%} in the following year, consistent with our finding tha
 \begin{frame}{The Silent Problem: VAI Facilities 483 Text Flags but FDA Misses}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{AE trajectory by facility group} (246 inspections, 98 FEIs):
+\textbf{Manufacturer-specific AE trajectory by facility group} (246 inspections, 98 FEIs):
 
 \vspace{4pt}
 {\scriptsize
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
 \toprule
-Group & Q$-$4 & Q0 & Q+4 & persist \\
+Group & $n$ & Q$-$4 & Q0 & Q+4 & pre\_rise \\
 \midrule
-OAI-ever (25) & 567 & 644 & \highlight{662} & \highlight{1.03} \\
-Hi-sig VAI (14) & 661 & 797 & \highlight{869} & \highlight{1.09} \\
-Lo-sig VAI (59) & 469 & 548 & 579 & 1.06 \\
+OAI-ever & 25 & 32 & 36 & 36 & 1.10 \\
+\rowcolor{techBlue!12}
+Hi-sig VAI & 14 & 56 & \highlight{70} & 58 & \highlight{1.25} \\
+Lo-sig VAI & 59 & 34 & 44 & 43 & 1.28 \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{4pt}
-{\scriptsize persist = AE($t_{+4}$)/AE($t_0$); pre\_rise = AE($t_0$)/AE($t_{-4}$)}
+{\scriptsize AEs per quarter (manufacturer-specific); pre\_rise = AE($t_0$)/AE($t_{-4}$).}\\
+{\scriptsize Hi-sig VAI = top-quartile Lab Controls score, never OAI.}
 
 \vspace{5pt}
-{\small \textbf{Hi-sig VAI:} top-quartile Lab Controls + DI signals, never OAI.}
-
-\vspace{4pt}
-{\small pre\_rise: OAI 1.14 \quad Hi-sig VAI \highlight{1.21} \quad Lo-sig 1.17}
+{\small AEs rise most before inspection in VAI facilities. OAI-ever facilities show a flatter trajectory -- FDA may be targeting them on other signals.}
 
 \column{0.45\textwidth}
-{\small These 14 facilities were classified VAI in every inspection. Their AEs at Q+4 are 9\% above the inspection quarter and 32\% above a year prior. OAI-ever facilities, by contrast, persist at only 1.03.}
+{\small Hi-sig VAI facilities have the highest absolute AE level and the sharpest pre-inspection rise. Despite this, FDA classified them VAI in every visit.}
 
 \vspace{5pt}
-{\small One documented mechanism: FDA sometimes \textbf{downgrades OAI findings to VAI} when shortage risk is present. Downgraded facilities avoid mandatory remediation. Prior analysis finds they have worse outcomes than facilities that received warning letters (Gray et al.).}
+{\small One documented mechanism: FDA sometimes \textbf{downgrades OAI findings to VAI} when shortage risk is present. Downgraded facilities avoid mandatory remediation and have worse outcomes than facilities that received warning letters (Gray et al.).}
 
 \vspace{5pt}
 \begin{alertblock}{}
-\small 483 text identifies these facilities. FDA's classification does not. Can we find them all systematically?
+\small 483 text (AUC 0.59 in VAI-only group) identifies high-risk facilities before AEs peak. FDA's classification does not.
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -823,20 +818,20 @@ FEI & AE $t_0$ & AE $t{+2}$ & persist & tech \\
 
 \begin{enumerate}
   \setlength{\itemsep}{6pt}
-  \item \textbf{LLM text signals predict patient harm; OAI classification does not.}\\
-    Text-only LR AUC = \highlight{0.528} vs 0.463 OAI-flag baseline. OAI flag falls below random. For OAI-ever facilities, text AUC = 0.596, AP = 0.701.
+  \item \textbf{483 text predicts harm where structured signals are absent.}\\
+    In facilities FDA never formally penalized (VAI-only), text-only LR AUC = \highlight{0.586}. In the full population, text and the OAI flag are near random and similar to each other.
 
-  \item \textbf{Five signals carry predictive information; twelve do not.}\\
-    Lab Controls, DI flag, and their co-occurrence predict AEs one year out. Quality System, severity tier, and cultural root cause do not.
+  \item \textbf{Lab Controls -- not data integrity -- is the leading signal.}\\
+    Four Lab Controls features reach significance at Q+4 ($\rho$ up to 0.28***). DI drops out with manufacturer-specific AE attribution -- it was an artifact of the drug-level join.
 
   \item \textbf{Inspection is reactive by design; 483 text is not.}\\
-    FDA's Site Selection Model uses recalls and AEs to rank facilities, so rising AEs before inspection are expected. Yet 483 text from the \emph{prior} visit predicted this deterioration 1.5 years earlier.
+    FDA's Site Selection Model uses AEs and recalls to rank facilities. Rising AEs before inspection are partly expected. 483 text from the prior visit contains information the SSM does not incorporate.
 
-  \item \textbf{483 text finds high-risk VAI facilities that classification misses.}\\
-    Hi-sig VAI: persist = 1.09, 32\% above 1 year prior. OAI-ever: persist = 1.03. FDA rated both the same.
+  \item \textbf{VAI facilities with high text signals have elevated pre-inspection AEs.}\\
+    Hi-sig VAI: manufacturer-specific AEs 25\% higher at inspection than one year prior. OAI-ever facilities show a flatter trajectory. FDA rated both the same.
 
   \item \textbf{Strategic leniency candidates are identifiable.}\\
-    3 FEIs show rising AEs, high 483 text signals, zero OAI ever. Market concentration data will test whether FDA held back on escalation.
+    Facilities with repeated high Lab Controls signals and no OAI history can be ranked. Cross-referencing with market concentration will test the shortage-pressure hypothesis.
 \end{enumerate}
 
 \vspace{6pt}
@@ -852,15 +847,16 @@ FEI & AE $t_0$ & AE $t{+2}$ & persist & tech \\
 \begin{columns}[T]
 \column{0.50\textwidth}
 \begin{itemize}
-  \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. Subgroup results are hypothesis-generating, not confirmatory.
+  \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. Subgroup results (VAI-only AUC\,=\,0.59) are hypothesis-generating, not confirmatory.
   \item \textbf{COVID gap:} 2020--21 moratorium left 4-year inter-inspection windows; post-2022 baselines are confounded.
-  \item \textbf{FAERS bias:} serious AEs only; underreporting is non-random and unadjusted.
+  \item \textbf{FAERS coverage:} manufacturer-specific attribution matches 47.5\% of serious AEs. Unmatched reports are from manufacturers outside the Valisure scope.
 \end{itemize}
 
 \column{0.47\textwidth}
 \begin{itemize}
+  \item \textbf{Shared ANDAs:} one ANDA can cover multiple facilities. AE counts are proportional to market share, not individual facility output.
   \item \textbf{LLM circularity:} validated against Redica, which reads the same 483 text. Neither is inspector ground truth.
-  \item \textbf{Volume:} SDUD covers 69\% of FEI-years; Medicaid is $\sim$20\% of the market. Commercial volume not integrated.
+  \item \textbf{Volume:} SDUD covers Medicaid only ($\sim$20\% of market). Commercial volume not integrated.
   \item \textbf{Causal:} all associations are correlational. Strategic leniency interpretation needs market concentration data.
 \end{itemize}
 \end{columns}
@@ -942,7 +938,7 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 \begin{frame}{Backup: Quarterly Trajectory by OAI vs VAI/NAI Classification}
 \begin{columns}[T]
 \column{0.55\textwidth}
-\textbf{Inspection-centered panel} (246 events, $\pm$4 quarters):
+\textbf{Inspection-centered panel, manufacturer-specific AEs} (246 events, $\pm$4 quarters):
 
 \vspace{4pt}
 \begin{tabular}{lccc}
@@ -950,18 +946,18 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 Quarter & All & VAI/NAI & OAI \\
 & (246) & (213) & (33) \\
 \midrule
-$t-4$ & 522 & 513 & 580 \\
-$t-3$ & 565 & & \\
-$t-2$ & 583 & & \\
-$t-1$ & 579 & & \\
-$t=0$ & 605 & 604 & 613 \\
-$t+1$ & 627 & & \\
-$t+2$ & \textbf{646} & & \\
-$t+3$ & 644 & & \\
-$t+4$ & 635 & \highlight{634} & \highlight{640} \\
+$t-4$ & 35.7 & 36 & 33 \\
+$t-3$ & 36.6 & & \\
+$t-2$ & 40.5 & & \\
+$t-1$ & 40.7 & & \\
+$t=0$ & 43.1 & 46 & 30 \\
+$t+1$ & 41.7 & & \\
+$t+2$ & 39.9 & & \\
+$t+3$ & 44.0 & & \\
+$t+4$ & 42.2 & \highlight{44} & \highlight{33} \\
 \midrule
-pre\_rise & & 1.177 & 1.057 \\
-persist & & \highlight{1.050} & \highlight{1.044} \\
+pre\_rise & & 1.258 & 0.926 \\
+persist & & 0.965 & 1.073 \\
 \bottomrule
 \end{tabular}
 
