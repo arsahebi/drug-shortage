@@ -434,7 +434,7 @@ This matrix feeds the correlation analysis and the prediction model directly.
 \textbf{VAI facilities}
 \begin{itemize}
   \item No corrective action mandated
-  \item 483 text reveals the facility's underlying quality state
+  \item 483 text reveals the facility's quality state
   \item Same conditions continue generating AEs after the visit
 \end{itemize}
 
@@ -487,14 +487,14 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item Lab controls features grow from near-zero at Q0 to 0.20--0.28 at Q+4 -- a classic leading indicator pattern.
-  \item These four features are correlated: all measure the Lab Controls domain from different angles (count, share, co-occurrence). The consistency across operationalizations strengthens rather than inflates the finding.
-  \item Severity is contemporaneous: strong at Q0, flat thereafter. It describes the inspection itself, not what follows.
-  \item Data integrity drops out with ANDA-specific attribution -- it was inflated by the drug-level join.
+  \item \textbf{Lab Controls} features grow near-zero at Q0 to 0.20--0.28 at Q+4. Leading indicator pattern.
+  \item All four LC features are correlated -- different angles on the same domain. Consistency \emph{strengthens} the finding.
+  \item \textbf{Severity} is contemporaneous: strong at Q0, flat after. Describes the inspection, not what follows.
+  \item \textbf{Data integrity} drops out under ANDA-specific attribution -- inflated by drug-level joining.
 \end{itemize}
 
 \vspace{6pt}
-\textbf{Lab Controls -- not data integrity -- predicts elevated patient harm from a specific manufacturer's product one year later.}
+\textbf{Lab Controls, not data integrity, predicts harm one year later.}
 \end{columns}
 \end{frame}
 
@@ -619,7 +619,7 @@ E & Text, OAI-ever facilities & 0.537 \\
 \begin{frame}{Illustrative Case: Mylan Vancomycin, Four Inspections, Always VAI or NAI}
 \begin{columns}[T]
 \column{0.60\textwidth}
-\includegraphics[width=\linewidth]{/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage/Data/99 - Outputs - Text Analysis/ae_validation/outputs/figures/fei_case_study_3007648351.png}
+\includegraphics[width=\linewidth]{figures/fei_case_study_3007648351.png}
 
 \column{0.37\textwidth}
 {\small
@@ -646,7 +646,7 @@ AEs doubled to 130/qtr by Q1 2020 while FDA was absent. In the year after the 20
 \begin{frame}{Illustrative Case: Strides Pharma, Escalating Signals, Always VAI}
 \begin{columns}[T]
 \column{0.60\textwidth}
-\includegraphics[width=\linewidth]{/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage/Data/99 - Outputs - Text Analysis/ae_validation/outputs/figures/fei_case_study_3004554612.png}
+\includegraphics[width=\linewidth]{figures/fei_case_study_3004554612.png}
 
 \column{0.37\textwidth}
 {\small
@@ -1026,7 +1026,7 @@ Non-serious reports are subject to much higher underreporting variability. Serio
 
 \begin{frame}{Backup: Correlation Heatmap — All Features, All Lags}
 \begin{center}
-\includegraphics[width=0.86\textwidth]{../figures/lag_heatmap.png}
+\includegraphics[width=0.86\textwidth]{figures/lag_heatmap.png}
 \end{center}
 \vspace{-6pt}
 {\scriptsize Top 12 features by $|\rho|$ at Q+4, ANDA-specific AEs, $n=148$. Lab Controls cluster (top rows) shows systematic growth from Q0 to Q+4; severity is contemporaneous; data integrity is flat.}
