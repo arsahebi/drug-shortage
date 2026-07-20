@@ -608,7 +608,7 @@ E & Text, OAI-ever facilities & 0.537 \\
 \begin{frame}{FDA Arrives After AEs Have Been Rising for a Year}
 \begin{columns}[T]
 \column{0.62\textwidth}
-{\small \textbf{AE trajectory by gap since previous inspection} (237 inspections):}
+{\small \textbf{AE trajectory by gap since previous inspection} (237 inspections, manufacturer-specific AEs):}
 
 \vspace{3pt}
 {\small
@@ -617,11 +617,11 @@ E & Text, OAI-ever facilities & 0.537 \\
 Gap & $n$ & pre\_rise & persist & mean gap \\
 & & AE$_{t0}$/AE$_{t{-4}}$ & AE$_{t{+4}}$/AE$_{t0}$ & (yr) \\
 \midrule
-$<$1yr & 60 & 1.145 & 1.120 & 0.6 \\
+$<$1yr & 60 & 1.294 & 1.024 & 0.7 \\
 \rowcolor{techBlue!15}
-1--2yr & 87 & \textbf{1.266} & 1.041 & 1.5 \\
-2--3.5yr & 57 & 1.090 & 1.040 & 2.7 \\
-$>$3.5yr & 33 & 1.031 & 1.033 & 4.8 \\
+1--2yr & 87 & \textbf{1.367} & 0.783 & 1.5 \\
+2--3.5yr & 57 & 1.151 & 1.018 & 2.6 \\
+$>$3.5yr & 33 & 0.931 & 1.199 & 4.4 \\
 \bottomrule
 \end{tabularx}
 }
@@ -644,14 +644,17 @@ $>$2yr & deep in a quiet window; no enforcement anchor \\
 }
 
 \column{0.35\textwidth}
-{\small Only the 1--2yr group has a clean baseline. The 27\% rise is a real drift, not an artifact of where we started measuring.}
+{\small Only the 1--2yr group has a clean baseline. The 37\% pre-inspection rise is a real quality drift, not an artifact of where we started measuring.}
 
 \vspace{6pt}
-{\small FDA's Site Selection Model (SSM) already uses adverse events and recalls as hazard signals to rank facilities for inspection. Rising AEs are partly \emph{why} FDA visits. The SSM is reactive by design.}
+{\small Persist drops to 0.78 for this group: AEs do fall after inspection, consistent with enforcement working when FDA arrives at the right time.}
 
 \vspace{6pt}
+{\small FDA's Site Selection Model (SSM) uses adverse events as hazard signals to rank facilities. Rising AEs are partly \emph{why} FDA visits -- the SSM is reactive by design.}
+
+\vspace{4pt}
 \begin{alertblock}{}
-\small What the SSM does not incorporate: the content of prior 483 observations. Whether that text could have flagged the deterioration earlier is what the next example examines.
+\small What the SSM cannot incorporate: prior 483 observation text. The next slide examines whether that content could flag deterioration earlier.
 \end{alertblock}
 \end{columns}
 \end{frame}
