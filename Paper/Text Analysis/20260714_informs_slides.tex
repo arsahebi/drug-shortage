@@ -503,34 +503,33 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 \begin{frame}{How We Attribute FAERS Reports to Manufacturers}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Serious outcomes only}\\[4pt]
-We keep reports with at least one of: Death, Hospitalization, Life-threatening, Disability, Congenital anomaly, Required intervention, or Other serious outcome.\\
-``No outcome reported'' excluded (14.6\% of reports).
+\textbf{Serious outcomes only}
+\begin{itemize}
+  \item Death, hospitalization, life-threatening, disability, congenital anomaly, required intervention
+  \item ``No outcome reported'' excluded (14.6\% of reports)
+\end{itemize}
 
 \vspace{8pt}
-\textbf{ANDA-level attribution}\\[4pt]
-Each FAERS report carries \texttt{appl\_no} -- the application number for the specific manufacturer's product. We join on \texttt{appl\_no} to the Valisure NDC-ANDA-FEI crosswalk (built from Valisure's independently tested products).
-
-\vspace{8pt}
-\textbf{Why this matters}\\[4pt]
-Drug-name joining assigns every atorvastatin AE to all 15 atorvastatin manufacturers. ANDA-level joining assigns each AE to the one manufacturer whose product the patient received.
+\textbf{ANDA-level attribution}
+\begin{itemize}
+  \item Each FAERS report carries \texttt{appl\_no}: the application number for the specific manufacturer's product
+  \item We link \texttt{appl\_no} to our NDC-ANDA-FEI crosswalk, assigning each AE to the one facility that made the product the patient received
+\end{itemize}
 
 \column{0.47\textwidth}
 \begin{block}{Result}
-144,286 serious FAERS reports $\to$ \textbf{68,500} matched to Valisure-tested ANDAs (47.5\%).\\[4pt]
-Unmatched 52.5\% = manufacturers outside Valisure scope, not in analysis.\\[4pt]
+144,286 serious FAERS reports $\to$ \textbf{68,500} matched to ANDAs in our sample (47.5\%).\\[4pt]
 Aggregated to quarterly counts per FEI.
 \end{block}
 
 \vspace{8pt}
-\textbf{Crosswalk coverage}\\[4pt]
+\textbf{Sample coverage}\\[4pt]
 \begin{tabular}{ll}
 \toprule
 Metric & Value \\
 \midrule
 FEIs in crosswalk & 128 \\
 Unique ANDAs & 194 \\
-NDC rows (Valisure-tested) & 501 \\
 FEIs with AE data & 109 \\
 \bottomrule
 \end{tabular}
