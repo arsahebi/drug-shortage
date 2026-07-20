@@ -382,7 +382,7 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 \textbf{Type 3: Joint co-occurrence}:
 \begin{itemize}
   \item \texttt{joint\_labctrl\_di}: 1 if both Lab Controls and DI appear in the same inspection
-  \item Highest predictor of future AEs ($\rho = 0.22$, $p < .01$)
+  \item Strong predictor of future AEs ($\rho = 0.26$ at Q+4, $p < .01$; see slide 13)
 \end{itemize}
 
 \column{0.45\textwidth}
@@ -644,17 +644,17 @@ $>$2yr & deep in a quiet window; no enforcement anchor \\
 }
 
 \column{0.35\textwidth}
-{\small Only the 1--2yr group has a clean baseline. The 37\% pre-inspection rise is a real quality drift, not an artifact of where we started measuring.}
+{\small Only the 1--2yr group has a clean baseline. The 37\% pre-inspection rise is real quality drift, not a measurement artifact.}
 
 \vspace{6pt}
-{\small Persist drops to 0.78 for this group: AEs do fall after inspection, consistent with enforcement working when FDA arrives at the right time.}
+{\small Persist = 0.78 for this group: enforcement works when FDA arrives. But harm was already occurring during the 37\% rise -- before the visit.}
 
 \vspace{6pt}
-{\small FDA's Site Selection Model (SSM) uses adverse events as hazard signals to rank facilities. Rising AEs are partly \emph{why} FDA visits -- the SSM is reactive by design.}
+{\small FDA's SSM uses AEs and recalls to rank facilities for inspection. Rising AEs are part of \emph{why} FDA visits -- the system is reactive by design.}
 
 \vspace{4pt}
 \begin{alertblock}{}
-\small What the SSM cannot incorporate: prior 483 observation text. The next slide examines whether that content could flag deterioration earlier.
+\small The prior 483 text was available during the entire rising period, before the SSM had any signal. That is the window the prediction model targets.
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -667,21 +667,21 @@ $>$2yr & deep in a quiet window; no enforcement anchor \\
 
 \column{0.37\textwidth}
 {\small
-\textbf{2018 (VAI):} Contamination = 25\%, LC = 25\%, DI = 50\%. Manufacturer-specific AEs: 60/qtr.
+\textbf{2018 (VAI):} Contamination = 25\%, LC = 25\%. The 483 text flagged contamination risk. AEs were 60/qtr and rising.
 
 \vspace{5pt}
-AEs rose to 130/qtr by early 2020 -- a doubling in two years. The contamination signal appeared a year before the peak.
+AEs doubled to 130/qtr by Q1 2020 while FDA was absent. In the year after the 2018 inspection (Q+1..Q+4), AEs averaged 67/qtr -- above the sample median.
 
 \vspace{6pt}
-\textbf{2020 (VAI):} Contamination reached 80\%. AEs at their five-year high. FDA issued VAI.
+\textbf{2020 (VAI):} Contamination hit 80\%. AEs at their five-year peak. FDA issued VAI again. Post-inspection AEs averaged 71/qtr -- still above median.
 
 \vspace{6pt}
-\textbf{2023 (NAI):} LC = 100\%, DI = 100\%. Highest text signals of any inspection. FDA found no action needed.
+\textbf{2023 (NAI):} LC = 100\%, DI = 100\%. FDA found no action needed.
 }
 
 \vspace{5pt}
 \begin{block}{Takeaway}
-\small Four inspections, always VAI or NAI. 483 text flagged contamination risk in 2018. This is the pattern the VAI-only model (AUC\,=\,0.59) is capturing.
+\small Both high-contamination inspections (2018, 2020) were followed by above-median AEs. FDA issued VAI each time. This is the pattern the VAI-only model (AUC\,=\,0.59) is separating.
 \end{block}
 \end{columns}
 \end{frame}
@@ -692,7 +692,7 @@ AEs rose to 130/qtr by early 2020 -- a doubling in two years. The contamination 
 \begin{frame}{The Silent Problem: VAI Facilities 483 Text Flags but FDA Misses}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Manufacturer-specific AE trajectory by facility group} (246 inspections, 98 FEIs):
+\textbf{Manufacturer-specific AEs by facility group} (98 FEIs, FEI-level medians):
 
 \vspace{4pt}
 {\scriptsize
@@ -700,30 +700,30 @@ AEs rose to 130/qtr by early 2020 -- a doubling in two years. The contamination 
 \toprule
 Group & $n$ & Q$-$4 & Q0 & Q+4 & pre\_rise \\
 \midrule
-OAI-ever & 25 & 32 & 36 & 36 & 1.10 \\
+OAI-ever & 25 & 30 & 32 & 30 & 1.05 \\
 \rowcolor{techBlue!12}
-Hi-sig VAI & 14 & 56 & \highlight{70} & 58 & \highlight{1.25} \\
-Lo-sig VAI & 59 & 34 & 44 & 43 & 1.28 \\
+Hi-sig VAI & 19 & 37 & 40 & \highlight{49} & 1.07 \\
+Lo-sig VAI & 54 & 28 & 34 & 30 & 1.22 \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{4pt}
 {\scriptsize AEs per quarter (manufacturer-specific); pre\_rise = AE($t_0$)/AE($t_{-4}$).}\\
-{\scriptsize Hi-sig VAI = top-quartile Lab Controls score, never OAI.}
+{\scriptsize Hi-sig VAI = top-quartile Lab Controls share, never OAI.}
 
 \vspace{5pt}
-{\small AEs rise most before inspection in VAI facilities. OAI-ever facilities show a flatter trajectory -- FDA may be targeting them on other signals.}
+{\small OAI-ever facilities have the flattest trajectory: FDA targets them on other signals, containing harm. Both VAI groups show AEs persisting or rising after inspection with no enforcement action.}
 
 \column{0.45\textwidth}
-{\small Hi-sig VAI facilities have the highest absolute AE level and the sharpest pre-inspection rise. Despite this, FDA classified them VAI in every visit.}
+{\small Hi-sig VAI facilities have the highest AE level one year post-inspection (49 vs.\ 30). AEs keep rising after the visit despite repeated high Lab Controls signals in the 483 text.}
 
 \vspace{5pt}
-{\small One documented mechanism: FDA sometimes \textbf{downgrades OAI findings to VAI} when shortage risk is present. Downgraded facilities avoid mandatory remediation and have worse outcomes than facilities that received warning letters (Gray et al.).}
+{\small One documented mechanism: FDA sometimes \textbf{downgrades OAI findings to VAI} when shortage risk is present. Downgraded facilities avoid mandatory remediation and have worse long-run outcomes (Gray et al.).}
 
 \vspace{5pt}
 \begin{alertblock}{}
-\small 483 text (AUC 0.59 in VAI-only group) identifies high-risk facilities before AEs peak. FDA's classification does not.
+\small 483 text (AUC 0.59 in VAI-only group) separates which VAI facilities will have elevated AEs post-inspection. FDA's classification assigns them all the same.
 \end{alertblock}
 \end{columns}
 \end{frame}
