@@ -196,6 +196,7 @@ def plot_heatmap(
     out_path: Path,
     paper_path: Path | None = None,
     top_n: int = 12,
+    n_label: str = "",
 ) -> None:
     pivot   = corr_tbl.pivot(index="feature_label", columns="lag_label", values="spearman_r")
     pivot_p = corr_tbl.pivot(index="feature_label", columns="lag_label", values="sig")
@@ -238,9 +239,10 @@ def plot_heatmap(
                 ax.text(j, i, f"{val:+.2f}{sig}", ha="center", va="center",
                         fontsize=8.5, color=color)
 
+    n_str = f", n={n_label}" if n_label else ""
     ax.set_title(
         "Spearman ρ: 483 text signals vs. FAERS AE counts by lag after inspection\n"
-        "* p<.05   ** p<.01   *** p<.001   (top 12 by |ρ| at Q+4, n≈224)",
+        f"* p<.05   ** p<.01   *** p<.001   (top 12 by |ρ| at Q+4{n_str})",
         fontsize=10, pad=12,
     )
     for path in [out_path] + ([paper_path] if paper_path else []):
@@ -364,10 +366,12 @@ def main() -> None:
 
     if not args.feature:
         print("\nPlotting heatmap…")
+        n_obs = int(corr_tbl["n"].median())
         plot_heatmap(
             corr_tbl,
             OUT_FIGS / "lag_correlation_heatmap.png",
             paper_path=PAPER_FIGS / "lag_heatmap.png",
+            n_label=str(n_obs),
         )
         print("Plotting lag profile…")
         plot_lag_profile(corr_tbl, features, OUT_FIGS / "lag_profile_all_features.png")

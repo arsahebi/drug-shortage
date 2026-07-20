@@ -487,9 +487,10 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item Lab controls features grow from near-zero at Q0 to 0.20--0.28 at Q+4. Classic leading indicator pattern.
-  \item Severity is contemporaneous: high at Q0, flat thereafter. It describes the inspection, not what comes next.
-  \item Data integrity drops out with manufacturer-specific AE attribution -- it was inflated by the drug-level join.
+  \item Lab controls features grow from near-zero at Q0 to 0.20--0.28 at Q+4 -- a classic leading indicator pattern.
+  \item These four features are correlated: all measure the Lab Controls domain from different angles (count, share, co-occurrence). The consistency across operationalizations strengthens rather than inflates the finding.
+  \item Severity is contemporaneous: strong at Q0, flat thereafter. It describes the inspection itself, not what follows.
+  \item Data integrity drops out with ANDA-specific attribution -- it was inflated by the drug-level join.
 \end{itemize}
 
 \vspace{6pt}
@@ -1028,7 +1029,7 @@ Non-serious reports are subject to much higher underreporting variability. Serio
 \includegraphics[width=0.86\textwidth]{../figures/lag_heatmap.png}
 \end{center}
 \vspace{-6pt}
-{\scriptsize Top 12 features by $|\rho|$ at Q+4. Correlations grow from Q0 to Q+4 for the Lab Controls cluster, consistent with the detection lag.}
+{\scriptsize Top 12 features by $|\rho|$ at Q+4, ANDA-specific AEs, $n=148$. Lab Controls cluster (top rows) shows systematic growth from Q0 to Q+4; severity is contemporaneous; data integrity is flat.}
 \end{frame}
 
 \begin{frame}{Backup: Full Feature List (17 LLM Features)}
