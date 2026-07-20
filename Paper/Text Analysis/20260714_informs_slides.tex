@@ -602,63 +602,6 @@ E & Text, OAI-ever facilities & 0.537 \\
 \end{columns}
 \end{frame}
 
-% ── SECTION 7: INSPECTION GAP ANALYSIS ───────────────────────────────────────
-\section{Inspection Gap Analysis}
-
-\begin{frame}{FDA Arrives After AEs Have Been Rising for a Year}
-\begin{columns}[T]
-\column{0.62\textwidth}
-{\small \textbf{AE trajectory by gap since previous inspection} (237 inspections, manufacturer-specific AEs):}
-
-\vspace{3pt}
-{\small
-\begin{tabularx}{\linewidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
-\toprule
-Gap & $n$ & pre\_rise & persist & mean gap \\
-& & AE$_{t0}$/AE$_{t{-4}}$ & AE$_{t{+4}}$/AE$_{t0}$ & (yr) \\
-\midrule
-$<$1yr & 60 & 1.294 & 1.024 & 0.7 \\
-\rowcolor{techBlue!15}
-1--2yr & 87 & \textbf{1.367} & 0.783 & 1.5 \\
-2--3.5yr & 57 & 1.151 & 1.018 & 2.6 \\
-$>$3.5yr & 33 & 0.931 & 1.199 & 4.4 \\
-\bottomrule
-\end{tabularx}
-}
-
-\vspace{5pt}
-{\small \textbf{Where does $t_{-4}$ (our baseline, 1yr before inspection) fall?}}
-
-\vspace{2pt}
-{\small
-\begin{tabularx}{\linewidth}{lX}
-\toprule
-Gap & $t_{-4}$ lands\ldots \\
-\midrule
-$<$1yr & before the previous inspection; AEs already elevated \\
-\rowcolor{techBlue!15}
-1--2yr & after the previous inspection; AEs suppressed. \textbf{Clean.} \\
-$>$2yr & deep in a quiet window; no enforcement anchor \\
-\bottomrule
-\end{tabularx}
-}
-
-\column{0.35\textwidth}
-{\small Only the 1--2yr group has a clean baseline. The 37\% pre-inspection rise is real quality drift, not a measurement artifact.}
-
-\vspace{6pt}
-{\small Persist = 0.78 for this group: enforcement works when FDA arrives. But harm was already occurring during the 37\% rise -- before the visit.}
-
-\vspace{6pt}
-{\small FDA's SSM uses AEs and recalls to rank facilities for inspection. Rising AEs are part of \emph{why} FDA visits -- the system is reactive by design.}
-
-\vspace{4pt}
-\begin{alertblock}{}
-\small The prior 483 text was available during the entire rising period, before the SSM had any signal. That is the window the prediction model targets.
-\end{alertblock}
-\end{columns}
-\end{frame}
-
 % ── CASE STUDY ───────────────────────────────────────────────────────────────
 \begin{frame}{Illustrative Case: Mylan Vancomycin, Four Inspections, Always VAI or NAI}
 \begin{columns}[T]
@@ -696,34 +639,34 @@ AEs doubled to 130/qtr by Q1 2020 while FDA was absent. In the year after the 20
 
 \vspace{4pt}
 {\scriptsize
-\begin{tabular}{lccccc}
+\begin{tabular}{lcccc}
 \toprule
-Group & $n$ & Q$-$4 & Q0 & Q+4 & pre\_rise \\
+Group & $n$ & Q0 (inspection) & Q+4 (1yr after) \\
 \midrule
-OAI-ever & 25 & 30 & 32 & 30 & 1.05 \\
+OAI-ever & 25 & 32 & 30 \\
 \rowcolor{techBlue!12}
-Hi-sig VAI & 19 & 37 & 40 & \highlight{49} & 1.07 \\
-Lo-sig VAI & 54 & 28 & 34 & 30 & 1.22 \\
+Hi-sig VAI & 19 & 40 & \highlight{49} \\
+Lo-sig VAI & 54 & 34 & 30 \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{4pt}
-{\scriptsize AEs per quarter (manufacturer-specific); pre\_rise = AE($t_0$)/AE($t_{-4}$).}\\
-{\scriptsize Hi-sig VAI = top-quartile Lab Controls share, never OAI.}
+{\scriptsize AEs per quarter (manufacturer-specific).\\
+Hi-sig VAI = top-quartile Lab Controls share, never OAI.}
 
 \vspace{5pt}
-{\small OAI-ever facilities have the flattest trajectory: FDA targets them on other signals, containing harm. Both VAI groups show AEs persisting or rising after inspection with no enforcement action.}
+{\small OAI enforcement contains harm: AEs flat or declining post-inspection. For Hi-sig VAI, AEs \emph{increase} from 40 to 49 in the year after the visit -- with no enforcement action.}
 
 \column{0.45\textwidth}
-{\small Hi-sig VAI facilities have the highest AE level one year post-inspection (49 vs.\ 30). AEs keep rising after the visit despite repeated high Lab Controls signals in the 483 text.}
+{\small The model measures text signals at the inspection (Q0) and predicts AEs in Q+1..Q+4. Hi-sig VAI is the group where high Lab Controls signals appear in the 483, FDA issues VAI, and AEs rise afterward.}
 
 \vspace{5pt}
-{\small One documented mechanism: FDA sometimes \textbf{downgrades OAI findings to VAI} when shortage risk is present. Downgraded facilities avoid mandatory remediation and have worse long-run outcomes (Gray et al.).}
+{\small The OAI label says: ``we found serious violations.'' The VAI label says: ``voluntary corrections needed.'' Neither label predicts the AE trajectory as well as the text.}
 
 \vspace{5pt}
 \begin{alertblock}{}
-\small 483 text (AUC 0.59 in VAI-only group) separates which VAI facilities will have elevated AEs post-inspection. FDA's classification assigns them all the same.
+\small 483 text (AUC 0.59 in VAI-only group) separates which VAI facilities will have elevated AEs post-inspection. FDA's outcome label assigns them all the same.
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -853,6 +796,44 @@ Lupin (3009843207): LC\,=\,100\%, DI\,=\,100\% across both inspections.}
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
 \appendix
 \section*{Backup Slides}
+
+\begin{frame}{Backup: Inspection Gap -- AEs Rise Before FDA Arrives}
+\begin{columns}[T]
+\column{0.62\textwidth}
+{\small \textbf{AE trajectory by gap since previous inspection} (237 inspections, manufacturer-specific AEs):}
+
+\vspace{3pt}
+{\small
+\begin{tabularx}{\linewidth}{l>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X>{\centering\arraybackslash}X}
+\toprule
+Gap & $n$ & pre\_rise & persist & mean gap \\
+& & AE$_{t0}$/AE$_{t{-4}}$ & AE$_{t{+4}}$/AE$_{t0}$ & (yr) \\
+\midrule
+$<$1yr & 60 & 1.294 & 1.024 & 0.7 \\
+\rowcolor{techBlue!15}
+1--2yr & 87 & \textbf{1.367} & 0.783 & 1.5 \\
+2--3.5yr & 57 & 1.151 & 1.018 & 2.6 \\
+$>$3.5yr & 33 & 0.931 & 1.199 & 4.4 \\
+\bottomrule
+\end{tabularx}
+}
+
+\vspace{5pt}
+{\small \textbf{Where does $t_{-4}$ (baseline, 1yr before inspection) fall?}\\
+$<$1yr: before previous inspection -- AEs already elevated.\\
+1--2yr: after previous inspection -- AEs suppressed. \textbf{Clean baseline.}\\
+$>$2yr: deep in quiet window -- no enforcement anchor.}
+
+\column{0.35\textwidth}
+{\small Only the 1--2yr group has a clean baseline. The 37\% pre-inspection rise is real quality drift, not a measurement artifact.}
+
+\vspace{6pt}
+{\small Persist = 0.78 for this group: enforcement works when FDA arrives. But harm was occurring during the entire rising period.}
+
+\vspace{6pt}
+{\small FDA's SSM uses AEs and recalls to rank facilities. Rising AEs are part of why FDA visits -- the system is reactive by design. The prior 483 text was available during this rising period before the SSM had any signal.}
+\end{columns}
+\end{frame}
 
 \begin{frame}{Backup: Volume Control — SDUD Medicaid Utilization}
 \begin{columns}[T]
