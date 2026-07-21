@@ -72,22 +72,36 @@ fig, (ax1, ax2) = plt.subplots(
 ax1.plot(ts_dates, ts_vals, color="#1e3a5f", linewidth=2.2, zorder=3)
 ax1.fill_between(ts_dates, ts_vals, alpha=0.10, color="#1e3a5f", zorder=2)
 
-# Annotate the 2023-Q3 peak
-t_peak = mdates.date2num(pd.Timestamp("2023-07-01"))
-ax1.annotate(
-    "Peak: 140/qtr\n(post-OAI)",
-    xy=(t_peak, 140), xytext=(t_peak - 380, 148),
-    fontsize=7.5, color="#cc0000", style="italic",
-    arrowprops=dict(arrowstyle="->", color="#cc0000", lw=0.9),
+# Shade Q+1..Q+4 prediction window after 2020 VAI
+t_vai_date  = pd.Timestamp("2020-02-07")
+t_vai_q4    = pd.Timestamp("2021-02-07")
+t_vai_dn    = mdates.date2num(t_vai_date)
+t_vai_q4_dn = mdates.date2num(t_vai_q4)
+ax1.axvspan(t_vai_dn, t_vai_q4_dn, alpha=0.07, color="#d97706", zorder=1)
+
+# Q+4 window label -- inside the shade, low in the panel
+ax1.text(
+    (t_vai_dn + t_vai_q4_dn) / 2, 43,
+    "Q+1..Q+4", ha="center", va="bottom",
+    fontsize=7, color="#d97706", style="italic",
 )
 
-# Annotate the 2020-Q1 VAI-inspection AE level
-t_vai = mdates.date2num(pd.Timestamp("2020-01-01"))
+# Mark Q+4 value (2021-Q1 = 112) -- annotate to the right to avoid shade
+t_q4_dn = mdates.date2num(pd.Timestamp("2021-01-01"))
 ax1.annotate(
-    "VAI: 104/qtr\n(+24% vs. baseline)",
-    xy=(t_vai, 104), xytext=(t_vai - 420, 118),
-    fontsize=7.5, color="#d97706", style="italic",
+    "Q+4 = 112",
+    xy=(t_q4_dn, 112), xytext=(t_q4_dn + 220, 138),
+    fontsize=7.5, color="#d97706",
     arrowprops=dict(arrowstyle="->", color="#d97706", lw=0.9),
+)
+
+# Mark 2023-Q3 peak -- place text to the right of the OAI line
+t_peak = mdates.date2num(pd.Timestamp("2023-07-01"))
+ax1.annotate(
+    "140/qtr",
+    xy=(t_peak, 140), xytext=(t_peak + 60, 155),
+    fontsize=7.5, color="#cc0000", style="italic",
+    arrowprops=dict(arrowstyle="->", color="#cc0000", lw=0.9),
 )
 
 for insp in inspections:
@@ -97,14 +111,14 @@ for insp in inspections:
     ax1.axvline(dn, color=color, linewidth=1.8, linestyle=ls, zorder=4)
     label = insp["outcome"] if insp["has_text"] else f"{insp['outcome']}*"
     ax1.text(
-        dn, 155, label,
+        dn, 163, label,
         ha="center", va="bottom", fontsize=8.5, fontweight="bold", color=color,
         bbox=dict(boxstyle="round,pad=0.25", facecolor="white",
                   edgecolor=color, linewidth=0.9),
     )
 
 ax1.set_xlim(xlim)
-ax1.set_ylim(40, 175)
+ax1.set_ylim(40, 185)
 ax1.set_ylabel("Serious AEs (quarterly)", fontsize=9)
 ax1.xaxis.set_major_locator(mdates.YearLocator())
 ax1.xaxis.set_major_formatter(mdates.DateFormatter(""))
@@ -116,7 +130,7 @@ ax1.set_title(
     "NAI baseline, VAI with maximum signals, OAI follow-up",
     fontsize=8.5, loc="left", pad=7,
 )
-ax1.text(0.01, 0.03, "* NAI with no 483 text in dataset",
+ax1.text(0.01, 0.02, "* NAI with no 483 text in dataset",
          transform=ax1.transAxes, fontsize=7, color="#6b7280", style="italic")
 
 # ── Panel 2: Text signals ─────────────────────────────────────────────────────
@@ -136,16 +150,12 @@ for insp in inspections:
     ax2.bar(dn,          insp["contam"], width=bar_w * 0.92,
             color="#dc2626", alpha=0.75, align="edge", zorder=2)
 
-# Sample medians across VAI/NAI facilities
-lc_med, co_med = 0.111, 0.143
-ax2.axhline(lc_med, color="#1d4ed8", linewidth=1.0, linestyle=":", alpha=0.6, zorder=0)
-ax2.axhline(co_med, color="#dc2626", linewidth=1.0, linestyle=":", alpha=0.6, zorder=0)
-ax2.text(xlim[1] - 20, lc_med + 0.03,
-         "Sample median LC: 11%", ha="right", va="bottom",
-         fontsize=7, color="#1d4ed8", style="italic")
-ax2.text(xlim[1] - 20, co_med + 0.03,
-         "Sample median Contam: 14%", ha="right", va="bottom",
-         fontsize=7, color="#dc2626", style="italic")
+# Single combined median reference line (LC~11%, Contam~14% are nearly equal)
+med = 0.125
+ax2.axhline(med, color="#888888", linewidth=1.0, linestyle=":", alpha=0.6, zorder=0)
+ax2.text(xlim[1] - 20, med + 0.04,
+         "Sample median (LC~11%, Contam~14%)", ha="right", va="bottom",
+         fontsize=7, color="#888888", style="italic")
 
 ax2.set_xlim(xlim)
 ax2.set_ylim(0, 1.20)
