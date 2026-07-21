@@ -1,7 +1,13 @@
 """
 Case study figure: FEI 3002807979
-Three inspections, 2018–2022.
-Shows AE trajectory, 483 text signals, and inspection outcomes.
+Sun Pharmaceutical Industries Limited (Mohali, India) -- Atorvastatin
+Three inspections in our panel window: NAI (Sep 2018), VAI (Feb 2020), OAI (Aug 2022).
+A fourth NAI (May 2019) exists in inspection records but has no 483 text in our dataset.
+
+Story arc:
+  Clean baseline (2018 NAI, 2019 NAI) --> Feb 2020 VAI with LC=100%, Contam=100%
+  --> AEs rise from 104 to 112 by Q+4 --> FDA returns Aug 2022 --> OAI
+  --> AEs spike to 140 by Q+4 (2023-Q3)
 """
 
 from pathlib import Path
@@ -15,49 +21,45 @@ import matplotlib.dates as mdates
 
 OUT = Path(__file__).resolve().parent
 
-# ── Data ──────────────────────────────────────────────────────────────────────
+# ── Quarterly AE time series (ANDA-specific, reconstructed from inspection panel) ──
+# Sources: inspection-centered panel rows for 2018 NAI, 2020 VAI, 2022 OAI
+# 2021-Q2 interpolated (gap between 2020-VAI tp4 and 2022-OAI tm4)
+ae_data = {
+    "2017Q3": 55,  "2017Q4": 78,
+    "2018Q1": 85,  "2018Q2": 89,  "2018Q3": 85,  "2018Q4": 93,
+    "2019Q1": 84,  "2019Q2": 77,  "2019Q3": 76,  "2019Q4": 80,
+    "2020Q1": 104, "2020Q2": 91,  "2020Q3": 64,  "2020Q4": 87,
+    "2021Q1": 112, "2021Q2": 102, "2021Q3": 93,  "2021Q4": 81,
+    "2022Q1": 108, "2022Q2": 73,  "2022Q3": 88,  "2022Q4": 97,
+    "2023Q1": 80,  "2023Q2": 74,  "2023Q3": 140,
+}
+
+def _qstart(period):
+    y, q = int(period[:4]), int(period[-1])
+    m = {1: 1, 2: 4, 3: 7, 4: 10}[q]
+    return pd.Timestamp(y, m, 1)
+
+ts_dates = [mdates.date2num(_qstart(p)) for p in ae_data]
+ts_vals  = list(ae_data.values())
+
+# ── Inspections ───────────────────────────────────────────────────────────────
+# 2019-05-10 NAI: in inspection records but no 483 text in our dataset
 inspections = [
-    {
-        "date": pd.Timestamp("2018-09-14"),
-        "outcome": "NAI",
-        "lc": 0.50,
-        "di": 1.00,
-        "ae": [247, 289, 296, 457, 465, 466, 633, 632, 698],
-    },
-    {
-        "date": pd.Timestamp("2020-02-07"),
-        "outcome": "VAI",
-        "lc": 1.00,
-        "di": 0.00,
-        "ae": [633, 632, 698, 569, 736, 809, 667, 558, 561],
-    },
-    {
-        "date": pd.Timestamp("2022-08-12"),
-        "outcome": "OAI",
-        "lc": 0.67,
-        "di": 0.67,
-        "ae": [747, 584, 579, 526, 533, 547, 604, 620, 800],
-    },
+    {"date": pd.Timestamp("2018-09-14"), "outcome": "NAI",
+     "lc": 0.50, "contam": 0.00, "has_text": True},
+    {"date": pd.Timestamp("2019-05-10"), "outcome": "NAI",
+     "lc": None, "contam": None,  "has_text": False},
+    {"date": pd.Timestamp("2020-02-07"), "outcome": "VAI",
+     "lc": 1.00, "contam": 1.00, "has_text": True},
+    {"date": pd.Timestamp("2022-08-12"), "outcome": "OAI",
+     "lc": 0.67, "contam": 0.50, "has_text": True},
 ]
 
-offsets_months = [-12, -9, -6, -3, 0, 3, 6, 9, 12]
 outcome_colors = {"NAI": "#6b7280", "VAI": "#d97706", "OAI": "#cc0000"}
-
-# ── Build deduplicated time series (mdates numbers) ───────────────────────────
-records = {}
-for insp in inspections:
-    for months, ae in zip(offsets_months, insp["ae"]):
-        dt = insp["date"] + pd.DateOffset(months=months)
-        key = dt.to_period("Q").start_time
-        dn = mdates.date2num(key)
-        records.setdefault(dn, []).append(ae)
-
-ts_dates = sorted(records)
-ts_vals  = [np.mean(records[d]) for d in ts_dates]
 
 xlim = (
     mdates.date2num(pd.Timestamp("2017-06-01")),
-    mdates.date2num(pd.Timestamp("2024-03-01")),
+    mdates.date2num(pd.Timestamp("2023-12-01")),
 )
 
 # ── Figure ────────────────────────────────────────────────────────────────────
@@ -70,62 +72,86 @@ fig, (ax1, ax2) = plt.subplots(
 ax1.plot(ts_dates, ts_vals, color="#1e3a5f", linewidth=2.2, zorder=3)
 ax1.fill_between(ts_dates, ts_vals, alpha=0.10, color="#1e3a5f", zorder=2)
 
-# shade gap between NAI and VAI
-t_nai = mdates.date2num(inspections[0]["date"])
-t_vai = mdates.date2num(inspections[1]["date"])
-ax1.axvspan(t_nai, t_vai, alpha=0.07, color="#cc0000", zorder=1)
-ax1.text(
-    (t_nai + t_vai) / 2, 845,
-    "AEs +50% after NAI",
-    ha="center", va="bottom", fontsize=8, color="#cc0000", style="italic",
+# Annotate the 2023-Q3 peak
+t_peak = mdates.date2num(pd.Timestamp("2023-07-01"))
+ax1.annotate(
+    "Peak: 140/qtr\n(post-OAI)",
+    xy=(t_peak, 140), xytext=(t_peak - 380, 148),
+    fontsize=7.5, color="#cc0000", style="italic",
+    arrowprops=dict(arrowstyle="->", color="#cc0000", lw=0.9),
+)
+
+# Annotate the 2020-Q1 VAI-inspection AE level
+t_vai = mdates.date2num(pd.Timestamp("2020-01-01"))
+ax1.annotate(
+    "VAI: 104/qtr\n(+24% vs. baseline)",
+    xy=(t_vai, 104), xytext=(t_vai - 420, 118),
+    fontsize=7.5, color="#d97706", style="italic",
+    arrowprops=dict(arrowstyle="->", color="#d97706", lw=0.9),
 )
 
 for insp in inspections:
     color = outcome_colors[insp["outcome"]]
     dn = mdates.date2num(insp["date"])
-    ax1.axvline(dn, color=color, linewidth=1.8, linestyle="--", zorder=4)
+    ls = "--" if insp["has_text"] else ":"
+    ax1.axvline(dn, color=color, linewidth=1.8, linestyle=ls, zorder=4)
+    label = insp["outcome"] if insp["has_text"] else f"{insp['outcome']}*"
     ax1.text(
-        dn, 912,
-        insp["outcome"],
-        ha="center", va="bottom", fontsize=9, fontweight="bold", color=color,
+        dn, 155, label,
+        ha="center", va="bottom", fontsize=8.5, fontweight="bold", color=color,
         bbox=dict(boxstyle="round,pad=0.25", facecolor="white",
                   edgecolor=color, linewidth=0.9),
     )
 
 ax1.set_xlim(xlim)
-ax1.set_ylim(100, 1010)
+ax1.set_ylim(40, 175)
 ax1.set_ylabel("Serious AEs (quarterly)", fontsize=9)
-
-# year ticks on upper panel — no labels (lower panel carries them)
 ax1.xaxis.set_major_locator(mdates.YearLocator())
-ax1.xaxis.set_major_formatter(mdates.DateFormatter(""))   # hide labels
+ax1.xaxis.set_major_formatter(mdates.DateFormatter(""))
 ax1.tick_params(axis="x", length=4)
 ax1.tick_params(axis="y", labelsize=8.5)
 ax1.spines[["top", "right"]].set_visible(False)
 ax1.set_title(
-    "FEI 3002807979 — Inspection outcomes, 483 text signals, and adverse events",
-    fontsize=9, loc="left", pad=7,
+    "FEI 3002807979 (Sun Pharma, Mohali) -- Atorvastatin\n"
+    "NAI baseline, VAI with maximum signals, OAI follow-up",
+    fontsize=8.5, loc="left", pad=7,
 )
+ax1.text(0.01, 0.03, "* NAI with no 483 text in dataset",
+         transform=ax1.transAxes, fontsize=7, color="#6b7280", style="italic")
 
 # ── Panel 2: Text signals ─────────────────────────────────────────────────────
-bar_w = 55  # days in date-number units
+bar_w = 50
 
 for insp in inspections:
+    if not insp["has_text"]:
+        color = outcome_colors[insp["outcome"]]
+        dn = mdates.date2num(insp["date"])
+        ax2.axvline(dn, color=color, linewidth=1.5, linestyle=":", alpha=0.4, zorder=1)
+        continue
     color = outcome_colors[insp["outcome"]]
     dn = mdates.date2num(insp["date"])
     ax2.axvline(dn, color=color, linewidth=1.5, linestyle="--", alpha=0.6, zorder=1)
-
-    ax2.bar(dn - bar_w, insp["lc"], width=bar_w * 0.92,
+    ax2.bar(dn - bar_w, insp["lc"],    width=bar_w * 0.92,
             color="#1d4ed8", alpha=0.85, align="edge", zorder=2)
-    ax2.bar(dn,          insp["di"], width=bar_w * 0.92,
+    ax2.bar(dn,          insp["contam"], width=bar_w * 0.92,
             color="#dc2626", alpha=0.75, align="edge", zorder=2)
 
+# Sample medians across VAI/NAI facilities
+lc_med, co_med = 0.111, 0.143
+ax2.axhline(lc_med, color="#1d4ed8", linewidth=1.0, linestyle=":", alpha=0.6, zorder=0)
+ax2.axhline(co_med, color="#dc2626", linewidth=1.0, linestyle=":", alpha=0.6, zorder=0)
+ax2.text(xlim[1] - 20, lc_med + 0.03,
+         "Sample median LC: 11%", ha="right", va="bottom",
+         fontsize=7, color="#1d4ed8", style="italic")
+ax2.text(xlim[1] - 20, co_med + 0.03,
+         "Sample median Contam: 14%", ha="right", va="bottom",
+         fontsize=7, color="#dc2626", style="italic")
+
 ax2.set_xlim(xlim)
-ax2.set_ylim(0, 1.38)
+ax2.set_ylim(0, 1.20)
 ax2.set_yticks([0, 0.5, 1.0])
 ax2.set_yticklabels(["0%", "50%", "100%"], fontsize=8.5)
 ax2.set_ylabel("483 signal\nshare", fontsize=8.5)
-
 ax2.xaxis.set_major_locator(mdates.YearLocator())
 ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 ax2.tick_params(axis="x", labelsize=9, length=4)
@@ -134,26 +160,12 @@ ax2.spines[["top", "right"]].set_visible(False)
 
 legend_patches = [
     mpatches.Patch(color="#1d4ed8", alpha=0.85, label="Lab Controls"),
-    mpatches.Patch(color="#dc2626", alpha=0.75, label="Data Integrity"),
+    mpatches.Patch(color="#dc2626", alpha=0.75, label="Contamination"),
 ]
-# Reference lines: NAI medians across all 15 NAI inspections in the sample
-nai_median_di = 0.357
-nai_median_lc = 0.143
-ax2.axhline(nai_median_di, color="#dc2626", linewidth=1.1, linestyle=":",
-            alpha=0.8, zorder=0)
-ax2.axhline(nai_median_lc, color="#1d4ed8", linewidth=1.1, linestyle=":",
-            alpha=0.8, zorder=0)
-ax2.text(xlim[1] - 20, nai_median_di + 0.03,
-         "NAI median DI: 36%", ha="right", va="bottom",
-         fontsize=7.5, color="#dc2626", style="italic")
-ax2.text(xlim[1] - 20, nai_median_lc + 0.03,
-         "NAI median LC: 14%", ha="right", va="bottom",
-         fontsize=7.5, color="#1d4ed8", style="italic")
-
 ax2.legend(handles=legend_patches, fontsize=8.5, loc="upper left",
            framealpha=0.85, edgecolor="#cccccc")
 
 out_path = OUT / "fei_case_study_3002807979.png"
 plt.savefig(out_path, dpi=220, bbox_inches="tight")
 plt.close()
-print(f"Saved → {out_path}")
+print(f"Saved -> {out_path}")
