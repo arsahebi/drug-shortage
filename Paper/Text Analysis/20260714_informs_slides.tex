@@ -125,45 +125,6 @@
 \end{columns}
 \end{frame}
 
-% ── SECTION 2: STUDY DESIGN ──────────────────────────────────────────────────
-\section{Study Design \& Data}
-
-\begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2018–2026}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{14 generic APIs} spanning cardiovascular, anti-infective, and critical care drug classes
-
-\vspace{6pt}
-\textbf{Facility universe:}
-\begin{itemize}
-  \item 129 FEIs via DailyMed NDC$\to$FEI crosswalk
-  \item \highlight{98 FEIs} with 483 text (Redica) + FAERS coverage
-  \item \highlight{246 inspection events} (2018–2026)
-  \item 3--44 inspections/FEI (mean 13)
-\end{itemize}
-
-\column{0.47\textwidth}
-\textbf{Data sources:}
-
-\vspace{4pt}
-{\small
-\begin{tabular}{lp{4.0cm}}
-\toprule
-Source & Content \\
-\midrule
-Redica & 483 text; OAI/VAI/NAI outcomes \\
-FAERS & Serious AEs only (death, hospitalization, disability, other serious; ``no outcome'' excluded) \\
-DailyMed & NDC$\to$FEI crosswalk \\
-\bottomrule
-\end{tabular}
-}
-
-\vspace{6pt}
-\textbf{Panel structure:}\\[2pt]
-Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year) around each visit. 246 rows total.
-\end{columns}
-\end{frame}
-
 \begin{frame}{FDA Inspection Outcomes and the Targeting Gap}
 \begin{columns}[T]
 \column{0.52\textwidth}
@@ -189,8 +150,8 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \column{0.45\textwidth}
 \textbf{The gap this creates:}
 \begin{itemize}
-  \item 80 of 98 facilities are VAI-only: SSM assigns them the same compliance score
-  \item Their 483 text varies widely -- Lab Controls citations range from 0\% to 100\%
+  \item Most VAI facilities receive the same SSM compliance score -- regardless of what their 483 text shows
+  \item 483 text varies widely across VAI facilities, but SSM cannot see it
   \item 483 text is available \emph{immediately after inspection}, before any recall or AE surfaces
 \end{itemize}
 
@@ -198,6 +159,45 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \begin{alertblock}{}
 \small Does 483 text predict which VAI facilities generate serious patient harm -- even when the inspection outcome label does not?
 \end{alertblock}
+\end{columns}
+\end{frame}
+
+% ── SECTION 2: STUDY DESIGN ──────────────────────────────────────────────────
+\section{Study Design \& Data}
+
+\begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2018–2026}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{14 generic APIs} spanning cardiovascular, anti-infective, and critical care drug classes
+
+\vspace{6pt}
+\textbf{Facility universe:}
+\begin{itemize}
+  \item 129 FEIs via DailyMed NDC$\to$FEI crosswalk
+  \item \highlight{98 FEIs} with 483 text (Redica) + FAERS coverage
+  \item \highlight{246 inspection events} (2018–2026)
+  \item \highlight{80 of 98} facilities are VAI-only -- the group SSM cannot differentiate
+\end{itemize}
+
+\column{0.47\textwidth}
+\textbf{Data sources:}
+
+\vspace{4pt}
+{\small
+\begin{tabular}{lp{4.0cm}}
+\toprule
+Source & Content \\
+\midrule
+Redica & 483 text; OAI/VAI/NAI outcomes \\
+FAERS & Serious AEs only (death, hospitalization, disability, other serious; ``no outcome'' excluded) \\
+DailyMed & NDC$\to$FEI crosswalk \\
+\bottomrule
+\end{tabular}
+}
+
+\vspace{6pt}
+\textbf{Panel structure:}\\[2pt]
+Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year) around each visit. 246 rows total.
 \end{columns}
 \end{frame}
 
