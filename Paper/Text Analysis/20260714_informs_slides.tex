@@ -174,49 +174,35 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \end{columns}
 \end{frame}
 
-\begin{frame}{Inspection Gaps and the Targeting Problem}
-
-\begin{alertblock}{Two unresolved problems}
-\small
-Frequency hasn't returned to pre-COVID levels. And when facilities are selected for inspection, the text from their last 483 plays no role in the decision.
-\end{alertblock}
-
-\vspace{4pt}
+\begin{frame}{FDA Inspection Outcomes and the Targeting Gap}
 \begin{columns}[T]
-\column{0.50\textwidth}
-\centering
-\textbf{Problem 1: Frequency}\\
-{\small 98 panel FEIs, FDA inspections only (Redica)}
-
-\vspace{3pt}
-{\small
-\begin{tabular}{lcc}
-\toprule
-Period & Total & Avg/yr \\
-\midrule
-2015--2019 & 395 & 79 \\
-\rowcolor{lightGray}
-2020--2022 & 107 & 36 \\
-2023--2025 & 148 & \highlight{49} \\
-\bottomrule
-\end{tabular}
-}
-
-\vspace{3pt}
-{\small 2018--19 peak: $\sim$95/yr. Trend: 60$\to$49$\to$39. \textbf{Not recovered.}}\\
-{\small Median gap: 0.97 yr pre-COVID $\to$ \highlight{1.88 yr} post-2022.}
-
-\column{0.47\textwidth}
-\textbf{Problem 2: Targeting}
-
-\vspace{4pt}
-FDA's SSM uses compliance category and elapsed time. 483 text plays no role.
+\column{0.52\textwidth}
+\textbf{After each inspection, FDA assigns one of three outcomes:}
 
 \vspace{5pt}
-80 of 98 facilities are VAI-only, treated identically by SSM. Their 483s are not: Lab Controls and DI rates vary widely.
+\begin{itemize}
+  \item \textcolor{govGreen}{\textbf{NAI}} -- No Action Indicated: no violations requiring follow-up
+  \item \textcolor{warnOrange}{\textbf{VAI}} -- Voluntary Action Indicated: violations found; facility self-corrects
+  \item \textcolor{ncsuRed}{\textbf{OAI}} -- Official Action Indicated: serious violations; FDA mandates corrective action
+\end{itemize}
 
-\vspace{5pt}
-483 text fills this gap.
+\vspace{8pt}
+\textbf{FDA's Site Selection Model (SSM)}\\[4pt]
+{\small Determines which facilities get re-inspected and when. It uses the outcome category (NAI/VAI/OAI) and time elapsed since the last visit. The actual content of the 483 -- what violations were cited, how severe, how widespread -- plays no role in the ranking.}
+
+\column{0.45\textwidth}
+\textbf{The gap this creates:}
+
+\vspace{6pt}
+{\small 80 of 98 facilities in our sample are VAI-only -- they have never received an OAI. SSM assigns them the same priority.}
+
+\vspace{8pt}
+{\small Yet their 483 text differs substantially. Lab Controls citation rates range from 0\% to 100\% across facilities that carry the same VAI label.}
+
+\vspace{8pt}
+\begin{alertblock}{}
+\small Does 483 text variation predict which VAI facilities generate serious patient harm -- even when the inspection outcome label does not?
+\end{alertblock}
 \end{columns}
 \end{frame}
 
