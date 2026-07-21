@@ -105,33 +105,23 @@
 
 \begin{frame}{The Form 483: Public, Detailed, and Unread}
 \begin{columns}[T]
-\column{0.52\textwidth}
+\column{0.50\textwidth}
 \textbf{What is a Form 483?}
 \begin{itemize}
   \item Issued at the close of every FDA facility inspection
   \item Lists every manufacturing violation observed (typically 3--15 per visit)
   \item Topics include contamination, data integrity, lab controls, and quality systems
-  \item Filed publicly within days of the inspection
+  \item Filed publicly within days of the inspection -- no standard schema
 \end{itemize}
 
-\vspace{5pt}
+\column{0.47\textwidth}
 \begin{block}{Example observation (paraphrased)}
 \small
 ``Investigations into out-of-specification results are not conducted with a scientifically sound approach. Five OOS potency results were invalidated without adequate justification\ldots''
 \end{block}
 
-\column{0.45\textwidth}
-\begin{alertblock}{Research question}
-Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (serious adverse events) before FDA's next inspection?
-\end{alertblock}
-
 \vspace{8pt}
-\textbf{Why this matters:}
-\begin{itemize}
-  \item Adverse events from bad product reach patients before FDA detects the problem
-  \item Between inspections, the 483 is the only available quality signal
-  \item Facilities with severe 483 findings but no formal enforcement action are invisible to current regulatory targeting
-\end{itemize}
+{\small Plain regulatory prose, written fresh by each inspector. No structured database. Filed after every inspection -- but the text has never been systematically used to predict future quality failures.}
 \end{columns}
 \end{frame}
 
@@ -177,31 +167,36 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \begin{frame}{FDA Inspection Outcomes and the Targeting Gap}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{After each inspection, FDA assigns one of three outcomes:}
-
-\vspace{5pt}
+\textbf{Three inspection outcomes:}
 \begin{itemize}
-  \item \textcolor{govGreen}{\textbf{NAI}} -- No Action Indicated: no violations requiring follow-up
-  \item \textcolor{warnOrange}{\textbf{VAI}} -- Voluntary Action Indicated: violations found; facility self-corrects
-  \item \textcolor{ncsuRed}{\textbf{OAI}} -- Official Action Indicated: serious violations; FDA mandates corrective action
+  \item \textcolor{govGreen}{\textbf{NAI}} -- No Action Indicated
+  \item \textcolor{warnOrange}{\textbf{VAI}} -- Voluntary Action Indicated
+  \item \textcolor{ncsuRed}{\textbf{OAI}} -- Official Action Indicated: FDA mandates corrective action
 \end{itemize}
 
 \vspace{8pt}
-\textbf{FDA's Site Selection Model (SSM)}\\[4pt]
-{\small Determines which facilities get re-inspected and when. It uses the outcome category (NAI/VAI/OAI) and time elapsed since the last visit. The actual content of the 483 -- what violations were cited, how severe, how widespread -- plays no role in the ranking.}
+\textbf{FDA's Site Selection Model (SSM)} scores each facility using:
+\begin{itemize}
+  \item Compliance history (NAI/VAI/OAI outcome)
+  \item Recalls and field alert reports
+  \item Patient exposure and inherent product risk
+  \item Time since last inspection
+\end{itemize}
+
+\vspace{4pt}
+\textbf{Not in SSM:} the content of the 483 -- what violations were cited, how severe, how widespread
 
 \column{0.45\textwidth}
 \textbf{The gap this creates:}
+\begin{itemize}
+  \item 80 of 98 facilities are VAI-only: SSM assigns them the same compliance score
+  \item Their 483 text varies widely -- Lab Controls citations range from 0\% to 100\%
+  \item 483 text is available \emph{immediately after inspection}, before any recall or AE surfaces
+\end{itemize}
 
 \vspace{6pt}
-{\small 80 of 98 facilities in our sample are VAI-only -- they have never received an OAI. SSM assigns them the same priority.}
-
-\vspace{8pt}
-{\small Yet their 483 text differs substantially. Lab Controls citation rates range from 0\% to 100\% across facilities that carry the same VAI label.}
-
-\vspace{8pt}
 \begin{alertblock}{}
-\small Does 483 text variation predict which VAI facilities generate serious patient harm -- even when the inspection outcome label does not?
+\small Does 483 text predict which VAI facilities generate serious patient harm -- even when the inspection outcome label does not?
 \end{alertblock}
 \end{columns}
 \end{frame}
