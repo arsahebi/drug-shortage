@@ -73,23 +73,13 @@
 \begin{frame}{Generic Drug Quality: A Regulated Industry With Visibility Gaps}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{The stakes:}
 \begin{itemize}
-  \item 90\% of U.S. prescriptions filled with generic drugs
-  \item Produced at $\sim$6,000 facilities worldwide
-  \item Serious quality failures have caused patient deaths, mass recalls, and supply shortages
+  \setlength{\itemsep}{8pt}
+  \item 90\% of U.S. prescriptions are generic drugs
+  \item FDA inspects each manufacturing facility roughly every 1--2 years
+  \item After each visit, inspectors issue a \textbf{Form 483}: a written record of every manufacturing violation observed
+  \item Between visits, the 483 sits unread -- no quality signal reaches regulators while patients receive drugs
 \end{itemize}
-
-\vspace{6pt}
-\textbf{How FDA oversees manufacturing:}
-\begin{itemize}
-  \item Regular GMP (Good Manufacturing Practice) inspections at each facility
-  \item Average gap between visits: 1--2 years (longer post-COVID)
-  \item After each visit, inspectors issue a \textbf{Form 483}: a written list of every manufacturing violation observed
-\end{itemize}
-
-\vspace{6pt}
-\textbf{The gap:} Between inspections, no quality signal reaches regulators. The 483 from the last visit exists -- unstructured prose, filed publicly, but no model reads it. Patients receive drugs the entire time.
 
 \column{0.45\textwidth}
 \vspace{10pt}
@@ -151,9 +141,7 @@ Can LLM extraction of 483 text predict \textbf{facility-level patient harm} (ser
 \begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2018–2026}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{14 APIs on U.S. defense supply priority lists:}\\[2pt]
-{\small Atorvastatin, Bupropion, Metformin, Pantoprazole, Vancomycin, Lisinopril, Metoprolol, Metronidazole, Ampicillin, Tacrolimus, Calcium Gluconate, Magnesium Sulfate, Potassium Chloride, Ampicillin/Sulbactam}\\[3pt]
-{\scriptsize Valisure's independent testing of this set provides a scope check; their quality data does not enter the model.}
+\textbf{14 generic APIs} spanning cardiovascular, anti-infective, and critical care drug classes
 
 \vspace{6pt}
 \textbf{Facility universe:}
