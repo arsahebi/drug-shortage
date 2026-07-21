@@ -718,13 +718,13 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
     In facilities FDA never formally penalized (VAI-only), text-only LR AUC = \highlight{0.586}. In the full population, text and the OAI flag are near random and similar to each other.
 
   \item \textbf{Lab Controls -- not data integrity -- is the leading signal.}\\
-    Four Lab Controls features reach significance at Q+4 ($\rho$ up to 0.28***). DI drops out with manufacturer-specific AE attribution -- it was an artifact of the drug-level join.
+    Four Lab Controls features reach significance at Q+4 ($\rho$ up to 0.28***). Data integrity shows no significant association at any lag.
 
   \item \textbf{Inspection is reactive by design; 483 text is not.}\\
     FDA's Site Selection Model uses AEs and recalls to rank facilities. Rising AEs before inspection are partly expected. 483 text from the prior visit contains information the SSM does not incorporate.
 
-  \item \textbf{VAI facilities with high text signals have elevated pre-inspection AEs.}\\
-    Hi-sig VAI: manufacturer-specific AEs 25\% higher at inspection than one year prior. OAI-ever facilities show a flatter trajectory. FDA rated both the same.
+  \item \textbf{Same VAI label, very different outcomes.}\\
+    Hi-sig VAI facilities have 63\% more AEs at Q+4 than Lo-sig VAI (49 vs.\ 30). FDA's outcome label assigns them all the same category.
 
   \item \textbf{Strategic leniency candidates are identifiable.}\\
     Facilities with repeated high Lab Controls signals and no OAI history can be ranked. Cross-referencing with market concentration will test the shortage-pressure hypothesis.
@@ -745,7 +745,7 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 \begin{itemize}
   \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. Subgroup results (VAI-only AUC\,=\,0.59) are hypothesis-generating, not confirmatory.
   \item \textbf{COVID gap:} 2020--21 moratorium left 4-year inter-inspection windows; post-2022 baselines are confounded.
-  \item \textbf{FAERS coverage:} manufacturer-specific attribution matches 47.5\% of serious AEs. Unmatched reports are from manufacturers outside the Valisure scope.
+  \item \textbf{FAERS coverage:} manufacturer-specific attribution matches 47.5\% of serious AEs. Unmatched reports are from manufacturers outside our sample.
 \end{itemize}
 
 \column{0.47\textwidth}
@@ -761,26 +761,26 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 \begin{frame}{Next Steps}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Before submission:}
+\textbf{Near-term:}
 \begin{enumerate}
-  \item Add $\log(\text{sdud\_units})$ as covariate (Config F)
-  \item Rerun excluding 2020--21 COVID years
-  \item Drug-level analysis: do results hold per API?
+  \item Add market volume as covariate to rule out confounding by facility size
+  \item Robustness check excluding 2020--21 COVID inspection gap
+  \item Test whether results hold within individual APIs
   \item Cross-check leniency candidates with recall and import refusal records
 \end{enumerate}
 
 \column{0.47\textwidth}
 \textbf{Future work:}
 \begin{enumerate}
-  \item IQVIA commercial data for volume and market concentration
-  \item Extend outcome to drug shortage (UUtah pipeline ready)
-  \item Paid LLM re-extraction with 4-tier severity + scope field
+  \item Commercial sales data for volume and market concentration
+  \item Extend outcome to drug shortage
+  \item Richer LLM extraction with severity tiers and scope fields
   \item Real-time facility risk dashboard post-inspection
 \end{enumerate}
 
 \vspace{6pt}
 \begin{block}{}
-\small Target: INFORMS 2026 (full paper); AAAI 2027 (AI/policy angle)
+\small Target: full paper submission; AAAI 2027 (AI/policy angle)
 \end{block}
 \end{columns}
 \end{frame}
