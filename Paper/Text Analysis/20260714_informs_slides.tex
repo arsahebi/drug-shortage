@@ -216,15 +216,15 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
   arrow/.style={-{Stealth}, thick}
 ]
 % Step 0
-\node[box] (s0) at (0,0) {Step 00\\FDA 483 text\\{\tiny load \& normalize}};
+\node[box] (s0) at (0,0) {Step 00\\483 text\\{\tiny load \& clean}};
 % Step 1
-\node[box] (s1) at (3.2,0) {Step 01\\LLM extraction\\{\tiny Anthropic Claude}};
+\node[box] (s1) at (3.2,0) {Step 01\\LLM extraction\\{\tiny per observation}};
 % Step 2
-\node[box] (s2) at (6.4,0) {Step 02\\Aggregate to\\FEI $\times$ inspection};
+\node[box] (s2) at (6.4,0) {Step 02\\aggregate\\{\tiny obs $\to$ inspection}};
 % Panel
-\node[box, fill=ncsuRed!15] (panel) at (9.6,0) {Panel\\FEI $\times$ inspection\\{\tiny script 01}};
+\node[box, fill=ncsuRed!15] (panel) at (9.6,0) {Panel\\{\tiny 246 inspections}\\{\tiny + FAERS join}};
 % Model
-\node[box, fill=techBlue!15] (model) at (12.8,0) {Model\\{\tiny scripts 03–04}};
+\node[box, fill=techBlue!15] (model) at (12.8,0) {Correlation\\+ Prediction\\{\tiny LR / RF}};
 
 \draw[arrow] (s0) -- (s1);
 \draw[arrow] (s1) -- (s2);
