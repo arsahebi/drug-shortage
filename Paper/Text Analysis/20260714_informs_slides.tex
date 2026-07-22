@@ -294,19 +294,26 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \end{itemize}
 
 \column{0.47\textwidth}
-\textbf{Expert endorsement (Redica, June 2026):}
+\textbf{Expert review (Redica GMP specialists, June 2026):}
 
 \vspace{4pt}
-Redica's GMP specialists reviewed our prompt definitions and confirmed:
+\textit{Where our approach aligns with GMP practice:}
 \begin{itemize}
-  \item Observation-level is the right unit of analysis
-  \item DI binary flag fits supply risk prediction
-  \item Repeat and patient risk are ``obviously high-impact''
-  \item Our domain philosophy is ``not wrong''
+  \item Observation-level unit is appropriate -- violations differ meaningfully within a single inspection
+  \item Severity rule (actual defect vs.\ systemic risk) matches how regulators distinguish enforceability
+  \item Capital vs.\ Cultural root cause split maps to how GMP practitioners think about remediation barriers
+  \item $\sim$80\% of observations with no remediation signal is expected -- 483s predate facility responses
 \end{itemize}
 
-\vspace{6pt}
-Step 02 rolls these observation-level labels into one row per inspection. That feature vector goes directly into the correlation analysis and the prediction model.
+\vspace{4pt}
+\textit{Open questions (future work):}
+\begin{itemize}
+  \item DI binary flag is a simplification of Redica's 13-label ALCOA taxonomy
+  \item Contamination flag may include routine environmental monitoring findings
+\end{itemize}
+
+\vspace{4pt}
+Step 02 aggregates these observation-level labels to one row per inspection -- that feature vector feeds the correlation and prediction analyses.
 \end{columns}
 \end{frame}
 
