@@ -245,43 +245,38 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 % ── SECTION 4: LLM EXTRACTION ────────────────────────────────────────────────
 \section{LLM Extraction Pipeline}
 
-\begin{frame}{Step 00: What Raw 483 Text Looks Like}
+\begin{frame}{Step 00: What a 483 Observation Looks Like in Practice}
+{\small \textbf{Sun Pharma, Mohali -- Aug 2022 OAI inspection.} 8 observations across 8 pages. Two shown below.}
+
+\vspace{5pt}
 \begin{columns}[T]
-\column{0.56\textwidth}
-\textbf{Two observations from the same 2022 inspection (paraphrased):}
-
-\vspace{5pt}
-{\small
-\textbf{Obs.\ 1.} ``Batch production records were not completed at the time of manufacture. Entries were reconstructed from memory 2 days after processing.''
-
-\vspace{5pt}
-\textbf{Obs.\ 2.} ``Investigations into out-of-specification results are not conducted with a scientifically sound and thorough approach. Five OOS potency results were invalidated without adequate scientific justification.''
-}
-
-\vspace{8pt}
-{\footnotesize One inspection may have 3--15 observations. No standard schema across inspectors or facilities. Domain, severity, and root cause are all implicit in the prose.}
-
-\column{0.41\textwidth}
-\textbf{What we need to extract:}
+\column{0.48\textwidth}
+\begin{block}{Observation 1 \hfill \textcolor{warnOrange}{\scriptsize Data Integrity}}
+\scriptsize
+\textbf{Header:} ``There is a failure to thoroughly review any unexplained discrepancy whether or not the batch has been already distributed.''
 
 \vspace{4pt}
-{\small
-\begin{tabular}{ll}
-\toprule
-Question & Example answer \\
-\midrule
-Domain? & Lab Controls, DI \\
-Severity? & Major (bad product made) \\
-Patient risk? & Yes \\
-Data integrity? & Yes (reconstructed) \\
-Scope? & Facility-wide \\
-\bottomrule
-\end{tabular}
-}
+\textbf{Sub-item:} ``Disclosure 2020-01 confirmed instances of backdating by QA and QC personnel. The investigation was not thorough to evaluate the scope of backdating in the QA and QC departments.''
 
-\vspace{8pt}
-Step 01 runs Claude Haiku on each observation and outputs a strict JSON covering all five dimensions. 98 FEIs, 246 inspections, 1,067 observations total.
+\vspace{3pt}
+\textit{[3 sub-items with nested detail -- 2 pages]}
+\end{block}
+
+\column{0.48\textwidth}
+\begin{block}{Observation 2 \hfill \textcolor{techBlue}{\scriptsize Lab Controls}}
+\scriptsize
+\textbf{Header:} ``Established sampling plans, test procedures and laboratory control mechanisms are not documented at the time of performance.''
+
+\vspace{4pt}
+\textbf{Sub-item:} ``Building access records showed an employee responsible for collecting samples did not enter the buildings where samples were documented to have been collected.''
+
+\vspace{3pt}
+\textit{[2 sub-items with dated examples -- 1.5 pages]}
+\end{block}
 \end{columns}
+
+\vspace{6pt}
+{\small \textbf{Same inspection. Two different domains.} Domain, severity, and patient risk are all implicit in the prose -- no structured fields, no shared schema. This is what the LLM reads.}
 \end{frame}
 
 \begin{frame}{Step 01: What the LLM Extracts and Why}
