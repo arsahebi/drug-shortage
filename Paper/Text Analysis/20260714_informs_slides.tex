@@ -218,13 +218,13 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 % Step 0
 \node[box] (s0) at (0,0) {Step 00\\483 text\\{\tiny load \& clean}};
 % Step 1
-\node[box] (s1) at (3.2,0) {Step 01\\LLM extraction\\{\tiny per observation}};
+\node[box] (s1) at (2.8,0) {Step 01\\LLM extraction\\{\tiny per observation}};
 % Step 2
-\node[box] (s2) at (6.4,0) {Step 02\\aggregate\\{\tiny obs $\to$ inspection}};
+\node[box] (s2) at (5.6,0) {Step 02\\aggregate\\{\tiny obs $\to$ inspection}};
 % Panel
-\node[box, fill=ncsuRed!15] (panel) at (9.6,0) {Panel\\{\tiny 246 inspections}\\{\tiny + FAERS join}};
+\node[box, fill=ncsuRed!15] (panel) at (8.4,0) {Panel\\{\tiny 246 inspections}\\{\tiny + FAERS join}};
 % Model
-\node[box, fill=techBlue!15] (model) at (12.8,0) {Correlation\\+ Prediction\\{\tiny LR / RF}};
+\node[box, fill=techBlue!15] (model) at (11.2,0) {Correlation\\+ Prediction\\{\tiny logistic reg.}};
 
 \draw[arrow] (s0) -- (s1);
 \draw[arrow] (s1) -- (s2);
@@ -232,7 +232,7 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \draw[arrow] (panel) -- (model);
 
 % Data joins below panel
-\node[box, fill=govGreen!15] (faers) at (9.6,-2.0) {FAERS AEs\\+ Insp. outcomes};
+\node[box, fill=govGreen!15] (faers) at (8.4,-2.0) {FAERS AEs\\+ Insp. outcomes};
 \draw[arrow] (faers) -- (panel);
 
 \end{tikzpicture}
