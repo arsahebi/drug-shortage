@@ -391,7 +391,7 @@ Investigation & \textbf{False} & True only if investigation was not performed \\
 {\small
 Lab Controls alone: a QC process failed.\\[2pt]
 DI alone: a record was altered.\\[2pt]
-\textbf{Both together:} bad product was likely made and the evidence was manipulated. The probability that subpotent or contaminated product reached patients is higher when both are present.
+\textbf{Both together:} conditions associated with defective product and compromised documentation appear in the same inspection. The correlation with future AEs is stronger when both co-occur than when either appears alone.
 }
 
 \vspace{8pt}
@@ -461,20 +461,20 @@ FEIs with AE data & 109 \\
 \textbf{OAI facilities}
 \begin{itemize}
   \item Product made before the visit is already distributed
-  \item 483 text describes those defects
-  \item AEs surface as enforcement takes hold and inventory clears
+  \item 483 text describes the quality conditions present at that time
+  \item AEs emerge as inventory clears and enforcement begins
 \end{itemize}
 
 \vspace{6pt}
 \textbf{VAI facilities}
 \begin{itemize}
   \item No corrective action mandated
-  \item 483 text reveals the facility's quality state
-  \item Same conditions continue generating AEs after the visit
+  \item 483 text describes the facility's quality state at the time of inspection
+  \item Those conditions persist through the post-inspection period
 \end{itemize}
 
 \vspace{6pt}
-{\small Both mechanisms run in the same direction: more severe 483 text $\to$ higher AEs in Q+1..Q+4.}
+{\small Both patterns run in the same direction: more severe 483 text is associated with higher AEs in Q+1..Q+4.}
 
 \column{0.45\textwidth}
 \textbf{How we operationalize it:}
@@ -525,11 +525,11 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
   \item \textbf{Lab Controls} features grow near-zero at Q0 to 0.20--0.28 at Q+4. Leading indicator pattern.
   \item All four LC features are correlated -- different angles on the same domain. Consistency \emph{strengthens} the finding.
   \item \textbf{Severity} is contemporaneous: strong at Q0, flat after. Describes the inspection, not what follows.
-  \item \textbf{Data integrity} shows no significant association at any lag -- quality failures that translate to patient harm are in the Lab Controls domain.
+  \item \textbf{Data integrity} shows no significant association at any lag -- quality problems associated with elevated future AEs are concentrated in the Lab Controls domain.
 \end{itemize}
 
 \vspace{6pt}
-\textbf{Lab Controls, not data integrity, predicts harm one year later.}
+\textbf{Lab Controls, not data integrity, is associated with elevated AEs one year later.}
 \end{columns}
 \end{frame}
 
@@ -617,7 +617,7 @@ E & Text, OAI-ever facilities & 0.537 \\
 
 \vspace{4pt}
 \begin{block}{Takeaway}
-\small At the 2020 VAI, Sun Pharma had no OAI history -- it was in the VAI-only sample. 483 text from that visit predicted harm in the following year. The OAI came later, in 2022. The VAI-only model (AUC 0.59) captures this pattern.
+\small At the 2020 VAI, Sun Pharma had no OAI history -- it was in the VAI-only sample. 483 text from that visit was associated with elevated AEs in the following year. The OAI came later, in 2022. The VAI-only model (AUC 0.59) captures this pattern.
 \end{block}
 \end{columns}
 \end{frame}
@@ -649,7 +649,7 @@ Lo-sig VAI & 54 & 34 & 30 \\
 Hi-sig VAI = top-quartile Lab Controls share, never OAI.}
 
 \vspace{5pt}
-{\small OAI enforcement contains harm: AEs flat post-inspection. For Hi-sig VAI, AEs \emph{rise} from 40 to 49 -- with no enforcement to stop them.}
+{\small OAI enforcement is associated with flat AEs post-inspection. For Hi-sig VAI, AEs \emph{rise} from 40 to 49 with no enforcement action at any point.}
 
 \column{0.45\textwidth}
 {\small Within VAI facilities the outcome label provides no variation -- they are all VAI. Yet Hi-sig VAI has \textbf{63\% more AEs at Q+4} than Lo-sig VAI (49 vs.\ 30). The 483 text, not the outcome classification, is what separates them.}
@@ -748,9 +748,9 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 \column{0.47\textwidth}
 \begin{itemize}
   \item \textbf{Shared ANDAs:} one ANDA can cover multiple facilities. AE counts are proportional to market share, not individual facility output.
-  \item \textbf{LLM circularity:} validated against Redica, which reads the same 483 text. Neither is inspector ground truth.
-  \item \textbf{Volume:} SDUD covers Medicaid only ($\sim$20\% of market). Commercial volume not integrated.
-  \item \textbf{Causal:} all associations are correlational. Strategic leniency interpretation needs market concentration data.
+  \item \textbf{Extraction quality:} LLM labels are validated against one reference (Redica) that reads the same 483 text -- neither is inspector ground truth. Two specific weaknesses: the contamination flag is primarily tuned to sterile and injectable products, so non-sterile cases may be under-captured; the DI binary flag collapses deliberate falsification and procedural misses into one signal (partially mitigated by capturing severity separately).
+  \item \textbf{Volume:} commercial volume not integrated; facility size is a potential confounder.
+  \item \textbf{Causal:} all associations are correlational. Strategic leniency interpretation requires market concentration data to test the shortage-pressure hypothesis.
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -771,7 +771,7 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 \begin{enumerate}
   \item Commercial sales data for volume and market concentration
   \item Extend outcome to drug shortage
-  \item Richer LLM extraction with severity tiers and scope fields
+  \item Refine LLM extraction: extend contamination to non-sterile products, align DI coding with ALCOA gradations, validate with independent human labeling
   \item Real-time facility risk dashboard post-inspection
 \end{enumerate}
 
