@@ -603,13 +603,13 @@ E & Text only, OAI-ever facilities & 0.537 \\
 \begin{frame}{The Silent Problem: Same VAI Label, Very Different Patient Outcomes}
 \begin{columns}[T]
 \column{0.52\textwidth}
-\textbf{Manufacturer-specific AEs by facility group} (98 FEIs, FEI-level medians):
+{\small \textbf{AEs by facility group} (98 FEIs, FEI-level medians):}
 
 \vspace{4pt}
 {\scriptsize
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
 \toprule
-Group & $n$ & Q0 (inspection) & Q+4 (1yr after) \\
+Group & $n$ & Q0 & Q+4 \\
 \midrule
 OAI-ever & 25 & 32 & 30 \\
 \rowcolor{techBlue!12}
@@ -619,63 +619,32 @@ Lo-sig VAI & 54 & 34 & 30 \\
 \end{tabular}
 }
 
+\vspace{6pt}
+{\small \textbf{Top Lab Controls facilities (VAI-only), by AE rise:}}
+
 \vspace{4pt}
-{\scriptsize AEs per quarter (manufacturer-specific).\\
-Hi-sig VAI = top-quartile Lab Controls share, never OAI.}
-
-\vspace{5pt}
-{\small OAI enforcement is associated with flat AEs post-inspection. For Hi-sig VAI, AEs \emph{rise} from 40 to 49 with no enforcement action at any point.}
-
-\column{0.45\textwidth}
-{\small Hi-sig VAI facilities produce \textbf{63\% more AEs at Q+4} than Lo-sig VAI (49 vs.\ 30) -- with no difference in FDA's enforcement label. Lab Controls text is the only signal that separates them.}
-
-\vspace{10pt}
-\begin{alertblock}{}
-\small AUC 0.586 in the VAI-only subsample. With the inspection outcome fixed at VAI, 483 text is the only differentiating signal available.
-\end{alertblock}
-\end{columns}
-\end{frame}
-
-% ── SECTION 9: STRATEGIC LENIENCY ────────────────────────────────────────────
-\section{Strategic Leniency}
-
-\begin{frame}{Strategic Leniency Candidates}
-\begin{columns}[T]
-\column{0.52\textwidth}
-{\small Top-quartile Lab Controls, never OAI, ranked by AE rise (VAI-only, Config~D):}
-
-\vspace{5pt}
-{\small
-\begin{tabular}{lcc c}
+{\scriptsize
+\begin{tabular}{lccc}
 \toprule
 Manufacturer / Drug & Q0 & Q+4 & Rise \\
 \midrule
 Lupin / Atorvastatin      & 31 & \highlight{44} & \highlight{$+$42\%} \\
-Dr. Reddy's / Metoprolol  & 80 & \highlight{97} & \highlight{$+$21\%} \\
+Dr.\ Reddy's / Metoprolol & 80 & \highlight{97} & \highlight{$+$21\%} \\
 Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \bottomrule
 \end{tabular}
 }
 
-\vspace{5pt}
-{\scriptsize AEs per quarter (manufacturer-specific).\\
-Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
+\vspace{3pt}
+{\scriptsize AEs per quarter (manufacturer-specific). Hi-sig VAI = top-quartile Lab Controls share, never OAI.}
 
 \column{0.45\textwidth}
-{\small High Lab Controls signals, repeated VAI outcomes, AEs still rising one year later.}
-
-\vspace{5pt}
-{\small Three explanations:
-\begin{enumerate}
-  \item \textbf{OAI$\to$VAI downgrade}: FDA reclassified to avoid enforcement, often under shortage pressure. Prior work finds downgraded sites have worse outcomes (Gray et al.)
-  \item Observations stayed below the formal OAI threshold
-  \item Inspections were not deep enough to surface true severity
-\end{enumerate}}
-
-\vspace{5pt}
-\begin{alertblock}{}
-\small These facilities are identifiable from 483 text alone. Shortage pressure and market concentration may explain why enforcement did not follow.
-\end{alertblock}
+\begin{itemize}
+  \setlength{\itemsep}{9pt}
+  \item Hi-sig VAI facilities produce \textbf{63\% more AEs at Q+4} than Lo-sig VAI (49 vs.\ 30), yet carry the same FDA label. Named examples show persistent AE increases with no OAI classification.
+  \item \textbf{OAI$\to$VAI downgrade:} FDA may reclassify inspections to avoid enforcement, particularly under shortage pressure -- and downgraded sites show worse patient outcomes (Gray et al.).
+  \item Alternatively, observations stayed below the OAI threshold or inspections did not surface the true severity of deficiencies.
+\end{itemize}
 \end{columns}
 \end{frame}
 
