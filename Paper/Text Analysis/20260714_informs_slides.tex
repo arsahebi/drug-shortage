@@ -282,16 +282,34 @@ Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year)
 \begin{frame}{Step 01: What the LLM Extracts and Why}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Five layers per observation:}
+\textbf{Group 1: Binary flags} {\footnotesize (True/False per observation)}
 
-\vspace{4pt}
+\vspace{3pt}
+{\small
 \begin{itemize}
-  \item \textbf{L1: Domain.} 8 CFR\,211 areas: Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel.
-  \item \textbf{L2: Severity.} Confirmed defect vs.\ systemic risk. Major means bad product was likely already made.
-  \item \textbf{L3: Flags.} DI, contamination, patient risk, scope, root cause, remediation. Each independently defined.
-  \item \textbf{L4: Recurrence.} Persistent findings signal a facility that hasn't fixed the problem.
-  \item \textbf{L5: Co-occurrence.} Lab Controls and DI together carries more signal than either alone.
+  \setlength{\itemsep}{3pt}
+  \item \textbf{Data integrity} -- falsification, backdating, reconstructed records
+  \item \textbf{Contamination} -- microbial, chemical, or cross-contamination
+  \item \textbf{Patient risk} -- observation has a direct patient harm pathway
+  \item \textbf{Investigation failure} -- OOS investigation absent or inadequate
+  \item \textbf{Repeat finding} -- same citation appeared at a prior inspection
 \end{itemize}
+}
+
+\vspace{6pt}
+\textbf{Group 2: Multi-category signals}
+
+\vspace{3pt}
+{\small
+\begin{itemize}
+  \setlength{\itemsep}{3pt}
+  \item \textbf{Domain} -- 8 CFR\,211 areas (Lab Controls, Quality System\ldots)
+  \item \textbf{Severity} -- Critical / Major / Moderate / Minor
+  \item \textbf{Root cause} -- Capital (resource gap) vs.\ Cultural (management gap)
+  \item \textbf{Scope} -- SingleBatch / MultipleProducts / FacilityWide
+  \item \textbf{Remediation} -- corrective action language present or absent
+\end{itemize}
+}
 
 \column{0.47\textwidth}
 \textbf{Expert review (Redica, June 2026):}
@@ -784,39 +802,29 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 
 \begin{frame}{Backup: LLM Extraction -- All 10 Dimensions Defined}
 {\scriptsize
-\begin{tabularx}{\linewidth}{p{2.0cm} X X}
+\begin{tabularx}{\linewidth}{p{1.8cm} X p{3.6cm}}
 \toprule
-\textbf{Signal} & \textbf{What it captures} & \textbf{Why we extracted it} \\
+\textbf{Signal} & \textbf{What it captures} & \textbf{Why extracted} \\
 \midrule
-Domain & Which of 8 CFR\,211 areas the observation falls under: Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel
-  & Different domains carry different patient risk; Lab Controls is most directly linked to product quality failures reaching patients \\
-\addlinespace[3pt]
-Severity & Whether the observation reflects a confirmed defect (Major/Critical) or systemic risk without confirmed product impact
-  & Distinguishes inspections where defective product was likely already distributed from those with procedural gaps only \\
-\addlinespace[3pt]
-Data integrity & Record falsification, backdating, deleted entries, or reconstructed documentation
-  & Among the most serious CGMP violations; signals intentional concealment of quality failures \\
-\addlinespace[3pt]
-Contamination & Microbial, chemical, or cross-contamination of product or the production environment
-  & Captures a failure mode with a direct patient harm pathway, distinct from documentation or process failures \\
-\addlinespace[3pt]
-Patient risk & Observation involves a failure mode with a plausible patient harm pathway
-  & Filters high-consequence citations from routine procedural observations \\
-\addlinespace[3pt]
-Investigation failure & Out-of-specification investigation was not conducted or was inadequate
-  & Systemic quality system gap; associated with potential distribution of non-conforming product \\
-\addlinespace[3pt]
-Repeat finding & Observation repeats a citation from a prior inspection at the same facility
-  & Facility has not corrected a known problem; leading indicator of regulatory escalation \\
-\addlinespace[3pt]
-Scope & Whether the failure is limited to one batch, spans multiple products, or is facility-wide
-  & Broader scope implies more patients potentially exposed to the same underlying failure \\
-\addlinespace[3pt]
-Root cause & Capital (resource or equipment gap) vs.\ Cultural (behavioral or management gap) vs.\ Mixed
-  & Cultural gaps are harder to remediate and are associated with worse future quality trajectories \\
-\addlinespace[3pt]
-Remediation & Whether corrective action language is present in the observation
-  & Absence is expected (facilities respond separately via 483 response); presence signals inspector emphasis on resolution \\
+Domain & Which of 8 CFR\,211 areas the observation falls under (Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel) & Different domains carry different patient risk; Lab Controls most directly linked to product failures \\
+\addlinespace[2pt]
+Severity & Confirmed defect (Major/Critical) vs.\ systemic risk without confirmed product impact & Separates inspections where defective product was likely already distributed \\
+\addlinespace[2pt]
+Data integrity & Falsification, backdating, deleted or reconstructed documentation & Intentional concealment; among the most serious CGMP violations \\
+\addlinespace[2pt]
+Contamination & Microbial, chemical, or cross-contamination of product or environment & Direct patient harm pathway; distinct from documentation failures \\
+\addlinespace[2pt]
+Patient risk & Failure mode with a plausible direct patient harm pathway & Filters high-consequence citations from routine procedural ones \\
+\addlinespace[2pt]
+Investigation failure & OOS investigation absent or inadequate & Systemic gap linked to potential distribution of non-conforming product \\
+\addlinespace[2pt]
+Repeat finding & Same citation appeared at a prior inspection at this facility & Facility has not corrected a known problem \\
+\addlinespace[2pt]
+Scope & SingleBatch / MultipleProducts / FacilityWide & Broader scope = more patients potentially exposed \\
+\addlinespace[2pt]
+Root cause & Capital (resource gap) vs.\ Cultural (management gap) vs.\ Mixed & Cultural gaps harder to fix; associated with worse future trajectories \\
+\addlinespace[2pt]
+Remediation & Corrective action language present or absent & Absence expected in 483s; presence signals inspector emphasis \\
 \bottomrule
 \end{tabularx}
 }
