@@ -684,7 +684,7 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
   \setlength{\itemsep}{6pt}
   \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. VAI-only results are hypothesis-generating, not confirmatory.
   \item \textbf{COVID gap:} FDA suspended most inspections in 2020--21, leaving multi-year gaps between visits; post-2022 baselines are confounded.
-  \item \textbf{FAERS attribution:} many AE reports do not name a specific manufacturer, so we cannot link them to a facility. For manufacturers with multiple production sites, attribution is approximate even when a name is present.
+  \item \textbf{FAERS attribution:} when one manufacturer operates multiple facilities under the same ANDA, we cannot determine which site produced the drug in a given report.
 \end{itemize}
 
 \column{0.47\textwidth}
@@ -698,30 +698,12 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \end{frame}
 
 \begin{frame}{Next Steps}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Near-term:}
-\begin{enumerate}
-  \item Add market volume as covariate to rule out confounding by facility size
-  \item Robustness check excluding 2020--21 COVID inspection gap
-  \item Test whether results hold within individual APIs
-  \item Cross-check leniency candidates with recall and import refusal records
-\end{enumerate}
-
-\column{0.47\textwidth}
-\textbf{Future work:}
-\begin{enumerate}
-  \item Commercial sales data for volume and market concentration
-  \item Extend outcome to drug shortage
-  \item Refine LLM extraction: extend contamination to non-sterile products, align DI coding with ALCOA gradations, validate with independent human labeling
-  \item Real-time facility risk dashboard post-inspection
-\end{enumerate}
-
-\vspace{6pt}
-\begin{block}{}
-\small Target: full paper submission; AAAI 2027 (AI/policy angle)
-\end{block}
-\end{columns}
+\begin{itemize}
+  \setlength{\itemsep}{8pt}
+  \item \textbf{Refine LLM extraction:} update prompts based on expert feedback, validate against manual human labels.
+  \item \textbf{Replace FAERS with MarketScan:} MarketScan links prescriptions to NDC-level dispensing records and patient outcomes -- a cleaner tie between facility and harm than FAERS.
+  \item \textbf{Add volume controls:} SDUD (Medicaid utilization) has known limitations; commercial volume data would better capture facility-level market share as a confounder.
+\end{itemize}
 \end{frame}
 
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
