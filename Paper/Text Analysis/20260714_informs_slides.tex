@@ -782,15 +782,15 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 \section*{Backup Slides}
 
 \begin{frame}{Backup: Observation-Level Dimensions (1 of 2)}
-{\small
-\begin{tabularx}{\linewidth}{p{2.0cm} X p{3.8cm}}
+{\scriptsize
+\begin{tabularx}{\linewidth}{p{1.7cm} X X}
 \toprule
 \textbf{Signal} & \textbf{What it captures} & \textbf{Why extracted} \\
 \midrule
-Domain & Which of 8 CFR\,211 areas the observation falls under: Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel & Different domains carry different patient risk; Lab Controls most directly linked to product failures \\[4pt]
-Severity & Confirmed defect (Major/Critical) vs.\ systemic risk without confirmed product impact & Separates inspections where defective product was likely already distributed \\[4pt]
-Data integrity & Falsification, backdating, deleted or reconstructed documentation & Intentional concealment; among the most serious CGMP violations \\[4pt]
-Contamination & Microbial, chemical, or cross-contamination of product or environment & Direct patient harm pathway; distinct from documentation failures \\[4pt]
+Domain & Which of 8 CFR\,211 areas the observation falls under: Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel & Different domains carry different patient risk; Lab Controls most directly linked to product failures \\[3pt]
+Severity & Confirmed defect (Major/Critical) vs.\ systemic risk without confirmed product impact & Separates inspections where defective product was likely already distributed \\[3pt]
+Data integrity & Falsification, backdating, deleted or reconstructed documentation & Intentional concealment; among the most serious CGMP violations \\[3pt]
+Contamination & Microbial, chemical, or cross-contamination of product or environment & Direct patient harm pathway; distinct from documentation failures \\[3pt]
 Patient risk & Failure mode with a plausible direct patient harm pathway & Filters high-consequence citations from routine procedural ones \\
 \bottomrule
 \end{tabularx}
@@ -798,15 +798,15 @@ Patient risk & Failure mode with a plausible direct patient harm pathway & Filte
 \end{frame}
 
 \begin{frame}{Backup: Observation-Level Dimensions (2 of 2)}
-{\small
-\begin{tabularx}{\linewidth}{p{2.0cm} X p{3.8cm}}
+{\scriptsize
+\begin{tabularx}{\linewidth}{p{1.7cm} X X}
 \toprule
 \textbf{Signal} & \textbf{What it captures} & \textbf{Why extracted} \\
 \midrule
-Investigation failure & OOS investigation absent or inadequate & Systemic gap linked to potential distribution of non-conforming product \\[4pt]
-Repeat finding & Same citation appeared at a prior inspection at this facility & Facility has not corrected a known problem \\[4pt]
-Scope & SingleBatch / MultipleProducts / FacilityWide & Broader scope = more patients potentially exposed \\[4pt]
-Root cause & Capital (resource gap) vs.\ Cultural (management gap) vs.\ Mixed & Cultural gaps harder to fix; associated with worse future trajectories \\[4pt]
+Investigation failure & OOS investigation absent or inadequate & Systemic gap linked to potential distribution of non-conforming product \\[3pt]
+Repeat finding & Same citation appeared at a prior inspection at this facility & Facility has not corrected a known problem \\[3pt]
+Scope & SingleBatch / MultipleProducts / FacilityWide & Broader scope = more patients potentially exposed \\[3pt]
+Root cause & Capital (resource gap) vs.\ Cultural (management gap) vs.\ Mixed & Cultural gaps harder to fix; associated with worse future trajectories \\[3pt]
 Remediation & Corrective action language present or absent & Absence expected in 483s; presence signals inspector emphasis \\
 \bottomrule
 \end{tabularx}
@@ -814,36 +814,46 @@ Remediation & Corrective action language present or absent & Absence expected in
 \end{frame}
 
 \begin{frame}{Backup: Inspection-Level Features -- All 17}
+\begin{columns}[T]
+\column{0.50\textwidth}
 {\scriptsize
-\begin{tabularx}{\linewidth}{p{4.2cm} X}
-\toprule
-\textbf{Feature} & \textbf{What it measures} \\
-\midrule
-\multicolumn{2}{l}{\textit{Share -- fraction of observations at that inspection}} \\[2pt]
-\texttt{vc\_labcontrols\_share} & Lab Controls domain \\
-\texttt{vc\_qualitysystem\_share} & Quality System domain \\
-\texttt{severity\_critmajor\_share} & Critical or Major severity \\
-\texttt{contamination\_llm\_share} & Contamination flag \\
-\texttt{data\_integrity\_llm\_share} & Data integrity flag \\
-\texttt{patient\_risk\_llm\_share} & Patient risk flag \\
-\texttt{investigation\_llm\_share} & Investigation failure flag \\
-\texttt{repeat\_cross\_insp\_share} & Repeat finding flag \\
-\texttt{scope\_facilitywide\_share} & Facility-wide scope \\
-\texttt{cultural\_root\_cause\_share} & Cultural root cause \\
-\midrule
-\multicolumn{2}{l}{\textit{Count -- raw number of observations}} \\[2pt]
-\texttt{n\_labcontrols\_obs} & Lab Controls observations \\
-\texttt{n\_qualitysystem\_obs} & Quality System observations \\
-\midrule
-\multicolumn{2}{l}{\textit{Co-occurrence -- 1 if both signals present in same inspection}} \\[2pt]
-\texttt{joint\_labcontrols\_dataintegrity} & Lab Controls + DI \\
-\texttt{joint\_contamination\_labcontrols} & Contamination + Lab Controls \\
-\texttt{joint\_labcontrols\_qualitysystem} & Lab Controls + Quality System \\
-\texttt{joint\_qualitysystem\_production} & Quality System + Production \\
-\texttt{multi\_domain\_insp} & Multiple domains cited \\
-\bottomrule
-\end{tabularx}
+\textbf{Share} {\tiny(fraction of observations)}
+\begin{itemize}
+  \setlength{\itemsep}{1pt}
+  \item \texttt{vc\_labcontrols\_share} -- Lab Controls
+  \item \texttt{vc\_qualitysystem\_share} -- Quality System
+  \item \texttt{severity\_critmajor\_share} -- Critical/Major
+  \item \texttt{contamination\_llm\_share} -- Contamination
+  \item \texttt{data\_integrity\_llm\_share} -- Data integrity
+  \item \texttt{patient\_risk\_llm\_share} -- Patient risk
+  \item \texttt{investigation\_llm\_share} -- Investigation failure
+  \item \texttt{repeat\_cross\_insp\_share} -- Repeat finding
+  \item \texttt{scope\_facilitywide\_share} -- Facility-wide scope
+  \item \texttt{cultural\_root\_cause\_share} -- Cultural root cause
+\end{itemize}
 }
+
+\column{0.47\textwidth}
+{\scriptsize
+\textbf{Count} {\tiny(raw number of observations)}
+\begin{itemize}
+  \setlength{\itemsep}{1pt}
+  \item \texttt{n\_labcontrols\_obs} -- Lab Controls
+  \item \texttt{n\_qualitysystem\_obs} -- Quality System
+\end{itemize}
+
+\vspace{6pt}
+\textbf{Co-occurrence} {\tiny(1 if both signals in same inspection)}
+\begin{itemize}
+  \setlength{\itemsep}{1pt}
+  \item \texttt{joint\_labcontrols\_dataintegrity}
+  \item \texttt{joint\_contamination\_labcontrols}
+  \item \texttt{joint\_labcontrols\_qualitysystem}
+  \item \texttt{joint\_qualitysystem\_production}
+  \item \texttt{multi\_domain\_insp}
+\end{itemize}
+}
+\end{columns}
 \end{frame}
 
 \begin{frame}{Backup: Inspection Gap -- AEs Rise Before FDA Arrives}
