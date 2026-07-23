@@ -651,24 +651,21 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 % ── SECTION 10: SUMMARY ──────────────────────────────────────────────────────
 \section{Summary}
 
-\begin{frame}{Summary: Five Key Messages}
+\begin{frame}{Summary}
 
 \begin{enumerate}
-  \setlength{\itemsep}{6pt}
-  \item \textbf{483 text predicts harm where structured signals are absent.}\\
-    In facilities FDA never formally penalized (VAI-only), text-only LR AUC = \highlight{0.586}. In the full population, text and the OAI flag are near random and similar to each other.
+  \setlength{\itemsep}{8pt}
+  \item \textbf{Yes -- 483 text is associated with future harm, but primarily among facilities FDA never penalized.}\\
+    VAI-only AUC = \highlight{0.586}; in the full sample, text and the inspection outcome flag are near the random baseline.
 
-  \item \textbf{Lab Controls -- not data integrity -- is the leading signal.}\\
-    Four Lab Controls features reach significance at Q+4 ($\rho$ up to 0.28***). Data integrity shows no significant association at any lag.
+  \item \textbf{Lab Controls features are the leading text signals.}\\
+    Four Lab Controls features reach $\rho$ up to 0.28 at Q+4; no other dimension is significant beyond Q0.
 
-  \item \textbf{Inspection is reactive by design; 483 text is not.}\\
-    FDA's Site Selection Model uses AEs and recalls to rank facilities. Rising AEs before inspection are partly expected. 483 text from the prior visit contains information the SSM does not incorporate.
+  \item \textbf{483 text captures what FDA's targeting model does not.}\\
+    The Site Selection Model uses AEs and recalls -- 483 text from a prior visit is outside that loop.
 
-  \item \textbf{Same VAI label, very different outcomes.}\\
-    Hi-sig VAI facilities have 63\% more AEs at Q+4 than Lo-sig VAI (49 vs.\ 30). FDA's outcome label assigns them all the same category.
-
-  \item \textbf{Strategic leniency candidates are identifiable.}\\
-    Facilities with repeated high Lab Controls signals and no OAI history can be ranked. Cross-referencing with market concentration will test the shortage-pressure hypothesis.
+  \item \textbf{Same VAI label, very different outcomes -- and identifiable from text.}\\
+    Hi-sig VAI facilities produce 63\% more AEs at Q+4 than Lo-sig VAI (49 vs.\ 30). These facilities can be ranked from 483 text alone; shortage pressure may explain why enforcement did not follow.
 \end{enumerate}
 
 \vspace{6pt}
