@@ -681,17 +681,18 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \begin{columns}[T]
 \column{0.50\textwidth}
 \begin{itemize}
-  \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. Subgroup results (VAI-only AUC\,=\,0.59) are hypothesis-generating, not confirmatory.
-  \item \textbf{COVID gap:} 2020--21 moratorium left 4-year inter-inspection windows; post-2022 baselines are confounded.
-  \item \textbf{FAERS coverage:} manufacturer-specific attribution matches 47.5\% of serious AEs. Unmatched reports are from manufacturers outside our sample.
+  \setlength{\itemsep}{6pt}
+  \item \textbf{Sample size:} 98 FEIs, 33 OAI inspections. VAI-only results are hypothesis-generating, not confirmatory.
+  \item \textbf{COVID gap:} 2020--21 moratorium created multi-year inter-inspection windows; post-2022 baselines are confounded.
+  \item \textbf{FAERS attribution:} many AE reports for our 14 drugs lack usable manufacturer identifiers. For manufacturers with multiple production sites, AE attribution to a specific facility is approximate.
 \end{itemize}
 
 \column{0.47\textwidth}
 \begin{itemize}
-  \item \textbf{Shared ANDAs:} one ANDA can cover multiple facilities. AE counts are proportional to market share, not individual facility output.
-  \item \textbf{Extraction quality:} LLM labels are validated against one reference (Redica) that reads the same 483 text -- neither is inspector ground truth. Two specific weaknesses: the contamination flag is primarily tuned to sterile and injectable products, so non-sterile cases may be under-captured; the DI binary flag collapses deliberate falsification and procedural misses into one signal (partially mitigated by capturing severity separately).
+  \setlength{\itemsep}{6pt}
+  \item \textbf{Extraction quality:} LLM labels require human validation. Prompt definitions for several dimensions will be revised; findings should be treated as preliminary.
   \item \textbf{Volume:} commercial volume not integrated; facility size is a potential confounder.
-  \item \textbf{Causal:} all associations are correlational. Strategic leniency interpretation requires market concentration data to test the shortage-pressure hypothesis.
+  \item \textbf{Causal:} all associations are correlational. Testing the shortage-pressure hypothesis requires market concentration data.
 \end{itemize}
 \end{columns}
 \end{frame}
