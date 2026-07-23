@@ -371,45 +371,32 @@ Remediation & \textbf{None} & no corrective action language \\
 \column{0.52\textwidth}
 \textbf{Three types of features per inspection:}
 
-\vspace{4pt}
-\textbf{Type 1: Share} (normalized by observation count):
-\begin{itemize}
-  \item \texttt{vc\_labcontrols\_share}: fraction of observations in Lab Controls domain
-  \item Captures what kind of inspection this was
-\end{itemize}
+\vspace{6pt}
+\textbf{1. Share} -- fraction of observations in a domain or with a flag\\
+{\small\textit{e.g.} \texttt{vc\_labcontrols\_share}: what kind of inspection was this?}
 
-\vspace{4pt}
-\textbf{Type 2: Count} (absolute intensity):
-\begin{itemize}
-  \item \texttt{n\_labcontrols\_obs}: raw number of Lab Controls observations
-  \item Captures how much was cited, not just whether it was cited at all
-\end{itemize}
+\vspace{6pt}
+\textbf{2. Count} -- raw number of observations in a domain\\
+{\small\textit{e.g.} \texttt{n\_labcontrols\_obs}: how much was cited?}
 
-\vspace{4pt}
-\textbf{Type 3: Joint co-occurrence}:
-\begin{itemize}
-  \item \texttt{joint\_labctrl\_di}: 1 if both Lab Controls and DI appear in the same inspection
-  \item Strong predictor of future AEs ($\rho = 0.26$ at Q+4, $p < .01$; see slide 13)
-\end{itemize}
+\vspace{6pt}
+\textbf{3. Co-occurrence} -- both signals present in the same inspection\\
+{\small\textit{e.g.} \texttt{joint\_labctrl\_di}: Lab Controls \emph{and} DI in one visit}
 
 \column{0.45\textwidth}
-\textbf{Why co-occurrence is the strongest signal:}
+\textbf{Why co-occurrence matters:}
 
-\vspace{4pt}
+\vspace{6pt}
 {\small
-Lab Controls alone: a QC process failed.\\[2pt]
-DI alone: a record was altered.\\[2pt]
-\textbf{Both together:} conditions associated with defective product and compromised documentation appear in the same inspection. The correlation with future AEs is stronger when both co-occur than when either appears alone.
+Lab Controls alone: a QC process failed.\\[4pt]
+DI alone: a record was altered.\\[4pt]
+\textbf{Both together:} defective product and compromised documentation in the same inspection -- stronger signal than either alone.
 }
 
-\vspace{8pt}
+\vspace{10pt}
 \begin{block}{Output}
-\small 246 inspections $\times$ 17 features.\\
-This matrix feeds the correlation analysis and the prediction model directly.
+\small 246 inspections $\times$ 17 features
 \end{block}
-
-\vspace{4pt}
-{\scriptsize Share and count are complementary: share is robust to long inspections; count captures absolute burden. Both enter the model.}
 \end{columns}
 \end{frame}
 
