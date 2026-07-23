@@ -479,8 +479,6 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
   \item \textbf{Data integrity} shows no significant association at any lag
 \end{itemize}
 
-\vspace{6pt}
-\textbf{Lab Controls, not data integrity, is associated with elevated AEs one year later.}
 \end{columns}
 \end{frame}
 
@@ -522,7 +520,6 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
   \item \textbf{Features:} \tech{17 LLM text signals} from the 483 at that inspection
   \item \textbf{Outcome:} Above-median serious AEs in the post-inspection year
         $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
-        {\scriptsize OAI inspections: 33 of 246 (13\%)}
   \item \textbf{CV:} FEI-grouped 5-fold (no facility appears in both train and test)
   \item \textbf{Model:} Logistic regression -- interpretable and well-suited for $n{=}246$ with 17 predictors
 \end{itemize}
@@ -532,7 +529,7 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 The outcome is 50/50 by construction. A random classifier scores exactly 0.5.
 
 \vspace{4pt}
-Does 483 text beat that floor -- and does it beat the OAI label alone?
+Does 483 text beat that floor -- and does it add value beyond knowing the inspection outcome (NAI / VAI / OAI)?
 \end{alertblock}
 \end{columns}
 \end{frame}
@@ -549,13 +546,13 @@ Does 483 text beat that floor -- and does it beat the OAI label alone?
  & Feature set & LR AUC \\
 \midrule
 A & Text only (17 LLM features) & 0.503 \\
-B & Text + OAI flag & 0.527 \\
-C & OAI flag only & 0.539 \\
+B & Text + inspection outcome flag & 0.527 \\
+C & Inspection outcome flag only & 0.539 \\
 \midrule
 \multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} \\
 \midrule
-\highlight{D} & \highlight{Text, VAI-only facilities} & \highlight{0.586} \\
-E & Text, OAI-ever facilities & 0.537 \\
+\highlight{D} & \highlight{Text only, VAI-only facilities} & \highlight{0.586} \\
+E & Text only, OAI-ever facilities & 0.537 \\
 \bottomrule
 \end{tabular}
 }
@@ -565,16 +562,16 @@ E & Text, OAI-ever facilities & 0.537 \\
 
 \column{0.47\textwidth}
 {\small
-\textbf{Full population (A vs C):} Text and the OAI flag perform similarly near random. Neither is a strong standalone classifier.
+\textbf{Full sample (A--C):} Text alone (A) is near random. Using only the inspection outcome -- a binary OAI-vs-non-OAI flag (C) -- is similarly weak.
 
 \vspace{5pt}
-\textbf{VAI-only (D):} Text reaches \highlight{AUC\,=\,0.59} -- the strongest result. Among facilities FDA never formally penalized, 483 text is the only signal that separates high- and low-harm producers.
+\textbf{VAI-only (D):} Restricted to the 73 facilities never classified OAI. Text reaches \highlight{AUC\,=\,0.59} -- the inspection outcome has no variation here, so text is the only available signal.
 
 \vspace{5pt}
-\textbf{OAI-ever (E):} Text is no better in facilities that did receive enforcement. The enforcement action itself may have resolved the quality problem, flattening future AEs.
+\textbf{OAI-ever (E):} Restricted to facilities that received at least one OAI inspection. Text adds little -- enforcement may have corrected the underlying quality problems.
 
 \vspace{5pt}
-\textbf{Takeaway:} 483 text is most valuable precisely where structured regulatory signals are absent.
+\textbf{Takeaway:} 483 text is most informative precisely where the inspection outcome label provides no differentiation.
 }
 \end{columns}
 \end{frame}
