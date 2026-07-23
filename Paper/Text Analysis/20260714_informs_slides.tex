@@ -782,6 +782,46 @@ Lupin: LC\,=\,100\% across both inspections; all VAI outcomes.}
 \appendix
 \section*{Backup Slides}
 
+\begin{frame}{Backup: LLM Extraction -- All 10 Dimensions Defined}
+{\scriptsize
+\begin{tabularx}{\linewidth}{p{2.0cm} X X}
+\toprule
+\textbf{Signal} & \textbf{What it captures} & \textbf{Why we extracted it} \\
+\midrule
+Domain & Which of 8 CFR\,211 areas the observation falls under: Lab Controls, Quality System, Production, Buildings \& Equipment, Materials, Records, Packaging, Personnel
+  & Different domains carry different patient risk; Lab Controls is most directly linked to product quality failures reaching patients \\
+\addlinespace[3pt]
+Severity & Whether the observation reflects a confirmed defect (Major/Critical) or systemic risk without confirmed product impact
+  & Distinguishes inspections where defective product was likely already distributed from those with procedural gaps only \\
+\addlinespace[3pt]
+Data integrity & Record falsification, backdating, deleted entries, or reconstructed documentation
+  & Among the most serious CGMP violations; signals intentional concealment of quality failures \\
+\addlinespace[3pt]
+Contamination & Microbial, chemical, or cross-contamination of product or the production environment
+  & Captures a failure mode with a direct patient harm pathway, distinct from documentation or process failures \\
+\addlinespace[3pt]
+Patient risk & Observation involves a failure mode with a plausible patient harm pathway
+  & Filters high-consequence citations from routine procedural observations \\
+\addlinespace[3pt]
+Investigation failure & Out-of-specification investigation was not conducted or was inadequate
+  & Systemic quality system gap; associated with potential distribution of non-conforming product \\
+\addlinespace[3pt]
+Repeat finding & Observation repeats a citation from a prior inspection at the same facility
+  & Facility has not corrected a known problem; leading indicator of regulatory escalation \\
+\addlinespace[3pt]
+Scope & Whether the failure is limited to one batch, spans multiple products, or is facility-wide
+  & Broader scope implies more patients potentially exposed to the same underlying failure \\
+\addlinespace[3pt]
+Root cause & Capital (resource or equipment gap) vs.\ Cultural (behavioral or management gap) vs.\ Mixed
+  & Cultural gaps are harder to remediate and are associated with worse future quality trajectories \\
+\addlinespace[3pt]
+Remediation & Whether corrective action language is present in the observation
+  & Absence is expected (facilities respond separately via 483 response); presence signals inspector emphasis on resolution \\
+\bottomrule
+\end{tabularx}
+}
+\end{frame}
+
 \begin{frame}{Backup: Inspection Gap -- AEs Rise Before FDA Arrives}
 \begin{columns}[T]
 \column{0.62\textwidth}
