@@ -448,50 +448,6 @@ FEIs with AE data & 109 \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{From 483 Text to Future Harm: Two Mechanisms}
-\begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{Why does 483 text predict next-year AEs?}
-
-\vspace{8pt}
-\textbf{OAI facilities}
-\begin{itemize}
-  \item Product made before the visit is already distributed
-  \item 483 text describes the quality conditions present at that time
-  \item AEs emerge as inventory clears and enforcement begins
-\end{itemize}
-
-\vspace{6pt}
-\textbf{VAI facilities}
-\begin{itemize}
-  \item No corrective action mandated
-  \item 483 text describes the facility's quality state at the time of inspection
-  \item Those conditions persist through the post-inspection period
-\end{itemize}
-
-\vspace{6pt}
-{\small Both patterns run in the same direction: more severe 483 text is associated with higher AEs in Q+1..Q+4.}
-
-\column{0.45\textwidth}
-\textbf{How we operationalize it:}
-
-\vspace{6pt}
-\begin{tabular}{ll}
-\toprule
-Element & Design \\
-\midrule
-Unit & One inspection event \\
-Features & 483 text at that inspection \\
-N & 246 inspections, 98 FEIs \\
-CV & FEI-grouped 5-fold \\
-\bottomrule
-\end{tabular}
-
-\vspace{8pt}
-\textbf{Question:} for the 73 VAI-only facilities where FDA's outcome label never varies, does 483 text still separate high- from low-harm producers?
-\end{columns}
-\end{frame}
-
 \begin{frame}{483 Text Signals: Do They Lead or Lag Patient Harm?}
 \begin{columns}[T]
 \column{0.56\textwidth}
@@ -518,14 +474,49 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item \textbf{Lab Controls} features grow near-zero at Q0 to 0.20--0.28 at Q+4. Leading indicator pattern.
-  \item All four LC features are correlated -- different angles on the same domain. Consistency \emph{strengthens} the finding.
-  \item \textbf{Severity} is contemporaneous: strong at Q0, flat after. Describes the inspection, not what follows.
-  \item \textbf{Data integrity} shows no significant association at any lag -- quality problems associated with elevated future AEs are concentrated in the Lab Controls domain.
+  \item \textbf{Lab Controls} features: near-zero at Q0, grow to 0.20--0.28 at Q+4
+  \item \textbf{Severity} is contemporaneous -- strong at Q0, flat after
+  \item \textbf{Data integrity} shows no significant association at any lag
 \end{itemize}
 
 \vspace{6pt}
 \textbf{Lab Controls, not data integrity, is associated with elevated AEs one year later.}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Why the Correlation Motivates a Prediction Model}
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Two reasons 483 text is associated with future AEs:}
+
+\vspace{8pt}
+\textbf{OAI facilities}
+\begin{itemize}
+  \item Product distributed before the visit
+  \item 483 text describes quality conditions at that time
+  \item AEs emerge as inventory clears
+\end{itemize}
+
+\vspace{6pt}
+\textbf{VAI facilities}
+\begin{itemize}
+  \item No corrective action mandated
+  \item Same quality conditions persist after the visit
+\end{itemize}
+
+\vspace{6pt}
+{\small Both patterns point the same way: more severe 483 text is associated with higher AEs in Q+1..Q+4.}
+
+\column{0.45\textwidth}
+\textbf{From association to prediction:}
+
+\vspace{8pt}
+\begin{itemize}
+  \setlength{\itemsep}{6pt}
+  \item Correlation shows each signal separately -- prediction asks whether all 17 together can classify high- vs.\ low-harm inspections
+  \item The OAI label adds no information within VAI-only facilities
+  \item \textbf{Key test:} does 483 text separate high- from low-harm producers among facilities FDA never formally penalized?
+\end{itemize}
 \end{columns}
 \end{frame}
 
@@ -541,8 +532,8 @@ Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & & \\
   \item \textbf{Outcome:} Above-median serious AEs in the post-inspection year
         $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
         {\scriptsize OAI inspections: 33 of 246 (13\%)}
-  \item \textbf{CV:} FEI-grouped 5-fold
-  \item \textbf{Model:} Logistic regression; random forest as robustness check
+  \item \textbf{CV:} FEI-grouped 5-fold (no facility appears in both train and test)
+  \item \textbf{Model:} Logistic regression -- interpretable and well-suited for $n{=}246$ with 17 predictors
 \end{itemize}
 
 \column{0.45\textwidth}
