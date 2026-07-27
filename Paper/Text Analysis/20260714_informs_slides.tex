@@ -164,48 +164,37 @@ Do 483 text signals predict serious adverse events -- and can they differentiate
 
 \vspace{4pt}
 {\small
-\begin{tabular}{lp{4.0cm}}
+\begin{tabular}{p{1.5cm}p{3.6cm}}
 \toprule
-Source & Content \\
+Source & Role \\
 \midrule
-Redica & 483 text; OAI/VAI/NAI outcomes \\
-FAERS & Serious AEs only (death, hospitalization, disability, other serious; ``no outcome'' excluded) \\
-DailyMed & NDC$\to$FEI crosswalk \\
+\textbf{Redica} & 483 observation text; inspection outcomes (NAI/VAI/OAI) \\[4pt]
+\textbf{FAERS} & FDA adverse event reports -- our outcome variable (serious AEs per facility per quarter) \\[4pt]
+\textbf{DailyMed} & FDA's official drug label repository -- we extract the NDC$\to$ANDA$\to$FEI linkage from product labels \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{6pt}
-\textbf{Panel structure:}\\[2pt]
-Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year) around each visit. 246 rows total.
+\textbf{Panel:} one row per inspection, $\pm$4 quarters. 246 rows total.
 \end{columns}
 \end{frame}
 
 \begin{frame}{How We Measure Patient Harm: FAERS Adverse Event Attribution}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Serious outcomes only}
+\textbf{Outcome: serious adverse event reports}
 \begin{itemize}
-  \item Death, hospitalization, life-threatening, disability, congenital anomaly
-  \item ``No outcome reported'' excluded (14.6\%)
-\end{itemize}
-
-\vspace{8pt}
-\textbf{ANDA-level attribution}
-\begin{itemize}
-  \item Each report carries \texttt{appl\_no} -- the manufacturer's ANDA number
-  \item Linked to NDC-ANDA-FEI crosswalk to assign each AE to the producing facility
+  \setlength{\itemsep}{5pt}
+  \item Serious outcomes only: death, hospitalization, life-threatening, disability, congenital anomaly
+  \item ``No outcome reported'' excluded (14.6\% of reports)
+  \item Each report carries an ANDA number -- linked through the DailyMed crosswalk to assign the AE to the producing facility
+  \item 144,286 serious reports $\to$ \textbf{68,500} matched and aggregated to quarterly counts per FEI
   \item When one manufacturer operates multiple sites under one ANDA, facility attribution is approximate
 \end{itemize}
 
 \column{0.47\textwidth}
-\begin{block}{Result}
-144,286 serious reports $\to$ \textbf{68,500} matched (47.5\%)\\[4pt]
-Aggregated to quarterly counts per FEI
-\end{block}
-
-\vspace{8pt}
-\textbf{Sample coverage}\\[4pt]
+\textbf{Sample coverage}\\[6pt]
 \begin{tabular}{ll}
 \toprule
 Metric & Value \\
