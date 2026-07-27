@@ -154,10 +154,9 @@ Do 483 text signals predict serious adverse events -- and can they differentiate
 \vspace{6pt}
 \textbf{Facility universe:}
 \begin{itemize}
-  \item 129 FEIs via DailyMed NDC$\to$FEI crosswalk
+  \item 129 FEIs (Facility Establishment Identifiers -- unique FDA facility codes) via DailyMed NDC$\to$FEI crosswalk
   \item \highlight{98 FEIs} with 483 text (Redica) + FAERS coverage
-  \item \highlight{246 inspection events} (2018–2026)
-  \item \highlight{80 of 98} facilities are VAI-only -- the group SSM cannot differentiate
+  \item \highlight{246 inspection events} (2018--2026)
 \end{itemize}
 
 \column{0.47\textwidth}
@@ -179,6 +178,43 @@ DailyMed & NDC$\to$FEI crosswalk \\
 \vspace{6pt}
 \textbf{Panel structure:}\\[2pt]
 Inspection-centered: one row per inspection event, $\pm$4 quarters ($\pm$1 year) around each visit. 246 rows total.
+\end{columns}
+\end{frame}
+
+\begin{frame}{How We Measure Patient Harm: FAERS Adverse Event Attribution}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Serious outcomes only}
+\begin{itemize}
+  \item Death, hospitalization, life-threatening, disability, congenital anomaly
+  \item ``No outcome reported'' excluded (14.6\%)
+\end{itemize}
+
+\vspace{8pt}
+\textbf{ANDA-level attribution}
+\begin{itemize}
+  \item Each report carries \texttt{appl\_no} -- the manufacturer's ANDA number
+  \item Linked to NDC-ANDA-FEI crosswalk to assign each AE to the producing facility
+  \item When one manufacturer operates multiple sites under one ANDA, facility attribution is approximate
+\end{itemize}
+
+\column{0.47\textwidth}
+\begin{block}{Result}
+144,286 serious reports $\to$ \textbf{68,500} matched (47.5\%)\\[4pt]
+Aggregated to quarterly counts per FEI
+\end{block}
+
+\vspace{8pt}
+\textbf{Sample coverage}\\[4pt]
+\begin{tabular}{ll}
+\toprule
+Metric & Value \\
+\midrule
+FEIs in crosswalk & 128 \\
+Unique ANDAs & 194 \\
+FEIs with AE data & 109 \\
+\bottomrule
+\end{tabular}
 \end{columns}
 \end{frame}
 
@@ -387,42 +423,6 @@ DI alone: a record was altered.\\[4pt]
 {\normalsize Are 483 text signals associated with future patient harm?\\[6pt]
 Among VAI facilities -- where FDA's label provides no differentiation --\\does text separate high- from low-harm producers?}
 \end{center}
-\end{frame}
-
-\begin{frame}{How We Measure Patient Harm: FAERS Adverse Event Attribution}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Serious outcomes only}
-\begin{itemize}
-  \item Death, hospitalization, life-threatening, disability, congenital anomaly
-  \item ``No outcome reported'' excluded (14.6\%)
-\end{itemize}
-
-\vspace{8pt}
-\textbf{ANDA-level attribution}
-\begin{itemize}
-  \item Each report carries \texttt{appl\_no} -- the manufacturer's application number
-  \item Linked to NDC-ANDA-FEI crosswalk to assign each AE to the producing facility
-\end{itemize}
-
-\column{0.47\textwidth}
-\begin{block}{Result}
-144,286 serious reports $\to$ \textbf{68,500} matched (47.5\%)\\[4pt]
-Aggregated to quarterly counts per FEI
-\end{block}
-
-\vspace{8pt}
-\textbf{Sample coverage}\\[4pt]
-\begin{tabular}{ll}
-\toprule
-Metric & Value \\
-\midrule
-FEIs in crosswalk & 128 \\
-Unique ANDAs & 194 \\
-FEIs with AE data & 109 \\
-\bottomrule
-\end{tabular}
-\end{columns}
 \end{frame}
 
 \begin{frame}{483 Text Signals: Do They Lead or Lag Patient Harm?}
