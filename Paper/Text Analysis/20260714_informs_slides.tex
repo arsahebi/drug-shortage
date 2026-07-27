@@ -480,7 +480,7 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{483 Text Best Predicts Harm in Facilities FDA Never Penalized}
+\begin{frame}{Do 483 Text Signals Carry Information? Evidence From the VAI-Only Subgroup}
 \begin{columns}[T]
 \column{0.50\textwidth}
 \textbf{AUC, 5-fold FEI-grouped CV (246 inspections, manufacturer-specific AEs):}
@@ -518,29 +518,11 @@ E & Text only, OAI-ever facilities & 0.537 & \\
 \textbf{OAI-ever (E):} Text adds little where enforcement has already acted -- consistent with OAI correcting the underlying problems.
 
 \vspace{5pt}
-\textbf{Takeaway:} 483 text carries signal precisely where FDA's classification provides none.
+\textbf{Takeaway:} 483 text carries detectable signal precisely where FDA's classification provides none -- using text features alone, with no volume or market controls.
+
+\vspace{5pt}
+{\footnotesize \textit{A complete prediction model would also incorporate facility size, market concentration, and pricing signals. The goal here is to isolate the unique contribution of inspection text.}}
 }
-\end{columns}
-\end{frame}
-
-% ── CASE STUDY ───────────────────────────────────────────────────────────────
-\begin{frame}{Illustrative Case: Sun Pharma Atorvastatin -- VAI Signals, Rising AEs, OAI Follow-up}
-\begin{columns}[T]
-\column{0.60\textwidth}
-\includegraphics[width=\linewidth]{figures/fei_case_study_3002807979.png}
-
-\column{0.37\textwidth}
-\begin{itemize}\small
-  \item \textbf{2018--19 (NAI):} Clean baseline, AEs $\approx$85/qtr
-  \item \textbf{Feb 2020 (VAI):} LC = 100\%, Contam = 100\%. No enforcement.
-  \item \textbf{2021--22:} AEs stay at 93--112/qtr. No return visit.
-  \item \textbf{Aug 2022 (OAI):} FDA escalates. AEs reach 140 at Q+4.
-\end{itemize}
-
-\vspace{4pt}
-\begin{block}{Takeaway}
-\small Sun Pharma was VAI-only at the 2020 visit -- 483 text from that inspection was associated with elevated AEs the following year. OAI followed in 2022.
-\end{block}
 \end{columns}
 \end{frame}
 
@@ -656,6 +638,28 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
 \appendix
 \section*{Backup Slides}
+
+{\setbeamercolor{background canvas}{bg=white}
+\begin{frame}{Backup: Sun Pharma Atorvastatin -- VAI Signals, Rising AEs, OAI Follow-up}
+\begin{columns}[T]
+\column{0.60\textwidth}
+\includegraphics[width=\linewidth]{figures/fei_case_study_3002807979.png}
+
+\column{0.37\textwidth}
+\begin{itemize}\small
+  \item \textbf{2018--19 (NAI):} Clean baseline, AEs $\approx$85/qtr
+  \item \textbf{Feb 2020 (VAI):} LC = 100\%, Contam = 100\%. No enforcement.
+  \item \textbf{2021--22:} AEs stay at 93--112/qtr. No return visit.
+  \item \textbf{Aug 2022 (OAI):} FDA escalates. AEs reach 140 at Q+4.
+\end{itemize}
+
+\vspace{4pt}
+\begin{block}{Takeaway}
+\small Sun Pharma was VAI-only at the 2020 visit -- 483 text from that inspection was associated with elevated AEs the following year. OAI followed in 2022.
+\end{block}
+\end{columns}
+\end{frame}
+}
 
 {\setbeamercolor{background canvas}{bg=white}
 \begin{frame}{Backup: Observation-Level Dimensions (1 of 2)}
