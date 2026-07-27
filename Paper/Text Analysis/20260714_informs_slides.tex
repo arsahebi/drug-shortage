@@ -76,36 +76,14 @@
 \section{Motivation}
 
 \begin{frame}{Generic Drug Quality: A Regulated Industry With Visibility Gaps}
-\begin{columns}[T]
-\column{0.52\textwidth}
 \begin{itemize}
-  \setlength{\itemsep}{8pt}
-  \item 90\% of U.S. prescriptions are generic drugs
-  \item FDA inspects each manufacturing facility roughly every 1--3 years
-  \item FDA monitors quality between visits through recalls, adverse event reports, and drug complaints -- but real-time visibility into ongoing manufacturing conditions is limited
-  \item Quality problems that go undetected between visits can escalate to recalls and supply disruptions -- FDA reports that \textbf{two-thirds of drug shortages} stem from manufacturing quality failures
+  \setlength{\itemsep}{9pt}
+  \item \textbf{90\%} of U.S. prescriptions are generic drugs -- scale makes quality oversight critical
+  \item FDA inspects each manufacturing facility \textbf{every 1--3 years} on average
+  \item Between visits, FDA receives quality signals through \textbf{recalls, adverse event reports, and drug complaints} -- but real-time insight into manufacturing conditions is limited
+  \item When problems go undetected, they can escalate: \textbf{FDA reports that two-thirds of drug shortages stem from manufacturing quality failures}
+  \item \textbf{Catching quality signals early} -- before they surface as patient harm or supply disruption -- is the central challenge
 \end{itemize}
-
-\column{0.45\textwidth}
-\vspace{10pt}
-\begin{tikzpicture}[x=0.80cm, y=0.85cm]
-  \draw[-{Stealth}, thick, color=ncsuGray!70] (0,0) -- (5.7,0)
-    node[right, font=\tiny, color=ncsuGray] {time};
-  \fill[ncsuRed!10] (0.5,0) rectangle (2.5,1.2);
-  \fill[ncsuRed!10] (2.5,0) rectangle (4.5,1.2);
-  \foreach \x/\yr in {0.5/2018, 2.5/2020, 4.5/2022} {
-    \draw[govGreen, thick] (\x,0) -- (\x,1.2);
-    \filldraw[govGreen] (\x,1.2) circle (0.10);
-    \node[font=\tiny, govGreen, above=1pt] at (\x,1.2) {\scriptsize FDA visit};
-    \node[font=\tiny, ncsuGray!80] at (\x,-0.35) {\yr};
-  }
-  \node[font=\scriptsize, ncsuRed, align=center] at (1.5,0.55) {$\approx$1--3 yr gap\\limited visibility};
-  \node[font=\scriptsize, ncsuRed, align=center] at (3.5,0.55) {$\approx$1--3 yr gap\\limited visibility};
-  \draw[-{Stealth}, ncsuGray!50, dashed] (0.5,-0.85) -- (4.5,-0.85);
-  \node[font=\scriptsize, ncsuGray, align=center] at (2.5,-1.2)
-    {patients receive drugs throughout};
-\end{tikzpicture}
-\end{columns}
 \end{frame}
 
 \begin{frame}{The Form 483: Detailed, FOIA'd, and Underused}
@@ -113,10 +91,13 @@
 \column{0.50\textwidth}
 \textbf{What is a Form 483?}
 \begin{itemize}
-  \item Issued only at the close of \emph{violative} inspections -- when GMP (Good Manufacturing Practice) deficiencies are found. Most inspections do not result in a 483.
-  \item Lists each GMP deficiency observed (typically 3--15 per visit), with inspector-written detail specific to that facility
-  \item Topics include contamination, data integrity, lab controls, and quality systems
-  \item Not publicly available -- must be FOIA'd. Our data was obtained through Redica, which acquires 483s systematically via FOIA.
+  \setlength{\itemsep}{6pt}
+  \item Issued only at \textbf{violative inspections} -- when GMP deficiencies are found
+  \item Most inspections \textbf{do not} result in a 483
+  \item \textbf{3--15 observations} per form, each with inspector-written detail specific to that facility
+  \item Covers contamination, data integrity, lab controls, quality systems
+  \item \textbf{Not public} -- obtained through FOIA; our data acquired via Redica
+  \item \textbf{Rich, facility-specific text} that carries information beyond the inspection outcome alone
 \end{itemize}
 
 \column{0.47\textwidth}
@@ -124,9 +105,6 @@
 \small
 ``Investigations into out-of-specification results are not conducted with a scientifically sound approach. Five OOS potency results were invalidated without adequate justification\ldots''
 \end{block}
-
-\vspace{8pt}
-{\small Plain regulatory prose, specific to each inspection. No structured database exists -- but the text has never been systematically used in research to predict future quality failures.}
 \end{columns}
 \end{frame}
 
