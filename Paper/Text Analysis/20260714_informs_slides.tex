@@ -487,19 +487,20 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 
 \vspace{4pt}
 {\small
-\begin{tabular}{clc}
+\begin{tabular}{clcc}
 \toprule
- & Feature set & LR AUC \\
+ & Feature set & LR AUC & \\
 \midrule
-A & Text only (17 LLM features) & 0.503 \\
-B & Text + inspection outcome flag & 0.527 \\
-C & Inspection outcome flag only & 0.539 \\
+A & Text only (17 LLM features) & 0.503 & \\
+B & Text + inspection outcome flag & 0.527 & \\
+C & Inspection outcome flag only & 0.539 & \\
 \midrule
-\multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} \\
+\multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} & \\
 \midrule
-\highlight{D} & \highlight{Text only, VAI-only facilities} & \highlight{0.586} \\
-E & Text only, OAI-ever facilities & 0.537 \\
+\highlight{D} & \highlight{Text only, VAI-only facilities} & \highlight{0.586} & $p{=}0.017$ \\
+E & Text only, OAI-ever facilities & 0.537 & \\
 \bottomrule
+\multicolumn{4}{l}{\scriptsize $p$ from one-tailed $t$-test vs.\ 0.5 across 5 CV folds}
 \end{tabular}
 }
 
@@ -508,16 +509,16 @@ E & Text only, OAI-ever facilities & 0.537 \\
 
 \column{0.47\textwidth}
 {\small
-\textbf{Full sample (A--C):} Text alone (A) is near random. Using only the inspection outcome -- a binary OAI-vs-non-OAI flag (C) -- is similarly weak.
+\textbf{Full sample (A--C):} Text alone is near random (0.503). The inspection outcome flag alone reaches only 0.539 -- even with the label, discrimination is weak.
 
 \vspace{5pt}
-\textbf{VAI-only (D):} Restricted to the 73 facilities never classified OAI. Text reaches \highlight{AUC\,=\,0.59} -- the inspection outcome has no variation here, so text is the only available signal.
+\textbf{VAI-only (D):} Among the 73 facilities FDA never penalized, text reaches \highlight{AUC\,=\,0.59} ($p{=}0.017$). This is not a strong classifier -- but it is detectable signal in a subgroup where no other differentiator exists.
 
 \vspace{5pt}
-\textbf{OAI-ever (E):} Restricted to facilities that received at least one OAI inspection. Text adds little -- enforcement may have corrected the underlying quality problems.
+\textbf{OAI-ever (E):} Text adds little where enforcement has already acted -- consistent with OAI correcting the underlying problems.
 
 \vspace{5pt}
-\textbf{Takeaway:} 483 text is most informative precisely where the inspection outcome label provides no differentiation.
+\textbf{Takeaway:} 483 text carries signal precisely where FDA's classification provides none.
 }
 \end{columns}
 \end{frame}
