@@ -273,7 +273,13 @@ FEIs with AE data & 109 \\
 \end{columns}
 
 \vspace{6pt}
-{\small \textbf{Same inspection. Two different domains.} Domain, severity, and patient risk are all implicit in the prose -- no structured fields, no shared schema. This is what the LLM reads.}
+{\small
+\begin{itemize}
+  \setlength{\itemsep}{3pt}
+  \item \textbf{Same inspection, two different domains} -- Data Integrity vs.\ Lab Controls, each carrying different risk implications
+  \item Domain, severity, and patient risk are embedded in the prose; there are no structured fields or shared schema -- extracting them requires reading the text
+\end{itemize}
+}
 \end{frame}
 
 \begin{frame}{Step 01: What the LLM Extracts and Why}
