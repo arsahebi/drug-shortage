@@ -441,55 +441,42 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{From Correlation to Prediction: The VAI-Only Test}
-\begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{Correlation (previous slide) vs.\ prediction:}
-
-\vspace{8pt}
-\begin{itemize}
-  \setlength{\itemsep}{7pt}
-  \item Correlation: each signal individually vs.\ AEs, all facilities pooled
-  \item Prediction: all 17 signals together $\to$ classify each inspection as high- or low-harm
-  \item Key addition: does text add information \emph{beyond} what the inspection outcome already tells us?
-\end{itemize}
-
-\column{0.45\textwidth}
-\textbf{Why VAI-only facilities are the critical test:}
-
-\vspace{8pt}
-\begin{itemize}
-  \setlength{\itemsep}{7pt}
-  \item FDA classifies every inspection as NAI, VAI, or OAI
-  \item 73 facilities in our sample were \emph{never} classified OAI -- every inspection ended as VAI
-  \item Within this group the outcome classification never varies, so it cannot differentiate facilities
-  \item Does 483 text still separate high- from low-harm producers here?
-\end{itemize}
-\end{columns}
-\end{frame}
-
 % ── SECTION 6: PREDICTIVE MODEL ──────────────────────────────────────────────
 \section{Predictive Model}
 
-\begin{frame}{Prediction Setup}
+\begin{frame}{From Correlation to Prediction: The VAI-Only Test}
 \begin{columns}[T]
-\column{0.52\textwidth}
+\column{0.50\textwidth}
+\textbf{Why VAI-only facilities are the critical test:}
+
+\vspace{6pt}
 \begin{itemize}
-  \item \textbf{Unit:} One inspection event
-  \item \textbf{Features:} \tech{17 LLM text signals} from the 483 at that inspection
-  \item \textbf{Outcome:} Above-median serious AEs in the post-inspection year
-        $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
-  \item \textbf{CV:} FEI-grouped 5-fold (no facility appears in both train and test)
-  \item \textbf{Model:} Logistic regression -- interpretable and well-suited for $n{=}246$ with 17 predictors
+  \setlength{\itemsep}{8pt}
+  \item 73 facilities in our sample were \emph{never} classified OAI -- every inspection ended as VAI or NAI
+  \item Within this group the outcome label never varies -- 483 text is the only available signal to differentiate facilities
 \end{itemize}
 
-\column{0.45\textwidth}
-\begin{alertblock}{AUC = 0.5 is the floor}
-The outcome is 50/50 by construction. A random classifier scores exactly 0.5.
+\vspace{10pt}
+\begin{alertblock}{Key question}
+\small Does 483 text separate high- from low-harm producers where FDA's classification cannot?
+\end{alertblock}
+
+\column{0.47\textwidth}
+\textbf{Prediction setup:}
 
 \vspace{4pt}
-Does 483 text beat that floor -- and does it add value beyond knowing the inspection outcome (NAI / VAI / OAI)?
-\end{alertblock}
+{\small
+\begin{itemize}
+  \setlength{\itemsep}{5pt}
+  \item \textbf{Unit:} one inspection event
+  \item \textbf{Features:} 17 LLM text signals from the 483
+  \item \textbf{Outcome:} above-median AEs in the post-inspection year
+        $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
+  \item \textbf{CV:} FEI-grouped 5-fold
+  \item \textbf{Model:} logistic regression
+  \item \textbf{Baseline:} AUC\,=\,0.5 (50/50 outcome by construction)
+\end{itemize}
+}
 \end{columns}
 \end{frame}
 
