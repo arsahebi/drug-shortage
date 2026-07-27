@@ -629,10 +629,22 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \end{itemize}
 \end{frame}
 
+% ── Q&A SLIDE ─────────────────────────────────────────────────────────────────
+
+\begin{frame}{}
+\begin{center}
+\vspace{2.2cm}
+{\Large \textbf{Questions \& Discussion}}\\[20pt]
+{\normalsize \texttt{amirreza.sahebi@gmail.com}}\\[8pt]
+{\normalsize Code: \texttt{github.com/arsahebi/drug-shortage}}
+\end{center}
+\end{frame}
+
 % ── BACKUP SLIDES ─────────────────────────────────────────────────────────────
 \appendix
 \section*{Backup Slides}
 
+% --- Case study ---
 {\setbeamercolor{background canvas}{bg=white}
 \begin{frame}{Backup: Sun Pharma Atorvastatin -- VAI Signals, Rising AEs, OAI Follow-up}
 \begin{columns}[T]
@@ -655,6 +667,28 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \end{frame}
 }
 
+% --- Study design: FAERS attribution ---
+\begin{frame}{Backup: FAERS Attribution -- Design Rationale}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Why Primary Suspect only?}\\[4pt]
+FAERS reports list all drugs a patient was taking. Only the PS was judged by the reporter to have caused the event. Including concomitant or interacting drugs would attribute AEs to bystander medications and inflate counts at every facility.
+
+\vspace{8pt}
+\textbf{Why first-word drug name match?}\\[4pt]
+``Atorvastatin Calcium'' in \texttt{prod\_ai} has two words. Any-word matching recovers a handful of missed combination products but mis-attributes ``Calcium'' rows to Calcium Gluconate FEIs. First-word-only is the safer tradeoff; the unmatched 0.9\% is negligible.
+
+\column{0.47\textwidth}
+\textbf{Why not a rate (AEs / volume)?}\\[4pt]
+SDUD Medicaid volume covers only 69\% of FEI-years. Dividing by a partially missing denominator introduces systematic bias -- facilities with missing SDUD look artificially high-risk. AE count enters as the raw outcome; $\log(\text{SDUD units})$ enters as a covariate when available.
+
+\vspace{8pt}
+\textbf{Why serious outcomes only?}\\[4pt]
+Non-serious reports are subject to much higher underreporting variability. Serious AEs have mandatory reporting paths (MedWatch, expedited), making the count more comparable across facilities and time periods.
+\end{columns}
+\end{frame}
+
+% --- LLM extraction: dimensions ---
 {\setbeamercolor{background canvas}{bg=white}
 \begin{frame}{Backup: Observation-Level Dimensions (1 of 2)}
 {\scriptsize\setlength{\tabcolsep}{4pt}
@@ -691,11 +725,12 @@ Remediation & Corrective action language present or absent & Absence expected in
 \end{frame}
 }
 
-\begin{frame}{Backup: Inspection-Level Features -- All 17}
+% --- All 17 features ---
+\begin{frame}{Backup: All 17 Inspection-Level Features}
 \begin{columns}[T]
 \column{0.50\textwidth}
 {\scriptsize
-\textbf{Share} {\tiny(fraction of observations)}
+\textbf{Share features} {\tiny(fraction of observations per inspection)}
 \begin{itemize}
   \setlength{\itemsep}{1pt}
   \item \texttt{vc\_labcontrols\_share} -- Lab Controls
@@ -713,7 +748,7 @@ Remediation & Corrective action language present or absent & Absence expected in
 
 \column{0.47\textwidth}
 {\scriptsize
-\textbf{Count} {\tiny(raw number of observations)}
+\textbf{Count features} {\tiny(raw observation count)}
 \begin{itemize}
   \setlength{\itemsep}{1pt}
   \item \texttt{n\_labcontrols\_obs} -- Lab Controls
@@ -721,7 +756,7 @@ Remediation & Corrective action language present or absent & Absence expected in
 \end{itemize}
 
 \vspace{6pt}
-\textbf{Co-occurrence} {\tiny(1 if both signals in same inspection)}
+\textbf{Co-occurrence flags} {\tiny(1 if both signals present in same inspection)}
 \begin{itemize}
   \setlength{\itemsep}{1pt}
   \item \texttt{joint\_labcontrols\_dataintegrity}
@@ -734,7 +769,63 @@ Remediation & Corrective action language present or absent & Absence expected in
 \end{columns}
 \end{frame}
 
-\begin{frame}{Backup: Inspection Gap -- AEs Rise Before FDA Arrives}
+% --- Correlation heatmap ---
+\begin{frame}{Backup: Correlation Heatmap -- All Features, All Lags}
+\begin{center}
+\includegraphics[width=0.86\textwidth]{figures/lag_heatmap.png}
+\end{center}
+\vspace{-6pt}
+{\scriptsize Full Q0--Q+4 range shown (main slides use Q-2/Q+2 snapshots). Lab Controls cluster grows from Q0 to Q+4; severity is significant across all lags; data integrity is flat. ANDA-specific AEs, $n=148$.}
+\end{frame}
+
+% --- Inspection gap distribution ---
+\begin{frame}{Backup: Inspection Gap Distribution}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{All drug facilities (23,604 FEIs, 27,431 gap pairs):}
+\vspace{4pt}
+\begin{tabular}{lc}
+\toprule
+Percentile & Gap (years) \\
+\midrule
+P10 & 0.16 \\
+P25 & 1.01 \\
+P50 (median) & 2.11 \\
+P75 & 3.70 \\
+P90 & 5.81 \\
+P95 & 7.17 \\
+Max & 16.26 \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+Gaps $>$ 3yr: 33.3\% of pairs\\
+Gaps $>$ 2yr: 52.7\% of pairs\\
+Gaps $<$ 1yr: 24.6\% of pairs
+
+\column{0.47\textwidth}
+\textbf{By previous inspection classification (our 98 FEIs):}
+\vspace{4pt}
+\begin{tabular}{lccc}
+\toprule
+Prev. class & Mean gap & Median gap & $n$ \\
+\midrule
+NAI & 1.78yr & 1.44yr & 193 \\
+VAI & 1.77yr & 1.55yr & 372 \\
+OAI & \highlight{1.55yr} & 1.41yr & 47 \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+OAI facilities are re-inspected slightly faster, but the difference is small ($\Delta = 0.22$ yr).
+
+\vspace{4pt}
+Post-COVID gap expansion: pre-2020 median = 1.33yr $\to$ post-2022 median = 4.04yr
+\end{columns}
+\end{frame}
+
+% --- Inspection gap: AEs rise ---
+\begin{frame}{Backup: AEs Rise in the Year Before FDA Arrives}
 \begin{columns}[T]
 \column{0.62\textwidth}
 {\small \textbf{AE trajectory by gap since previous inspection} (237 inspections, manufacturer-specific AEs):}
@@ -765,14 +856,15 @@ $>$2yr: deep in quiet window -- no enforcement anchor.}
 {\small Only the 1--2yr group has a clean baseline. The 37\% pre-inspection rise is real quality drift, not a measurement artifact.}
 
 \vspace{6pt}
-{\small Persist = 0.78 for this group: enforcement works when FDA arrives. But harm was occurring during the entire rising period.}
+{\small Persist = 0.78 for this group: enforcement works when FDA arrives. But harm was occurring throughout the rising period.}
 
 \vspace{6pt}
-{\small FDA's SSM uses AEs and recalls to rank facilities. Rising AEs are part of why FDA visits -- the system is reactive by design. The prior 483 text was available during this rising period before the SSM had any signal.}
+{\small AEs were already rising before FDA arrived -- the quality problem preceded the visit. The 483 text captures what inspectors found at the end of this drift.}
 \end{columns}
 \end{frame}
 
-\begin{frame}{Backup: Volume Control — SDUD Medicaid Utilization}
+% --- Volume control ---
+\begin{frame}{Backup: Volume Control -- SDUD Medicaid Utilization}
 \begin{columns}[T]
 \column{0.52\textwidth}
 A larger manufacturer generates more FAERS reports at the same defect rate. Raw AE counts conflate facility size with quality.
@@ -814,6 +906,7 @@ SDUD covers Medicaid only ($\sim$20\% of market). IQVIA commercial data needed f
 \end{columns}
 \end{frame}
 
+% --- Quarterly trajectory ---
 \begin{frame}{Backup: Quarterly Trajectory by OAI vs VAI/NAI Classification}
 \begin{columns}[T]
 \column{0.55\textwidth}
@@ -856,7 +949,8 @@ persist & & 0.965 & 1.073 \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{Backup: Reverse Flow -- AE Trajectory Clustering (Drug-Level)}
+% --- Trajectory clustering ---
+\begin{frame}{Backup: AE Trajectory Clustering (Drug-Level)}
 \begin{columns}[T]
 \column{0.54\textwidth}
 {\small Each facility summarized as one row (median across inspection events); \textbf{t here is years}, not quarters.}
@@ -884,7 +978,7 @@ pre\_rise = AE$_{t0}$/AE$_{t-2}$; persist = AE$_{t+2}$/AE$_{t0}$}
 
 \column{0.43\textwidth}
 {\small
-\textbf{Flat/rising (3 FEIs):} AEs 4.6$\times$ higher at inspection than 2 years prior, keep rising after. Zero OAI ever. These are the silent cases the clustering finds without any text label.
+\textbf{Flat/rising (3 FEIs):} AEs 4.6$\times$ higher at inspection than 2 years prior, keep rising after. Zero OAI ever. Silent cases the clustering identifies without any text label.
 
 \vspace{6pt}
 \textbf{Spike-correct (28):} Highest tech score (0.62), some OAI, AEs declining post-inspection. System responding.
@@ -899,189 +993,6 @@ pre\_rise = AE$_{t0}$/AE$_{t-2}$; persist = AE$_{t+2}$/AE$_{t0}$}
 
 \vspace{4pt}
 {\scriptsize Note: drug-level AE counts (all manufacturers pooled). ANDA-specific attribution collapses most clusters; drug-level version shown for reference.}
-\end{frame}
-
-\begin{frame}{Backup: FAERS Filtering — Design Rationale}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Why Primary Suspect only?}\\[4pt]
-FAERS reports list all drugs a patient was taking. Only the PS was judged by the reporter to have caused the event. Including concomitant or interacting drugs would attribute AEs to bystander medications and inflate counts at every facility.
-
-\vspace{8pt}
-\textbf{Why first-word name match?}\\[4pt]
-``Atorvastatin Calcium'' in \texttt{prod\_ai} has two words. Any-word matching recovers a handful of missed combination products but mis-attributes ``Calcium'' rows to Calcium Gluconate FEIs. First-word-only is the safer tradeoff; the unmatched 0.9\% is negligible.
-
-\column{0.47\textwidth}
-\textbf{Why not a rate (AEs / volume)?}\\[4pt]
-SDUD Medicaid volume covers only 69\% of FEI-years. Dividing by a partially missing denominator introduces systematic bias — facilities with missing SDUD look artificially high-risk. AE count enters as the raw outcome; $\log(\text{SDUD units})$ enters as a covariate when available.
-
-\vspace{8pt}
-\textbf{Why serious outcomes only?}\\[4pt]
-Non-serious reports are subject to much higher underreporting variability. Serious AEs have mandatory reporting paths (MedWatch, expedited), making the count more comparable across facilities and time periods.
-\end{columns}
-\end{frame}
-
-\begin{frame}{Backup: Correlation Heatmap — All Features, All Lags}
-\begin{center}
-\includegraphics[width=0.86\textwidth]{figures/lag_heatmap.png}
-\end{center}
-\vspace{-6pt}
-{\scriptsize Top 12 features by $|\rho|$ at Q+4, ANDA-specific AEs, $n=148$. Lab Controls cluster (top rows) shows systematic growth from Q0 to Q+4; severity is contemporaneous; data integrity is flat.}
-\end{frame}
-
-\begin{frame}{Backup: Full Feature List (17 LLM Features)}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Layer 3 — LLM signal shares} (per inspection):
-\vspace{4pt}
-\begin{tabular}{ll}
-\toprule
-Feature & What it captures \\
-\midrule
-\texttt{severity\_critmajor\_share} & Fraction Crit/Major obs \\
-\texttt{contamination\_llm\_share} & Contamination flag rate \\
-\texttt{data\_integrity\_llm\_share} & DI flag rate \\
-\texttt{patient\_risk\_llm\_share} & Direct patient risk flag \\
-\texttt{investigation\_llm\_share} & Investigation failure rate \\
-\texttt{repeat\_cross\_insp\_share} & Repeat observation rate \\
-\texttt{scope\_facilitywide\_share} & Facility-wide scope share \\
-\texttt{cultural\_root\_cause\_share} & Cultural/systemic root cause \\
-\texttt{vc\_labcontrols\_share} & Lab Controls domain share \\
-\texttt{vc\_qualitysystem\_share} & Quality System domain share \\
-\bottomrule
-\end{tabular}
-
-\column{0.47\textwidth}
-\textbf{Layer 5 — Counts \& joint co-occurrence flags}:
-\vspace{4pt}
-\begin{tabular}{ll}
-\toprule
-Feature & What it captures \\
-\midrule
-\texttt{n\_labcontrols\_obs} & Raw Lab Controls obs count \\
-\texttt{n\_qualitysystem\_obs} & Raw Quality System obs count \\
-\midrule
-\texttt{joint\_labcontrols\_qualitysystem} & Both domains present \\
-\texttt{joint\_labcontrols\_dataintegrity} & Lab Controls + DI present \\
-\texttt{joint\_contamination\_labcontrols} & Contamination + Lab ctrl \\
-\texttt{joint\_qualitysystem\_production} & QSys + Production \\
-\texttt{multi\_domain\_insp} & $\ge$3 domains in inspection \\
-\bottomrule
-\end{tabular}
-
-\vspace{6pt}
-\textbf{Aggregation}: Per inspection snapshot (one row per inspection event in timeseries).
-\end{columns}
-\end{frame}
-
-\begin{frame}{Backup: Inspection Gap Distribution Detail}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{All drug facilities (23,604 FEIs, 27,431 gap pairs):}
-\vspace{4pt}
-\begin{tabular}{lc}
-\toprule
-Percentile & Gap (years) \\
-\midrule
-P10 & 0.16 \\
-P25 & 1.01 \\
-P50 (median) & 2.11 \\
-P75 & 3.70 \\
-P90 & 5.81 \\
-P95 & 7.17 \\
-Max & 16.26 \\
-\bottomrule
-\end{tabular}
-
-\vspace{6pt}
-Gaps $>$ 3yr: 33.3\% of pairs\\
-Gaps $>$ 2yr: 52.7\% of pairs\\
-Gaps $<$ 1yr: 24.6\% of pairs
-
-\column{0.47\textwidth}
-\textbf{By previous inspection classification (our 98 FEIs):}
-\vspace{4pt}
-\begin{tabular}{lccc}
-\toprule
-Prev. class & Mean gap & Median gap & $n$ \\
-\midrule
-NAI & 1.78yr & 1.44yr & 193 \\
-VAI & 1.77yr & 1.55yr & 372 \\
-OAI & \highlight{1.55yr} & 1.41yr & 47 \\
-\bottomrule
-\end{tabular}
-
-\vspace{6pt}
-\textbf{Finding}: OAI facilities are re-inspected slightly faster (1.55 vs 1.77 mean), but the difference is small ($\Delta = 0.22$ yr). FDA does not dramatically accelerate follow-up for OAI facilities in this sample.
-
-\vspace{4pt}
-Post-COVID gap expansion: pre-2020 median = 1.33yr $\to$ post-2022 median = 4.04yr
-\end{columns}
-\end{frame}
-
-\begin{frame}{Backup: Reverse Cluster Profiles (Full Detail)}
-\textbf{KMeans ($k=4$) on trajectory features, one row per FEI (98 FEIs):}
-
-\vspace{6pt}
-\begin{tabular}{lccccccccc}
-\toprule
-Cluster & $n$ & AE $t_{-2}$ & AE $t_0$ & AE $t_{+2}$ & slope\_pre & slope\_post & persist & pre\_rise & tech\_score \\
-\midrule
-Flat/rising & 3 & 13 & 51 & 59 & 19.3 & 3.7 & 0.955 & 4.629 & 0.389 \\
-Spike-correct & 28 & 3120 & 3420 & 3365 & 149.9 & $-$94.8 & 0.934 & 1.140 & \highlight{0.624} \\
-Slow-decline & 66 & 2300 & 2264 & 2125 & $-$18.1 & $-$86.1 & 0.874 & 1.025 & 0.332 \\
-Flat-low & 2 & 6685 & 7386 & 2212 & 350.5 & $-$2586.8 & 0.300 & 1.105 & 0.417 \\
-\bottomrule
-\end{tabular}
-
-\vspace{8pt}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{Flat/rising FEIs (strategic leniency candidates):}
-\begin{itemize}
-  \item FEI 3002608066: vc\_labcontrols=0.67, DI=0.67, persist=1.20
-  \item FEI 3010453141: persist=1.20, tech\_score=0.00 (signals absent — AE rise may be volume-driven)
-  \item FEI 3017573557: persist=0.46, tech\_score=0.30
-\end{itemize}
-\column{0.48\textwidth}
-\textbf{Flat-low FEIs (event-driven):}
-\begin{itemize}
-  \item 2 FEIs with 7,000+ AEs at $t=0$ declining to $\sim$2,200 by $t+2$ (persist=0.30)
-  \item Likely a product recall or market withdrawal — not inspection-driven correction
-  \item Zero OAI: supports proactive voluntary withdrawal before enforcement
-\end{itemize}
-\end{columns}
-\end{frame}
-
-\begin{frame}{Backup: Panel Files and Pipeline Outputs}
-\begin{tabular}{lll}
-\toprule
-File & Location & Content \\
-\midrule
-\texttt{fei\_ae\_panel.parquet} & \texttt{ae\_validation/outputs/} & Yearly, 645 rows, 29 cols \\
-\texttt{fei\_ae\_panel\_quarterly.parquet} & same & Calendar-quarter, 2470 rows \\
-\texttt{fei\_ae\_panel\_inspection\_centered.parquet} & same & Inspection-event, 246 rows \\
-\texttt{ablation\_metrics.csv} & \texttt{outputs/models/} & AUC/AP for configs A–E \\
-\texttt{ae\_trajectory\_by\_group.csv} & \texttt{outputs/tables/} & Yearly traj. by OAI/VAI group \\
-\texttt{high\_signal\_vai\_flagged.csv} & same & 20 high-signal VAI FEIs \\
-\texttt{ae\_cluster\_summary.csv} & same & Cluster mean profiles \\
-\texttt{ae\_cluster\_fei\_list.csv} & same & FEI-level cluster labels \\
-\midrule
-\texttt{ablation\_auc\_bar.png} & \texttt{outputs/figures/} & Bar chart configs A–E \\
-\texttt{rf\_feature\_importance.png} & same & RF MDI importances \\
-\texttt{ae\_trajectory\_by\_group.png} & same & 5-point trajectory plot \\
-\texttt{ae\_cluster\_trajectories.png} & same & Cluster trajectory lines \\
-\bottomrule
-\end{tabular}
-
-\vspace{8pt}
-\textbf{Pipeline entry points:}\\[4pt]
-\begin{tabular}{ll}
-\texttt{python 01\_build\_fei\_ae\_panel.py --granularity yearly} & Yearly panel + SDUD \\
-\texttt{python 01\_build\_fei\_ae\_panel.py --granularity inspection} & Inspection-centered quarterly \\
-\texttt{python 03\_text\_only\_model.py} & Ablation + trajectory analysis \\
-\texttt{python 04\_ae\_trajectory\_clustering.py} & Reverse clustering \\
-\end{tabular}
 \end{frame}
 
 \end{document}
