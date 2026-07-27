@@ -408,34 +408,34 @@ Among VAI facilities -- where FDA's label provides no differentiation --\\does t
 \end{center}
 \end{frame}
 
-\begin{frame}{483 Severity Signal: The Quality Problem Predates the FDA Visit}
+\begin{frame}{483 Text Signals: Two Snapshots, Two Different Stories}
 \begin{columns}[T]
 \column{0.56\textwidth}
-\textbf{Spearman $\rho$ one quarter before inspection (Q-1) and at inspection (Q0), manufacturer-specific AEs:}
+\textbf{Spearman $\rho$ six months before (Q-2) and six months after (Q+2) inspection, manufacturer-specific AEs:}
 
 \vspace{4pt}
 {\small
 \begin{tabular}{lcclc}
 \toprule
-Feature & $\rho_{\text{Q-1}}$ & & $\rho_{\text{Q0}}$ & \\
+Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \midrule
-\texttt{severity\_critmajor}    & \tech{+0.18} & *  & \tech{+0.23} & ** \\
-\texttt{data\_integrity\_flag}  & +0.13 &    & +0.14 &    \\
-\texttt{n\_labcontrols\_obs}    & +0.15 &    & +0.10 &    \\
-\texttt{vc\_labcontrols\_share} & +0.14 &    & +0.07 &    \\
+\texttt{severity\_critmajor}    & \tech{+0.16} & *   & \tech{+0.29} & *** \\
+\texttt{n\_labcontrols\_obs}    & +0.13 &     & \tech{+0.18} & *   \\
+\texttt{vc\_labcontrols\_share} & +0.09 &     & +0.13        &     \\
+\texttt{data\_integrity\_flag}  & +0.06 &     & +0.09        &     \\
 \midrule
-\texttt{cultural\_root\_cause}  & $-$0.04 &    & +0.03 &    \\
+\texttt{cultural\_root\_cause}  & $-$0.06 &   & $-$0.12      &     \\
 \bottomrule
-\multicolumn{5}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$ \quad Full heatmap: backup slide}
+\multicolumn{5}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$ \quad Full heatmap: backup slide}
 \end{tabular}
 }
 
 \column{0.41\textwidth}
 \begin{itemize}
   \setlength{\itemsep}{8pt}
-  \item \textbf{Severity} is the clearest signal -- significant both before (Q-1) and at the time of inspection (Q0)
-  \item Facilities with more severe 483 findings were already generating more AEs before FDA arrived -- the problem was present before the visit
-  \item Lab Controls and DI features are positive but not statistically significant at Q0
+  \item \textbf{Before the visit (Q-2):} severity is already significant -- facilities with more severe findings were generating more AEs before FDA arrived
+  \item \textbf{After the visit (Q+2):} Lab Controls joins as a significant signal, and severity strengthens further
+  \item Two different features dominate at two different moments -- severity captures what is already happening; Lab Controls predicts what follows
 \end{itemize}
 
 \end{columns}
