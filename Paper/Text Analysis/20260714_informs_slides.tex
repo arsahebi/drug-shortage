@@ -408,35 +408,34 @@ Among VAI facilities -- where FDA's label provides no differentiation --\\does t
 \end{center}
 \end{frame}
 
-\begin{frame}{483 Text Signals: Do They Lead or Lag Patient Harm?}
+\begin{frame}{483 Severity Signal: The Quality Problem Predates the FDA Visit}
 \begin{columns}[T]
 \column{0.56\textwidth}
-\textbf{Spearman $\rho$ at inspection quarter (Q0) vs.\ one year later (Q+4), manufacturer-specific AEs:}
+\textbf{Spearman $\rho$ one quarter before inspection (Q-1) and at inspection (Q0), manufacturer-specific AEs:}
 
 \vspace{4pt}
 {\small
 \begin{tabular}{lcclc}
 \toprule
-Feature & $\rho_{\text{Q0}}$ & & $\rho_{\text{Q+4}}$ & \\
+Feature & $\rho_{\text{Q-1}}$ & & $\rho_{\text{Q0}}$ & \\
 \midrule
-\texttt{n\_labcontrols\_obs}    & +0.10 &    & \tech{+0.28} & *** \\
-\texttt{joint\_labctrl\_di}     & +0.07 &    & \tech{+0.26} & **  \\
-\texttt{joint\_contam\_labctrl} & +0.05 &    & \tech{+0.23} & **  \\
-\texttt{vc\_labcontrols\_share} & +0.07 &    & \tech{+0.20} & *   \\
-\texttt{severity\_critmajor}    & +0.23 & ** & +0.20        & *   \\
+\texttt{severity\_critmajor}    & \tech{+0.18} & *  & \tech{+0.23} & ** \\
+\texttt{data\_integrity\_flag}  & +0.13 &    & +0.14 &    \\
+\texttt{n\_labcontrols\_obs}    & +0.15 &    & +0.10 &    \\
+\texttt{vc\_labcontrols\_share} & +0.14 &    & +0.07 &    \\
 \midrule
-\texttt{data\_integrity\_flag}  & +0.14 &    & +0.06        &     \\
-\texttt{cultural\_root\_cause}  & +0.03 &    & +0.01        &     \\
+\texttt{cultural\_root\_cause}  & $-$0.04 &    & +0.03 &    \\
 \bottomrule
-\multicolumn{5}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$ \quad Full heatmap: backup slide}
+\multicolumn{5}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$ \quad Full heatmap: backup slide}
 \end{tabular}
 }
 
 \column{0.41\textwidth}
 \begin{itemize}
-  \item \textbf{Lab Controls} features: near-zero at Q0, grow to 0.20--0.28 at Q+4
-  \item \textbf{Severity} is contemporaneous -- strong at Q0, flat after
-  \item \textbf{Data integrity} shows no significant association at any lag
+  \setlength{\itemsep}{8pt}
+  \item \textbf{Severity} is the clearest signal -- significant both before (Q-1) and at the time of inspection (Q0)
+  \item Facilities with more severe 483 findings were already generating more AEs before FDA arrived -- the problem was present before the visit
+  \item Lab Controls and DI features are positive but not statistically significant at Q0
 \end{itemize}
 
 \end{columns}
