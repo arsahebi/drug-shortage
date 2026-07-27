@@ -348,11 +348,18 @@ FEIs with AE data & 109 \\
 Dimension & Extracted value & Rationale \\
 \midrule
 Severity & \textbf{Major} & confirmed defect; records reconstructed \\
-DI flag & \textbf{True} & reconstructed entries = DI trigger \\
-Root cause & \textbf{Cultural} & behavioral / management gap \\
-Remediation & \textbf{None} & no corrective action language \\
+DI flag  & \textbf{True}  & reconstructed entries = DI trigger \\
 \bottomrule
 \end{tabular}
+}
+
+\vspace{8pt}
+{\small
+\begin{itemize}
+  \setlength{\itemsep}{5pt}
+  \item Fixed JSON schema prevents the model from adding or inventing fields
+  \item Future work: benchmark multiple LLMs for robustness, guided by the human-in-the-loop verification Redica provides
+\end{itemize}
 }
 
 \column{0.39\textwidth}
@@ -363,7 +370,6 @@ Remediation & \textbf{None} & no corrective action language \\
   \setlength{\itemsep}{5pt}
   \item LLMs achieve 93--97\% agreement with human annotators on structured extraction from FDA regulatory documents (Li et al., \textit{NPJ Digit.\ Med.}, 2026)
   \item Prompt definitions reviewed by Redica GMP specialists (June 2026) -- key dimensions align with industry practice
-  \item Fixed JSON schema prevents the model from adding or inventing fields
   \item Ground-truth human labeling is in progress; findings should be treated as preliminary
 \end{itemize}
 \end{columns}
