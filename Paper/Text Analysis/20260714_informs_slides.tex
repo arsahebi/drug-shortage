@@ -504,25 +504,19 @@ E & Text only, OAI-ever facilities & 0.537 & \\
 \end{tabular}
 }
 
-\vspace{6pt}
-{\small Config D: 73 VAI-only FEIs, 165 inspections. FDA never classified any inspection as OAI at these facilities -- the inspection outcome flag has no variation, so text is the only predictor available.}
+\vspace{4pt}
+{\small Config D: 73 VAI-only FEIs, 165 inspections.}
 
 \column{0.47\textwidth}
-{\small
-\textbf{Full sample (A--C):} Text alone is near random (0.503). The inspection outcome flag alone reaches only 0.539 -- even with the label, discrimination is weak.
+\begin{itemize}
+  \setlength{\itemsep}{7pt}
+  \item \textbf{Full sample (A--C):} text alone near random; inspection outcome flag similarly weak (0.539)
+  \item \textbf{VAI-only (D):} text reaches \highlight{AUC\,=\,0.59} ($p{=}0.017$) -- detectable signal in the subgroup where the outcome label provides no differentiation
+  \item \textbf{OAI-ever (E):} text adds little -- enforcement may have corrected the underlying problems
+\end{itemize}
 
-\vspace{5pt}
-\textbf{VAI-only (D):} Among the 73 facilities FDA never penalized, text reaches \highlight{AUC\,=\,0.59} ($p{=}0.017$). This is not a strong classifier -- but it is detectable signal in a subgroup where no other differentiator exists.
-
-\vspace{5pt}
-\textbf{OAI-ever (E):} Text adds little where enforcement has already acted -- consistent with OAI correcting the underlying problems.
-
-\vspace{5pt}
-\textbf{Takeaway:} 483 text carries detectable signal precisely where FDA's classification provides none -- using text features alone, with no volume or market controls.
-
-\vspace{5pt}
-{\footnotesize \textit{A complete prediction model would also incorporate facility size, market concentration, and pricing signals. The goal here is to isolate the unique contribution of inspection text.}}
-}
+\vspace{8pt}
+{\footnotesize \textit{Text features only -- no volume or market controls. Goal: isolate the unique contribution of 483 inspection text.}}
 \end{columns}
 \end{frame}
 
@@ -571,7 +565,7 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \begin{itemize}
   \setlength{\itemsep}{9pt}
   \item Hi-sig VAI facilities produce \textbf{63\% more AEs at Q+4} than Lo-sig VAI (49 vs.\ 30), yet carry the same FDA label. Named examples show persistent AE increases with no OAI classification.
-  \item \textbf{OAI$\to$VAI downgrade:} FDA may reclassify inspections to avoid enforcement, particularly under shortage pressure -- and downgraded sites show worse patient outcomes (Gray et al.).
+  \item \textbf{OAI$\to$VAI downgrade:} investigative reporting (ProPublica, Bloomberg) documents cases where FDA reclassified OAI inspections to VAI, often under drug shortage pressure -- downgraded facilities show worse subsequent patient outcomes.
   \item Alternatively, observations stayed below the OAI threshold or inspections did not surface the true severity of deficiencies.
 \end{itemize}
 \end{columns}
