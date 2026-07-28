@@ -62,7 +62,7 @@
   $^{1}$Poole College of Management, North Carolina State University\texorpdfstring{\\}{ }
   $^{2}$Fisher College of Business, The Ohio State University}}
 
-\date{INFORMS Annual Meeting 2026}
+\date{INFORMS Healthcare Conference 2026}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
@@ -76,70 +76,103 @@
 \section{Motivation}
 
 \begin{frame}{Generic Drug Quality: A Regulated Industry With Visibility Gaps}
-\begin{itemize}
-  \setlength{\itemsep}{9pt}
-  \item \textbf{90\%} of U.S. prescriptions are generic drugs -- scale makes quality oversight critical
-  \item FDA inspects each manufacturing facility \textbf{every 1--3 years} on average
-  \item Between visits, FDA receives quality signals through \textbf{recalls, adverse event reports, and drug complaints} -- but real-time insight into manufacturing conditions is limited
-  \item When problems go undetected, they can escalate: \textbf{FDA reports that two-thirds of drug shortages stem from manufacturing quality failures}
-  \item \textbf{Catching quality signals early} -- before they surface as patient harm or supply disruption -- is the central challenge
-\end{itemize}
-\end{frame}
-
-\begin{frame}{The Form 483: Detailed, FOIA'd, and Underused}
 \begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{What is a Form 483?}
+\column{0.54\textwidth}
 \begin{itemize}
-  \setlength{\itemsep}{6pt}
-  \item Issued only at \textbf{violative inspections} -- when GMP deficiencies are found
-  \item Most inspections \textbf{do not} result in a 483
-  \item \textbf{3--15 observations} per form, each with inspector-written detail specific to that facility
-  \item Covers contamination, data integrity, lab controls, quality systems
-  \item \textbf{Not public} -- obtained through FOIA; our data acquired via Redica
-  \item \textbf{Rich, facility-specific text} that carries information beyond the inspection outcome alone
+  \setlength{\itemsep}{8pt}
+  \item<1-> \textbf{90\%} of U.S. prescriptions are generic drugs
+  \item<2-> FDA inspects each facility \textbf{every 1--3 years} on average
+  \item<3-> Between visits: limited real-time insight into manufacturing conditions
+  \item<4-> Undetected problems trigger recalls and enforcement actions -- manufacturing quality is the \textbf{leading cause} of drug shortages
+  \item<5-> \textbf{Catching signals early} -- before patient harm or supply disruption -- is the central challenge
 \end{itemize}
 
-\column{0.47\textwidth}
-\begin{block}{Example observation (paraphrased)}
-\small
-``Investigations into out-of-specification results are not conducted with a scientifically sound approach. Five OOS potency results were invalidated without adequate justification\ldots''
-\end{block}
+\column{0.43\textwidth}
+\vspace{8pt}
+\begin{tikzpicture}[
+  box/.style={rectangle, rounded corners=3pt, draw, minimum width=3.0cm,
+              minimum height=0.65cm, font=\small, align=center},
+  arr/.style={-{Stealth}, thick}
+]
+\node[box, fill=govGreen!20, draw=govGreen] (insp) {Inspection};
+\node[box, fill=warnOrange!15, draw=warnOrange, below=1.3cm of insp] (drift)
+  {Quality drifts\\[-2pt]{\scriptsize undetected}};
+\node[box, fill=ncsuRed!12, draw=ncsuRed, below=1.1cm of drift] (harm)
+  {Patient harm\\[-2pt]{\scriptsize + shortage risk}};
+\draw[arr] (insp) -- node[right, font=\scriptsize, text=ncsuGray] {1--3 yr gap} (drift);
+\draw[arr] (drift) -- (harm);
+\end{tikzpicture}
 \end{columns}
 \end{frame}
 
-\begin{frame}{FDA Inspection Outcomes and the Targeting Gap}
+\begin{frame}{FDA Form 483: Structure and the Classification Gap}
 \begin{columns}[T]
-\column{0.52\textwidth}
-\textbf{Three inspection outcomes:}
-\begin{itemize}
-  \item \textcolor{govGreen}{\textbf{NAI}} -- No Action Indicated
-  \item \textcolor{warnOrange}{\textbf{VAI}} -- Voluntary Action Indicated
-  \item \textcolor{ncsuRed}{\textbf{OAI}} -- Official Action Indicated: FDA mandates corrective action
-\end{itemize}
+\column{0.40\textwidth}
 
-\vspace{8pt}
-\textbf{FDA's Site Selection Model (SSM)} scores each facility using:
-\begin{itemize}
-  \item Compliance history (NAI/VAI/OAI outcome)
-  \item Recalls and field alert reports
-  \item Patient exposure and inherent product risk
-  \item Time since last inspection
-\end{itemize}
-
-\column{0.45\textwidth}
-\textbf{The gap this creates:}
-\begin{itemize}
-  \item Most VAI facilities carry the same outcome label -- no structured public signal differentiates them
-  \item 483 text must be FOIA'd and takes time to obtain -- but once available, it captures deficiency detail that predates recalls and adverse events
-  \item The detailed content of 483 observations has not been used in research for quality prediction
-\end{itemize}
+{\small \textbf{After each FDA facility inspection:}}
 
 \vspace{6pt}
+{\small
+\textbf{Day of close:} \textbf{Form 483} issued \textit{if violations found} -- inspector-written list of deficiencies\\[5pt]
+\textbf{Back at office:} \textbf{EIR} (Establishment Inspection Report) -- full narrative, exhibits, company responses\\[5pt]
+\textbf{Later:} FDA assigns final classification\\[4pt]
+\quad \textcolor{govGreen}{\textbf{NAI}} ~\textcolor{ncsuGray}{\small No Action}\\
+\quad \textcolor{warnOrange}{\textbf{VAI}} ~\textcolor{ncsuGray}{\small Voluntary Action}\\
+\quad \textcolor{ncsuRed}{\textbf{OAI}} ~\textcolor{ncsuGray}{\small Official Action}
+}
+
+\vspace{8pt}
+\begin{itemize}
+  \setlength{\itemsep}{6pt}
+  \item<2-> We have \textbf{483 text} (via Redica/FOIA) -- EIR not yet accessible
+  \item<3-> Relying on three labels alone \textbf{discards} most of what the inspection produced -- 483 text carries what the label does not
+\end{itemize}
+
+\column{0.57\textwidth}
+\begin{center}
+\begin{tikzpicture}[scale=0.84]
+\draw[rounded corners=3pt, thick, draw=ncsuGray!60, fill=white]
+  (0,0) rectangle (6.5,5.0);
+\fill[ncsuRed!85] (0,4.3) rectangle (6.5,5.0);
+\node[white, font=\small\bfseries] at (3.25,4.72) {FORM FDA 483};
+\node[white, font=\scriptsize] at (3.25,4.43) {Inspectional Observations};
+\node[right, font=\scriptsize, text=ncsuGray] at (0.2,4.12)
+  {Firm:~Sun Pharma, Mohali, India};
+\node[right, font=\scriptsize, text=ncsuGray] at (0.2,3.88)
+  {FEI:~3002807979 \quad Date:~Aug 22, 2022};
+\draw[ncsuGray!40] (0.1,3.72) -- (6.4,3.72);
+\node[right, font=\scriptsize\bfseries] at (0.2,3.50)
+  {Obs 1~~Lab Controls (GMP)};
+\node[right, font=\tiny, text=ncsuGray] at (0.3,3.28)
+  {``Sampling not documented at time of performance\ldots''};
+\draw[ncsuGray!30] (0.1,3.12) -- (6.4,3.12);
+\node[right, font=\scriptsize\bfseries] at (0.2,2.90)
+  {Obs 2~~Data Integrity (GMP)};
+\node[right, font=\tiny, text=ncsuGray] at (0.3,2.68)
+  {``Batch records reconstructed; backdating confirmed\ldots''};
+\draw[ncsuGray!30] (0.1,2.52) -- (6.4,2.52);
+\node[right, font=\scriptsize\bfseries] at (0.2,2.30)
+  {Obs 3~~Quality System (GMP)};
+\node[right, font=\tiny, text=ncsuGray] at (0.3,2.08)
+  {``OOS investigations incomplete or absent\ldots''};
+\draw[ncsuGray!30] (0.1,1.92) -- (6.4,1.92);
+\node[font=\normalsize, text=ncsuGray] at (3.25,1.55) {\vdots};
+\draw[techBlue, rounded corners=2pt, thick] (0.2,0.12) rectangle (6.3,1.1);
+\node[font=\scriptsize\bfseries, text=techBlue] at (3.25,0.88)
+  {Inspector-written prose, facility-specific};
+\node[font=\tiny, text=ncsuGray] at (3.25,0.60)
+  {No structured fields -- content varies by facility};
+\node[font=\tiny, text=ncsuGray] at (3.25,0.32)
+  {Not in any public FDA database; obtained via FOIA};
+\end{tikzpicture}
+\end{center}
+
+\vspace{4pt}
+\onslide<4->{
 \begin{alertblock}{Research question}
-\small
-Do 483 text signals predict serious adverse events -- and can they differentiate facilities that carry the same inspection outcome label?
+\small Do 483 text signals predict patient harm and differentiate facilities with the same outcome label?
 \end{alertblock}
+}
 \end{columns}
 \end{frame}
 
@@ -149,8 +182,11 @@ Do 483 text signals predict serious adverse events -- and can they differentiate
 \begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2018–2026}
 \begin{columns}[T]
 \column{0.50\textwidth}
+\onslide<1->{
 \textbf{14 generic APIs} spanning cardiovascular, anti-infective, and critical care drug classes
+}
 
+\onslide<2->{
 \vspace{6pt}
 \textbf{Facility universe:}
 \begin{itemize}
@@ -158,8 +194,10 @@ Do 483 text signals predict serious adverse events -- and can they differentiate
   \item \highlight{98 FEIs} with 483 text (Redica) + FAERS coverage
   \item \highlight{246 inspection events} (2018--2026)
 \end{itemize}
+}
 
 \column{0.47\textwidth}
+\onslide<3->{
 \textbf{Data sources:}
 
 \vspace{4pt}
@@ -177,6 +215,7 @@ Source & Role \\
 
 \vspace{6pt}
 \textbf{Panel:} one row per inspection, $\pm$4 quarters. 246 rows total.
+}
 \end{columns}
 \end{frame}
 
@@ -371,10 +410,12 @@ DI flag  & \textbf{True}  & reconstructed entries = DI trigger \\
 \textbf{1. Share} -- fraction of observations in a domain or with a flag\\
 {\small\textit{e.g.} \texttt{vc\_labcontrols\_share}: what kind of inspection was this?}
 
+\pause
 \vspace{6pt}
 \textbf{2. Count} -- raw number of observations in a domain\\
 {\small\textit{e.g.} \texttt{n\_labcontrols\_obs}: how much was cited?}
 
+\pause
 \vspace{6pt}
 \textbf{3. Co-occurrence} -- both signals present in the same inspection\\
 {\small\textit{e.g.} \texttt{joint\_labctrl\_di}: Lab Controls \emph{and} DI in one visit}
@@ -497,6 +538,7 @@ C & Inspection outcome flag only & 0.539 & \\
 \midrule
 \multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} & \\
 \midrule
+\pause
 \highlight{D} & \highlight{Text only, VAI-only facilities} & \highlight{0.586} & $p{=}0.017$ \\
 E & Text only, OAI-ever facilities & 0.537 & \\
 \bottomrule
@@ -511,7 +553,9 @@ E & Text only, OAI-ever facilities & 0.537 & \\
 \begin{itemize}
   \setlength{\itemsep}{7pt}
   \item \textbf{Full sample (A--C):} text alone near random; inspection outcome flag similarly weak (0.539)
+  \pause
   \item \textbf{VAI-only (D):} text reaches \highlight{AUC\,=\,0.59} ($p{=}0.017$) -- detectable signal in the subgroup where the outcome label provides no differentiation
+  \pause
   \item \textbf{OAI-ever (E):} text adds little -- enforcement may have corrected the underlying problems
 \end{itemize}
 
@@ -543,6 +587,7 @@ Lo-sig VAI & 54 & 34 & 30 \\
 }
 
 \vspace{14pt}
+\pause
 {\small \textbf{Top Lab Controls facilities (VAI-only), by AE rise:}}
 
 \vspace{4pt}
@@ -565,7 +610,9 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \begin{itemize}
   \setlength{\itemsep}{9pt}
   \item Hi-sig VAI facilities produce \textbf{63\% more AEs at Q+4} than Lo-sig VAI (49 vs.\ 30), yet carry the same FDA label. Named examples show persistent AE increases with no OAI classification.
+  \pause
   \item \textbf{OAI$\to$VAI downgrade:} investigative reporting (ProPublica, Bloomberg) documents cases where FDA reclassified OAI inspections to VAI, often under drug shortage pressure -- downgraded facilities show worse subsequent patient outcomes.
+  \pause
   \item Alternatively, observations stayed below the OAI threshold or inspections did not surface the true severity of deficiencies.
 \end{itemize}
 \end{columns}
@@ -580,12 +627,15 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
   \setlength{\itemsep}{8pt}
   \item \textbf{Yes -- 483 text is associated with future harm, but primarily among facilities FDA never penalized.}\\
     VAI-only AUC = \highlight{0.586}; in the full sample, text and the inspection outcome flag are near the random baseline.
+  \pause
 
   \item \textbf{Lab Controls features are the leading text signals.}\\
     Lab Controls count and severity reach $\rho$ up to 0.29 at Q+2; no other dimension is significant at both pre- and post-inspection snapshots.
+  \pause
 
   \item \textbf{483 text carries information the inspection outcome label does not.}\\
     The outcome label (NAI/VAI/OAI) cannot differentiate VAI facilities -- 483 text from the same visit can.
+  \pause
 
   \item \textbf{Same VAI label, very different outcomes -- and identifiable from text.}\\
     Hi-sig VAI facilities produce 63\% more AEs at Q+4 than Lo-sig VAI (49 vs.\ 30). These facilities can be ranked from 483 text alone; shortage pressure may explain why enforcement did not follow.
