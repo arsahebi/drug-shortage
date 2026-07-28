@@ -253,11 +253,12 @@
 \section{LLM Extraction Pipeline}
 
 \begin{frame}{Step 00: What a 483 Observation Looks Like in Practice}
-{\small \textbf{Sun Pharma, Mohali -- Aug 2022 OAI inspection.} 8 observations across 8 pages. Two shown below.}
+{\small \textbf{Sun Pharma, Mohali -- Aug 2022 OAI inspection.} 6 observations. Two shown below.}
 
 \vspace{5pt}
 \begin{columns}[T]
 \column{0.48\textwidth}
+\onslide<1->{
 \begin{block}{Observation 1 \hfill \textcolor{warnOrange}{\scriptsize Data Integrity}}
 \scriptsize
 \textbf{Header:} ``There is a failure to thoroughly review any unexplained discrepancy whether or not the batch has been already distributed.''
@@ -268,8 +269,10 @@
 \vspace{3pt}
 \textit{[3 sub-items with nested detail -- 2 pages]}
 \end{block}
+}
 
 \column{0.48\textwidth}
+\onslide<2->{
 \begin{block}{Observation 2 \hfill \textcolor{techBlue}{\scriptsize Lab Controls}}
 \scriptsize
 \textbf{Header:} ``Established sampling plans, test procedures and laboratory control mechanisms are not documented at the time of performance.''
@@ -280,15 +283,16 @@
 \vspace{3pt}
 \textit{[2 sub-items with dated examples -- 1.5 pages]}
 \end{block}
+}
 \end{columns}
 
 \vspace{6pt}
 {\small
 \begin{itemize}
   \setlength{\itemsep}{3pt}
-  \item<1-> \textbf{Same inspection, two different domains} -- Data Integrity vs.\ Lab Controls, each carrying different risk implications
-  \item<2-> Domain, severity, and patient risk are embedded in the prose; there are no structured fields or shared schema -- extracting them requires reading the text
-  \item<3-> Observations share a standard CFR citation header, but the body is inspector-written and facility-specific. Pairwise Jaccard similarity across 1,067 observations averages 0.10 -- nearly all vocabulary is unique to each observation.
+  \item<3-> \textbf{One inspection, two domains} -- each with different risk implications
+  \item<4-> Risk signals are embedded in prose; no structured fields -- reading is required
+  \item<5-> Inspector-written and facility-specific: Jaccard similarity averages 0.10 across 1,067 observations
 \end{itemize}
 }
 \end{frame}
