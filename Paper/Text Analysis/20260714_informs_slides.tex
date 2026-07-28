@@ -494,7 +494,7 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \begin{frame}{Do 483 Text Signals Carry Information? Evidence From the VAI-Only Subgroup}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{AUC, 5-fold FEI-grouped CV (246 inspections, manufacturer-specific AEs):}
+\textbf{AUC, 5-fold FEI-grouped CV (176 inspections, 78 FEIs with ANDA-matched AEs):}
 
 \vspace{4pt}
 {\small
@@ -502,29 +502,29 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \toprule
  & Feature set & LR AUC & \\
 \midrule
-A & Text only (17 LLM features) & 0.503 & \\
-B & Text + inspection outcome flag & 0.527 & \\
-C & Inspection outcome flag only & 0.539 & \\
+A & Text only (17 LLM features) & 0.585 & \\
+B & Text + inspection outcome flag & 0.583 & \\
+C & Inspection outcome flag only & 0.545 & \\
 \midrule
 \multicolumn{2}{l}{\textit{Random baseline}} & \textit{0.500} & \\
 \midrule
 \pause
-\highlight{D} & \highlight{Text only, VAI-only facilities} & \highlight{0.586} & $p{=}0.017$ \\
-E & Text only, OAI-ever facilities & 0.537 & \\
+\highlight{D} & \highlight{Text only, VAI-only facilities} & \highlight{0.656} & $p{=}0.046$ \\
+E & Text only, OAI-ever facilities & 0.473 & \\
 \bottomrule
 \multicolumn{4}{l}{\scriptsize $p$ from one-tailed $t$-test vs.\ 0.5 across 5 CV folds}
 \end{tabular}
 }
 
 \vspace{4pt}
-{\small Config D: 73 VAI-only FEIs, 165 inspections.}
+{\small Config D: 55 VAI-only FEIs, 110 inspections.}
 
 \column{0.47\textwidth}
 \begin{itemize}
   \setlength{\itemsep}{7pt}
-  \item \textbf{Full sample (A--C):} text alone near random; inspection outcome flag similarly weak (0.539)
+  \item \textbf{Full sample (A--C):} text (0.585) modestly outperforms the inspection outcome flag (0.545); adding the flag provides no gain
   \pause
-  \item \textbf{VAI-only (D):} text reaches \highlight{AUC\,=\,0.59} ($p{=}0.017$) -- detectable signal in the subgroup where the outcome label provides no differentiation
+  \item \textbf{VAI-only (D):} text reaches \highlight{AUC\,=\,0.66} ($p{=}0.046$) -- stronger signal in the subgroup where the outcome label provides no differentiation
   \pause
   \item \textbf{OAI-ever (E):} text adds little -- enforcement may have corrected the underlying problems
 \end{itemize}
@@ -596,7 +596,7 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \begin{enumerate}
   \setlength{\itemsep}{8pt}
   \item \textbf{Yes -- 483 text is associated with future harm, but primarily among facilities FDA never penalized.}\\
-    VAI-only AUC = \highlight{0.586}; in the full sample, text and the inspection outcome flag are near the random baseline.
+    VAI-only AUC = \highlight{0.656}; in the full sample, text (0.585) modestly outperforms the inspection outcome flag (0.545).
   \pause
 
   \item \textbf{Lab Controls features are the leading text signals.}\\

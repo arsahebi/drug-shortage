@@ -162,13 +162,13 @@ The prediction task is: given the 17 LLM features from a single inspection, can 
 
 "Here are the AUC results. **[PAUSE -- let them read the table]**
 
-Rows A through C are the full sample. Text alone scores 0.503 -- essentially random. Adding the inspection outcome flag gets to 0.527. The outcome flag alone gets to 0.539. **[PAUSE]** None of these are impressive, and they should not be: in the full sample, the OAI label does carry some real enforcement signal, and the text adds little on top. **[PAUSE]**
+Rows A through C are the full sample -- 176 inspections across 78 facilities with ANDA-matched adverse event data. Text alone scores 0.585, and the inspection outcome flag alone scores 0.545. **[PAUSE]** Text modestly outperforms the structured label, and combining them adds nothing -- text already captures what the flag captures. **[PAUSE]**
 
-Row D is the key result. **[PAUSE]** VAI-only facilities. Text alone. AUC of 0.586, with a p-value of 0.017 from a one-tailed t-test across the five folds against the null of 0.5. **[PAUSE]**
+Row D is the key result. **[PAUSE]** VAI-only facilities. Text alone. AUC of 0.656, with a p-value of 0.046 from a one-tailed t-test across the five folds against the null of 0.5. **[PAUSE]**
 
-Let me be direct about what 0.59 means. It is not a strong classifier. You would not use this model alone to make enforcement decisions. **[PAUSE]** But it is statistically distinguishable from random in the subgroup where no other signal can differentiate facilities. That is the claim -- not that the model is powerful, but that the text carries detectable information where the inspection outcome label carries none. **[PAUSE]**
+Let me be direct about what 0.66 means. It is not a strong classifier. You would not use this model alone to make enforcement decisions. **[PAUSE]** But it is statistically distinguishable from random in the subgroup where no other signal can differentiate facilities. That is the claim -- not that the model is powerful, but that the text carries detectable information where the inspection outcome label carries none. **[PAUSE]**
 
-Row E shows that in OAI-ever facilities, text adds nothing. That makes sense: enforcement has already acted on the worst problems. The signal lives in the silent cases."
+Row E shows that in OAI-ever facilities, text adds nothing and actually scores below random. That makes sense: enforcement has already acted on the worst problems. The signal lives in the silent cases."
 
 ---
 
@@ -192,7 +192,7 @@ Why did enforcement not follow? One explanation, documented by investigative rep
 
 "Let me summarize. **[PAUSE]**
 
-First: yes, 483 text is associated with future harm, but primarily among facilities FDA never penalized. In the full sample, both text and the inspection outcome flag are near the random baseline. In VAI-only facilities, text alone reaches AUC 0.586. **[PAUSE]**
+First: yes, 483 text is associated with future harm, but the signal concentrates in facilities FDA never penalized. In the full sample, text reaches AUC 0.585 and modestly outperforms the inspection outcome flag. In VAI-only facilities, text alone reaches AUC 0.656. **[PAUSE]**
 
 Second: Lab Controls is the leading dimension. The count and severity of Lab Controls observations reach rho up to 0.29 at Q+2. No other dimension is significant at both pre- and post-inspection snapshots. **[PAUSE]**
 
