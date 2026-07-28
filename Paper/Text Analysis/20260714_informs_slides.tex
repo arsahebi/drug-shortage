@@ -180,68 +180,39 @@
 \section{Study Design \& Data}
 
 \begin{frame}{Study Design: 14 Drugs, 98 Facilities, 2018–2026}
-\begin{columns}[T]
-\column{0.50\textwidth}
+
 \onslide<1->{
-\textbf{14 generic APIs} spanning cardiovascular, anti-infective, and critical care drug classes
+\textbf{Drug and facility universe:}
+\begin{itemize}
+  \item \highlight{14 generic APIs} spanning cardiovascular, anti-infective, and critical care classes
+  \item 129 facilities (FEIs) identified by tracing NDC codes through DailyMed labels to ANDA approvals
+\end{itemize}
 }
 
+\vspace{5pt}
 \onslide<2->{
-\vspace{6pt}
-\textbf{Facility universe:}
+\textbf{Inspection text and outcomes (Redica):}
 \begin{itemize}
-  \item 129 FEIs (Facility Establishment Identifiers -- unique FDA facility codes) via DailyMed NDC$\to$FEI crosswalk
-  \item \highlight{98 FEIs} with 483 text (Redica) + FAERS coverage
-  \item \highlight{246 inspection events} (2018--2026)
+  \item \highlight{98 FEIs} with Form 483 text and NAI/VAI/OAI classifications
+  \item \highlight{246 inspection events}, 2018--2026
 \end{itemize}
 }
 
-\column{0.47\textwidth}
+\vspace{5pt}
 \onslide<3->{
-\textbf{Data sources:}
-
-\vspace{4pt}
-{\small
-\begin{tabular}{p{1.5cm}p{3.6cm}}
-\toprule
-Source & Role \\
-\midrule
-\textbf{Redica} & 483 observation text; inspection outcomes (NAI/VAI/OAI) \\[4pt]
-\textbf{FAERS} & FDA adverse event reports -- our outcome variable (serious AEs per facility per quarter) \\[4pt]
-\textbf{DailyMed} & FDA's official drug label repository -- we extract the NDC$\to$ANDA$\to$FEI linkage from product labels \\
-\bottomrule
-\end{tabular}
-}
-
-\vspace{6pt}
-\textbf{Panel:} one row per inspection, $\pm$4 quarters. 246 rows total.
-}
-\end{columns}
-\end{frame}
-
-\begin{frame}{How We Measure Patient Harm: FAERS Adverse Event Attribution}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{Outcome: serious adverse event reports}
+\textbf{Outcome variable: serious adverse events (FAERS):}
 \begin{itemize}
-  \setlength{\itemsep}{5pt}
-  \item Serious outcomes only: death, hospitalization, life-threatening, disability, congenital anomaly
-  \item ``No outcome reported'' excluded (14.6\% of reports)
-  \item Each report carries an ANDA number -- linked through the DailyMed crosswalk to assign the AE to the producing facility
+  \item Each FAERS report carries an ANDA number -- linked to the producing facility via Orange Book crosswalk
+  \item Restricted to serious outcomes: death, hospitalization, life-threatening, disability
+  \item All 98 analytic-sample FEIs have ANDA-level AE linkage
 \end{itemize}
+}
 
-\column{0.47\textwidth}
-\textbf{Sample coverage}\\[6pt]
-\begin{tabular}{ll}
-\toprule
-Metric & Value \\
-\midrule
-FEIs in crosswalk & 128 \\
-Unique ANDAs & 194 \\
-FEIs with AE data & 109 \\
-\bottomrule
-\end{tabular}
-\end{columns}
+\vspace{5pt}
+\onslide<4->{
+\textbf{Panel:} one row per inspection, $\pm$4 quarters. \highlight{246 rows} total.
+}
+
 \end{frame}
 
 % ── SECTION 3: LLM PIPELINE ──────────────────────────────────────────────────

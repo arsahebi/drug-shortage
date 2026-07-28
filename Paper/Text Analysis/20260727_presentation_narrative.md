@@ -56,25 +56,13 @@ What we can say now: relying solely on those three outcome labels while ignoring
 
 ## SLIDE 5: Study Design -- 14 Drugs, 98 Facilities, 2018-2026
 
-"Our sample starts with 14 generic APIs spanning cardiovascular drugs, anti-infectives, and critical care medications. Specifically: Atorvastatin, Lisinopril, Metoprolol, and Metformin on the cardiovascular side; Ampicillin, Ampicillin-Sulbactam, Metronidazole, and Vancomycin for anti-infectives; and Bupropion, Calcium Gluconate, Magnesium Sulfate, Pantoprazole, Potassium Chloride, and Tacrolimus rounding out the critical care and other categories. These drugs were independently tested by a third-party lab, which gives us an external quality anchor beyond what FDA inspection records alone can provide. **[PAUSE]**
+"Our sample covers 14 generic APIs spanning cardiovascular drugs, anti-infectives, and critical care medications -- Atorvastatin, Lisinopril, Metoprolol, and Metformin on the cardiovascular side; Ampicillin, Ampicillin-Sulbactam, Metronidazole, and Vancomycin for anti-infectives; and Bupropion, Calcium Gluconate, Magnesium Sulfate, Pantoprazole, Potassium Chloride, and Tacrolimus rounding out the rest. We used DailyMed product labels to trace NDC codes through ANDA approval records to the producing facility, which gave us 129 unique facilities. **[PAUSE]**
 
-We identified 129 unique facilities, using FDA Establishment Identifiers, by tracing NDC codes through DailyMed product labels to the approved applications -- the ANDA numbers -- and from there to the facility. Of those 129, 98 had both 483 text available through Redica and adverse event data in FAERS. Those 98 facilities generated 246 inspection events over 2018 to 2026. **[PAUSE]**
+Of those 129, 98 had Form 483 text available through Redica along with inspection outcome classifications. Those 98 facilities produced 246 inspection events between 2018 and 2026. **[PAUSE]**
 
-The three data sources are Redica for the 483 text and inspection outcomes, FAERS for our outcome variable which is serious adverse events per facility per quarter, and DailyMed for the NDC-to-ANDA-to-FEI linkage that lets us attribute an adverse event to the facility that made the drug. **[PAUSE]**
+Our outcome variable is serious adverse events from FAERS. Each FAERS report carries an ANDA number -- we use the Orange Book crosswalk to link that ANDA back to the specific facility that manufactured the drug. That means when we count AEs for a given inspection, we are counting AEs from that facility specifically, not from everyone who makes that drug name. We restrict to serious outcomes: death, hospitalization, life-threatening events, disability. All 98 facilities in our analytic sample have this ANDA-level linkage. **[PAUSE]**
 
-Our panel has one row per inspection event, with AE counts at plus and minus four quarters around each inspection date. 246 rows total."
-
----
-
-## SLIDE 6: How We Measure Patient Harm -- FAERS Adverse Event Attribution
-
-"Our outcome variable is serious adverse event reports from FAERS. **[PAUSE]**
-
-We restrict to serious outcomes only: death, hospitalization, life-threatening events, disability, and congenital anomalies. Reports with no outcome recorded are excluded -- that is about 15 percent of the raw dataset. **[PAUSE]**
-
-The attribution step is the key methodological piece. Each FAERS report carries an ANDA number for the primary suspect drug. We use the DailyMed crosswalk to link that ANDA back to the specific facility that manufactured the drug. **[PAUSE]** This means when we count AEs for a given inspection event, we are counting AEs attributable to that specific facility, not to the drug name in general. **[PAUSE]**
-
-After applying these filters, we have 128 FEIs in the crosswalk, 194 unique ANDAs, and 109 FEIs with actual AE data."
+The panel has one row per inspection event, with AE counts measured at plus and minus four quarters around the inspection date. 246 rows total."
 
 **[PAUSE -- transition]** *"Now let me walk you through the pipeline we built to turn 483 text into structured features."*
 
