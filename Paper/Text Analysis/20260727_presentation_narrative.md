@@ -60,9 +60,9 @@ What we can say now: relying solely on those three outcome labels while ignoring
 
 Of those 129, 98 had Form 483 text available through Redica along with inspection outcome classifications. Those 98 facilities produced 246 inspection events between 2018 and 2026. **[PAUSE]**
 
-Our outcome variable is serious adverse events from FAERS. Each FAERS report carries an ANDA number -- we use the Orange Book crosswalk to link that ANDA back to the specific facility that manufactured the drug. That means when we count AEs for a given inspection, we are counting AEs from that facility specifically, not from everyone who makes that drug name. We restrict to serious outcomes: death, hospitalization, life-threatening events, disability. **[PAUSE]**
+Our outcome variable is serious adverse events from FAERS. Each FAERS report carries an ANDA number -- we use the Orange Book crosswalk to link that ANDA back to the specific facility that manufactured the drug. That means we count AEs from that specific facility, not from everyone who makes that drug. We restrict to serious outcomes: death, hospitalization, life-threatening events, disability. 78 of the 98 facilities have ANDA-matched AE data; the remaining 20 have no FAERS reports citing their specific ANDA, so we exclude them from the outcome analysis. **[PAUSE]**
 
-The panel has one row per inspection event, with AE counts measured at plus and minus four quarters around the inspection date. 246 rows total."
+The panel has one row per inspection event, with AE counts at plus and minus four quarters. 246 rows total for text features; 176 rows with ANDA-matched outcome for the predictive model."
 
 **[PAUSE -- transition]** *"Now let me walk you through the pipeline we built to turn 483 text into structured features."*
 
