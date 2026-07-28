@@ -56,11 +56,11 @@ What we can say now: relying solely on those three outcome labels while ignoring
 
 ## SLIDE 5: Study Design -- 14 Drugs, 98 Facilities, 2018-2026
 
-"Our sample covers 14 generic APIs spanning cardiovascular drugs, anti-infectives, and critical care medications -- Atorvastatin, Lisinopril, Metoprolol, and Metformin on the cardiovascular side; Ampicillin, Ampicillin-Sulbactam, Metronidazole, and Vancomycin for anti-infectives; and Bupropion, Calcium Gluconate, Magnesium Sulfate, Pantoprazole, Potassium Chloride, and Tacrolimus rounding out the rest. We used DailyMed product labels to trace NDC codes through ANDA approval records to the producing facility, which gave us 129 unique facilities. **[PAUSE]**
+"Our sample covers 14 generic APIs spanning cardiovascular drugs, anti-infectives, and critical care medications -- Atorvastatin, Lisinopril, Metoprolol, and Metformin on the cardiovascular side; Ampicillin, Ampicillin-Sulbactam, Metronidazole, and Vancomycin for anti-infectives; and Bupropion, Calcium Gluconate, Magnesium Sulfate, Pantoprazole, Potassium Chloride, and Tacrolimus rounding out the rest. We used DailyMed product labels -- which carry manufacturer name, DUNS number, and facility location -- to trace NDC codes to the producing facility, which gave us 129 unique facilities. **[PAUSE]**
 
 Of those 129, 98 had Form 483 text available through Redica along with inspection outcome classifications. Those 98 facilities produced 246 inspection events between 2018 and 2026. **[PAUSE]**
 
-Our outcome variable is serious adverse events from FAERS. Each FAERS report carries an ANDA number -- we use the Orange Book crosswalk to link that ANDA back to the specific facility that manufactured the drug. That means when we count AEs for a given inspection, we are counting AEs from that facility specifically, not from everyone who makes that drug name. We restrict to serious outcomes: death, hospitalization, life-threatening events, disability. All 98 facilities in our analytic sample have this ANDA-level linkage. **[PAUSE]**
+Our outcome variable is serious adverse events from FAERS. Each FAERS report carries an ANDA number -- we use the Orange Book crosswalk to link that ANDA back to the specific facility that manufactured the drug. That means when we count AEs for a given inspection, we are counting AEs from that facility specifically, not from everyone who makes that drug name. We restrict to serious outcomes: death, hospitalization, life-threatening events, disability. **[PAUSE]**
 
 The panel has one row per inspection event, with AE counts measured at plus and minus four quarters around the inspection date. 246 rows total."
 
