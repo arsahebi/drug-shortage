@@ -82,9 +82,9 @@
   \setlength{\itemsep}{8pt}
   \item<1-> \textbf{90\%} of U.S. prescriptions are generic drugs
   \item<2-> FDA inspects each facility \textbf{every 1--3 years} on average
-  \item<3-> Between visits: limited real-time insight into manufacturing conditions
-  \item<4-> Undetected problems trigger recalls and enforcement actions -- manufacturing quality is the \textbf{leading cause} of drug shortages
-  \item<5-> \textbf{Catching signals early} -- before patient harm or supply disruption -- is the central challenge
+  \item<3-> Between visits: no real-time visibility into manufacturing conditions
+  \item<4-> Undetected problems cause recalls and enforcement -- manufacturing quality is the \textbf{leading cause} of drug shortages
+  \item<5-> \textbf{Catching signals early} -- before harm or shortage -- is the central challenge
 \end{itemize}
 
 \column{0.43\textwidth}
@@ -109,13 +109,10 @@
 \begin{columns}[T]
 \column{0.40\textwidth}
 
-{\small \textbf{After each FDA facility inspection:}}
-
-\vspace{6pt}
 {\small
-\textbf{Day of close:} \textbf{Form 483} issued \textit{if violations found} -- inspector-written list of deficiencies\\[5pt]
-\textbf{Back at office:} \textbf{EIR} (Establishment Inspection Report) -- full narrative, exhibits, company responses\\[5pt]
-\textbf{Later:} FDA assigns final classification\\[4pt]
+\textbf{483} issued at close -- inspector-written deficiency list\\[5pt]
+\textbf{EIR} written after -- full narrative, exhibits, responses\\[5pt]
+\textbf{Classification} assigned later:\\[4pt]
 \quad \textcolor{govGreen}{\textbf{NAI}} ~\textcolor{ncsuGray}{\small No Action}\\
 \quad \textcolor{warnOrange}{\textbf{VAI}} ~\textcolor{ncsuGray}{\small Voluntary Action}\\
 \quad \textcolor{ncsuRed}{\textbf{OAI}} ~\textcolor{ncsuGray}{\small Official Action}
@@ -124,8 +121,8 @@
 \vspace{8pt}
 \begin{itemize}
   \setlength{\itemsep}{6pt}
-  \item<2-> We have \textbf{483 text} (via Redica/FOIA) -- EIR not yet accessible
-  \item<3-> Relying on three labels alone \textbf{discards} most of what the inspection produced -- 483 text carries what the label does not
+  \item<2-> We have \textbf{483 text} (FOIA via Redica) -- EIR inaccessible
+  \item<3-> Three outcome labels \textbf{discard} most inspection content -- 483 text carries what the label cannot
 \end{itemize}
 
 \column{0.57\textwidth}
@@ -185,7 +182,7 @@
 \textbf{Drug and facility universe:}
 \begin{itemize}
   \item \highlight{14 generic APIs} spanning cardiovascular, anti-infective, and critical care classes
-  \item 129 facilities (FEIs) identified by tracing NDC codes through DailyMed product labels to manufacturer and facility identifiers
+  \item 129 FEIs identified via NDC $\to$ DailyMed label $\to$ facility crosswalk
 \end{itemize}
 }
 
@@ -202,8 +199,8 @@
 \onslide<3->{
 \textbf{Outcome variable: serious adverse events (FAERS):}
 \begin{itemize}
-  \item Each FAERS report carries an ANDA number -- linked to the producing facility via Orange Book crosswalk
-  \item Restricted to serious outcomes: death, hospitalization, life-threatening, disability
+  \item FAERS reports carry an ANDA number -- linked to producing facility via Orange Book
+  \item Serious outcomes only: death, hospitalization, disability
   \item \highlight{78 of 98 FEIs} have ANDA-matched AE data; 20 have no FAERS reports citing their ANDA
 \end{itemize}
 }
@@ -290,9 +287,9 @@
 {\small
 \begin{itemize}
   \setlength{\itemsep}{3pt}
-  \item<3-> \textbf{One inspection, two domains} -- each with different risk implications
-  \item<4-> Risk signals are embedded in prose; no structured fields -- reading is required
-  \item<5-> Inspector-written and facility-specific: Jaccard similarity averages 0.10 across 1,067 observations
+  \item<3-> One inspection, two domains, two different risk profiles
+  \item<4-> Risk signals embedded in prose -- no structured fields
+  \item<5-> Facility-specific: mean Jaccard\,=\,0.10 across 1,067 observations
 \end{itemize}
 }
 \end{frame}
@@ -307,10 +304,10 @@
 \begin{itemize}
   \setlength{\itemsep}{4pt}
   \item \textbf{Data integrity (DI)} -- falsification, backdating, reconstructed records
-  \item \textbf{Contamination} -- microbial, chemical, or cross-contamination
-  \item \textbf{Patient risk} -- observation has a direct patient harm pathway
+  \item \textbf{Contamination} -- microbial, chemical, or cross-product
+  \item \textbf{Patient risk} -- direct patient harm pathway
   \item \textbf{Investigation failure} -- OOS investigation absent or inadequate
-  \item \textbf{Repeat finding} -- same citation appeared at a prior inspection
+  \item \textbf{Repeat finding} -- same citation at a prior inspection
 \end{itemize}
 }
 
@@ -359,8 +356,8 @@ DI flag  & \textbf{True}  & reconstructed entries = DI trigger \\
 {\small
 \begin{itemize}
   \setlength{\itemsep}{5pt}
-  \item Fixed JSON schema prevents the model from adding or inventing fields
-  \item Future work: benchmark multiple LLMs for robustness, guided by the human-in-the-loop verification Redica provides
+  \item Fixed JSON schema -- model cannot invent fields
+  \item Future work: multi-LLM benchmark + Redica human-in-loop verification
 \end{itemize}
 }
 
@@ -370,9 +367,9 @@ DI flag  & \textbf{True}  & reconstructed entries = DI trigger \\
 \vspace{5pt}
 \begin{itemize}
   \setlength{\itemsep}{5pt}
-  \item LLMs achieve 90\%+ accuracy on structured extraction from clinical documents; Claude 3.0 Haiku reaches 90.2\% on clinical entity extraction (Khairallah et al., 2024)
-  \item Prompt definitions reviewed by Redica GMP specialists (June 2026) -- key dimensions align with industry practice
-  \item Ground-truth human labeling is in progress; findings should be treated as preliminary
+  \item Claude 3.0 Haiku: 90.2\% on clinical entity extraction (Khairallah et al., 2024)
+  \item Prompt definitions reviewed by Redica GMP specialists (June 2026)
+  \item Human validation in progress; treat findings as preliminary
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -401,9 +398,9 @@ DI flag  & \textbf{True}  & reconstructed entries = DI trigger \\
 
 \vspace{6pt}
 {\small
-Lab Controls alone: a QC process failed.\\[4pt]
-DI alone: a record was altered.\\[4pt]
-\textbf{Both together:} QC failures and documentation manipulation in the same inspection -- a stronger combined signal than either alone.
+Lab Controls alone: QC process failed.\\[4pt]
+DI alone: record altered.\\[4pt]
+\textbf{Both together:} stronger combined signal than either alone.
 }
 
 \vspace{10pt}
@@ -501,11 +498,11 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \column{0.45\textwidth}
 \begin{itemize}
   \setlength{\itemsep}{9pt}
-  \item Hi-sig VAI facilities produce \textbf{63\% more AEs at Q+4} than Lo-sig VAI (49 vs.\ 30), yet carry the same FDA label. Named examples show persistent AE increases with no OAI classification.
+  \item \textbf{63\% more AEs at Q+4} (49 vs.\ 30), same FDA label -- named examples show persistent rise with no OAI
   \pause
-  \item \textbf{OAI$\to$VAI downgrade:} investigative reporting (ProPublica, Bloomberg) documents cases where FDA reclassified OAI inspections to VAI, often under drug shortage pressure -- downgraded facilities show worse subsequent patient outcomes.
+  \item \textbf{OAI$\to$VAI downgrade} documented (ProPublica, Bloomberg): reclassified under shortage pressure; downgraded facilities show worse outcomes
   \pause
-  \item Alternatively, observations stayed below the OAI threshold or inspections did not surface the true severity of deficiencies.
+  \item Alternatively: findings stayed below OAI threshold or severity was not surfaced
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -535,18 +532,18 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \column{0.50\textwidth}
 \begin{itemize}
   \setlength{\itemsep}{6pt}
-  \item \textbf{Sample size:} 98 FEIs (78 with ANDA-matched AEs), 33 OAI inspections. VAI-only results are hypothesis-generating, not confirmatory.
-  \item \textbf{COVID gap:} FDA suspended most inspections in 2020--21, leaving multi-year gaps between visits; post-2022 baselines are confounded.
-  \item \textbf{FAERS attribution:} when one manufacturer operates multiple facilities under the same ANDA, we cannot determine which site produced the drug in a given report.
+  \item \textbf{Sample size:} 98 FEIs, 33 OAI. VAI-only results are hypothesis-generating.
+  \item \textbf{COVID gap:} inspections suspended 2020--21; post-2022 baselines are confounded.
+  \item \textbf{FAERS attribution:} multi-facility ANDAs cannot be linked to a specific site.
 \end{itemize}
 
 \pause
 \column{0.47\textwidth}
 \begin{itemize}
   \setlength{\itemsep}{6pt}
-  \item \textbf{Extraction quality:} LLM labels require human validation. Prompt definitions for some dimensions will be revised; findings should be treated as preliminary.
-  \item \textbf{Volume:} commercial volume not integrated; facility size is a potential confounder.
-  \item \textbf{Causal:} all associations are correlational. Testing the shortage-pressure hypothesis requires market concentration data.
+  \item \textbf{Extraction quality:} human validation in progress; treat as preliminary.
+  \item \textbf{Volume:} commercial volume not integrated; size is a confounder.
+  \item \textbf{Causal:} all associations are correlational; shortage-pressure hypothesis requires market data.
 \end{itemize}
 \end{columns}
 \end{frame}
