@@ -136,31 +136,9 @@ The output is 246 inspections by 17 features, which feeds directly into the anal
 
 ---
 
-## SLIDE 13: 483 Text Signals -- Two Snapshots, Two Different Stories
+## SLIDE 13: Do 483 Text Signals Carry Information?
 
-"We computed Spearman correlations between each of the 17 inspection features and facility-specific AE counts at each quarter from Q-4 to Q+4. I want to focus on two symmetric snapshots: six months before the inspection and six months after. **[PAUSE -- let them look at the table]**
-
-The story is in the two-column table. Severity -- the share of observations rated Critical or Major -- is already significant at Q-2, six months before the visit, with rho of 0.16. **[PAUSE]** Facilities with more severe findings were generating more AEs before FDA arrived. This tells us the quality problem predated the inspection. **[PAUSE]**
-
-At Q+2, severity strengthens to 0.29 and becomes highly significant. And Lab Controls count joins as a significant signal at 0.18. **[PAUSE]** So two different features dominate at two different moments. Severity captures what is already happening. Lab Controls predicts what follows. **[PAUSE]**
-
-The point is not that these correlations are large -- Spearman rho of 0.29 is modest. The point is that two signals are independently significant at two different temporal positions, which gives us some evidence that the text carries real information and not just noise."
-
----
-
-## SLIDE 14: From Correlation to Prediction -- The VAI-Only Test
-
-"The correlations give us confidence that the text carries real information. The next question is whether that information is strong enough to actually predict outcomes. **[PAUSE]**
-
-The prediction task is: given the 17 LLM features from a single inspection, can we predict whether that facility will produce above-median AEs over the following four quarters? We use FEI-grouped 5-fold cross-validation, logistic regression, and a baseline of AUC 0.5 because the outcome is constructed as a 50/50 median split. 176 inspection events across 78 facilities with ANDA-matched AE data. **[PAUSE]**
-
-Now, why focus on VAI-only? 55 of those 78 facilities were never classified OAI -- every inspection they ever received ended as VAI or NAI. Within this group the outcome label never varies. There is no enforcement signal to differentiate them. 483 text is the only available signal. **[PAUSE]** This is the hardest and most policy-relevant test: can text find the high-risk facilities that FDA's classification missed entirely?"
-
----
-
-## SLIDE 15: Do 483 Text Signals Carry Information?
-
-"Here are the AUC results. **[PAUSE -- let them read the table]**
+"Here are the prediction results. The task: given 17 LLM features from a single inspection, predict whether that facility will produce above-median adverse events over the following four quarters. FEI-grouped 5-fold cross-validation, logistic regression, baseline AUC 0.5 by construction. 176 inspection events across 78 facilities with ANDA-matched AE data. **[PAUSE -- let them read the table]**
 
 Rows A through C are the full sample -- 176 inspections across 78 facilities with ANDA-matched adverse event data. Text alone scores 0.585, and the inspection outcome flag alone scores 0.545. **[PAUSE]** Text modestly outperforms the structured label, and combining them adds nothing -- text already captures what the flag captures. **[PAUSE]**
 
@@ -172,7 +150,7 @@ Row E shows that in OAI-ever facilities, text adds nothing and actually scores b
 
 ---
 
-## SLIDE 16: The Silent Problem -- Same VAI Label, Very Different Patient Outcomes
+## SLIDE 14: The Silent Problem -- Same VAI Label, Very Different Patient Outcomes
 
 "Let me now show you what that signal looks like in practice, without any model involved -- just AE trajectories. **[PAUSE]**
 
@@ -188,7 +166,7 @@ Why did enforcement not follow? One explanation, documented by investigative rep
 
 ---
 
-## SLIDE 17: Summary
+## SLIDE 15: Summary
 
 "Let me summarize. **[PAUSE]**
 
@@ -202,7 +180,7 @@ Third: same VAI label, very different outcomes, and those outcomes are identifia
 
 ---
 
-## SLIDE 18: Limitations
+## SLIDE 16: Limitations
 
 "There are important limitations to be transparent about. **[PAUSE]**
 
@@ -226,11 +204,11 @@ We also have not integrated commercial volume. Facility size is a potential conf
 
 ## Q&A PREPARATION: GENERAL
 
-### Q: "Is 0.586 actually better than random? Isn't that a very low AUC?"
+### Q: "Is 0.585 actually better than random? Isn't that a very low AUC?"
 
-"You're right that 0.586 is not a strong classifier -- I want to be clear about that. If you needed to use this model operationally to make enforcement decisions, that AUC is not sufficient.
+"You're right that 0.585 is not a strong classifier -- I want to be clear about that. If you needed to use this model operationally to make enforcement decisions, that AUC is not sufficient.
 
-But the framing I'd offer is this. The VAI-only subgroup is the hardest possible test. Every facility in it has the same FDA label. The outcome label contains zero information to differentiate them. Text-only logistic regression reaches 0.586 in that subgroup, and the p-value across five cross-validation folds is 0.017. In a setting where the null is truly 0.5 by construction and the only available signal is inspector-written text, that is a meaningful result.
+But the framing I'd offer is this. The VAI-only subgroup is the hardest possible test. Every facility in it has the same FDA label. The outcome label contains zero information to differentiate them. Text-only logistic regression reaches 0.656 in that subgroup, with a p-value of 0.046 across five cross-validation folds. In a setting where the null is truly 0.5 by construction and the only available signal is inspector-written text, that is a meaningful result.
 
 The claim is not 'this model is a good classifier.' The claim is 'this text carries information that the enforcement system is not currently using, even in the cases where text is the only differentiating signal available.'"
 
@@ -318,4 +296,4 @@ For FDA's full dataset, which includes tens of thousands of inspections, the cos
 
 ---
 
-*Overall practice tip: The two most likely challenge points are slide 15 (AUC defensibility) and slide 16 (why no enforcement). Have the two-step answer ready: 15 establishes statistical signal in the hardest subgroup, 16 shows what that signal looks like in practice without requiring the audience to interpret AUC. Lead with the 63% trajectory number if the AUC question gets hostile.*
+*Overall practice tip: The two most likely challenge points are slide 13 (AUC defensibility) and slide 14 (why no enforcement). Have the two-step answer ready: 13 establishes statistical signal in the hardest subgroup, 14 shows what that signal looks like in practice without requiring the audience to interpret AUC. Lead with the 63% trajectory number if the AUC question gets hostile.*

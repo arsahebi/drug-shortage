@@ -425,86 +425,6 @@ Among VAI facilities -- where FDA's label provides no differentiation --\\does t
 \end{center}
 \end{frame}
 
-\begin{frame}{483 Text Signals: Two Snapshots, Two Different Stories}
-\begin{columns}[T]
-\column{0.56\textwidth}
-\textbf{Spearman $\rho$ six months before (Q-2) and six months after (Q+2) inspection, manufacturer-specific AEs:}
-
-\vspace{4pt}
-{\small
-\begin{tabular}{lcclc}
-\toprule
-Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
-\midrule
-\texttt{severity\_critmajor}    & \tech{+0.16} & *   & \tech{+0.29} & *** \\
-\texttt{n\_labcontrols\_obs}    & +0.13 &     & \tech{+0.18} & *   \\
-\texttt{vc\_labcontrols\_share} & +0.09 &     & +0.13        &     \\
-\texttt{data\_integrity\_flag}  & +0.06 &     & +0.09        &     \\
-\midrule
-\texttt{cultural\_root\_cause}  & $-$0.06 &   & $-$0.12      &     \\
-\bottomrule
-\multicolumn{5}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$ \quad Full heatmap: backup slide}
-\end{tabular}
-}
-
-\hfill\column{0.38\textwidth}
-\begin{itemize}
-  \setlength{\itemsep}{8pt}
-  \item \textbf{Q-2:} severity already significant -- more severe findings, more AEs before FDA arrived
-  \item \textbf{Q+2:} Lab Controls joins; severity strengthens further
-  \item Severity captures current harm; Lab Controls predicts what follows
-\end{itemize}
-
-\end{columns}
-\end{frame}
-
-% ── SECTION 6: PREDICTIVE MODEL ──────────────────────────────────────────────
-\section{Predictive Model}
-
-\begin{frame}{From Correlation to Prediction: The VAI-Only Test}
-\begin{columns}[T]
-\column{0.50\textwidth}
-\textbf{From association to prediction:}
-
-\vspace{4pt}
-{\small Correlations show text signals track future AEs. The next question: can they \emph{predict} which facilities will generate above-median harm?}
-
-\vspace{8pt}
-\textbf{Prediction setup:}
-
-\vspace{4pt}
-{\small
-\begin{itemize}
-  \setlength{\itemsep}{5pt}
-  \item \textbf{Unit:} one inspection event (176 with ANDA-matched AEs)
-  \item \textbf{Features:} 17 LLM text signals from the 483
-  \item \textbf{Outcome:} above-median AEs in the post-inspection year
-        $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
-  \item \textbf{CV:} FEI-grouped 5-fold logistic regression
-  \item \textbf{Baseline:} AUC\,=\,0.5 (50/50 by construction)
-\end{itemize}
-}
-
-\pause
-\column{0.47\textwidth}
-\textbf{Why focus on VAI-only?}
-
-\vspace{6pt}
-\begin{itemize}
-  \setlength{\itemsep}{8pt}
-  \item \highlight{55 facilities} never received an OAI -- every inspection ended VAI or NAI
-  \item Within this group the outcome label never varies; text is the \emph{only} available signal to differentiate facilities
-  \item This is the hardest and most policy-relevant test: can text find the high-risk facilities that FDA's classification missed?
-\end{itemize}
-
-\vspace{8pt}
-\begin{alertblock}{Key question}
-\small Does 483 text separate high- from low-harm producers where FDA's classification cannot?
-\end{alertblock}
-
-\end{columns}
-\end{frame}
-
 \begin{frame}{Do 483 Text Signals Carry Information? Evidence From the VAI-Only Subgroup}
 \begin{columns}[T]
 \column{0.50\textwidth}
@@ -680,6 +600,76 @@ Sun / Atorvastatin        & 80 & \highlight{87} & \highlight{$+$9\%}  \\
 \end{columns}
 \end{frame}
 }
+
+% --- Correlation table ---
+\begin{frame}{Backup: 483 Text Signals -- Two Snapshots, Two Different Stories}
+\begin{columns}[T]
+\column{0.56\textwidth}
+\textbf{Spearman $\rho$ six months before (Q-2) and six months after (Q+2) inspection, manufacturer-specific AEs:}
+
+\vspace{4pt}
+{\small
+\begin{tabular}{lcclc}
+\toprule
+Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
+\midrule
+\texttt{severity\_critmajor}    & \tech{+0.16} & *   & \tech{+0.29} & *** \\
+\texttt{n\_labcontrols\_obs}    & +0.13 &     & \tech{+0.18} & *   \\
+\texttt{vc\_labcontrols\_share} & +0.09 &     & +0.13        &     \\
+\texttt{data\_integrity\_flag}  & +0.06 &     & +0.09        &     \\
+\midrule
+\texttt{cultural\_root\_cause}  & $-$0.06 &   & $-$0.12      &     \\
+\bottomrule
+\multicolumn{5}{l}{\scriptsize * $p{<}.05$\quad ** $p{<}.01$\quad *** $p{<}.001$}
+\end{tabular}
+}
+
+\hfill\column{0.38\textwidth}
+\begin{itemize}
+  \setlength{\itemsep}{8pt}
+  \item \textbf{Q-2:} severity already significant -- more severe findings, more AEs before FDA arrived
+  \item \textbf{Q+2:} Lab Controls joins; severity strengthens further
+  \item Severity captures current harm; Lab Controls predicts what follows
+\end{itemize}
+\end{columns}
+\end{frame}
+
+% --- Model setup ---
+\begin{frame}{Backup: Prediction Setup -- 483 Text vs.\ Inspection Outcome Flag}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Prediction setup:}
+
+\vspace{4pt}
+{\small
+\begin{itemize}
+  \setlength{\itemsep}{5pt}
+  \item \textbf{Unit:} one inspection event (176 with ANDA-matched AEs)
+  \item \textbf{Features:} 17 LLM text signals from the 483
+  \item \textbf{Outcome:} above-median AEs in the post-inspection year
+        $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
+  \item \textbf{CV:} FEI-grouped 5-fold logistic regression
+  \item \textbf{Baseline:} AUC\,=\,0.5 (50/50 by construction)
+\end{itemize}
+}
+
+\column{0.47\textwidth}
+\textbf{Why focus on VAI-only?}
+
+\vspace{6pt}
+\begin{itemize}
+  \setlength{\itemsep}{8pt}
+  \item \highlight{55 facilities} never received an OAI -- every inspection ended VAI or NAI
+  \item Within this group the outcome label never varies; text is the \emph{only} available signal to differentiate facilities
+  \item This is the hardest and most policy-relevant test: can text find the high-risk facilities that FDA's classification missed?
+\end{itemize}
+
+\vspace{8pt}
+\begin{alertblock}{Key question}
+\small Does 483 text separate high- from low-harm producers where FDA's classification cannot?
+\end{alertblock}
+\end{columns}
+\end{frame}
 
 % --- Study design: FAERS attribution ---
 \begin{frame}{Backup: FAERS Attribution -- Design Rationale}
