@@ -130,13 +130,7 @@ The output is 246 inspections by 17 features, which feeds directly into the anal
 
 ---
 
-## SLIDE 12: Transition -- Analysis and Results
-
-"Two questions. **[PAUSE]** Are 483 text signals associated with future patient harm? **[PAUSE]** And among VAI facilities -- where FDA's label provides no differentiation -- does text separate high-harm from low-harm producers? **[PAUSE]**"
-
----
-
-## SLIDE 13: Do 483 Text Signals Carry Information?
+## SLIDE 12: Do 483 Text Signals Carry Information?
 
 "Here are the prediction results. The task: given 17 LLM features from a single inspection, predict whether that facility will produce above-median adverse events over the following four quarters. FEI-grouped 5-fold cross-validation, logistic regression, baseline AUC 0.5 by construction. 176 inspection events across 78 facilities with ANDA-matched AE data. **[PAUSE -- let them read the table]**
 
@@ -150,7 +144,7 @@ Row E shows that in OAI-ever facilities, text adds nothing and actually scores b
 
 ---
 
-## SLIDE 14: The Silent Problem -- Same VAI Label, Very Different Patient Outcomes
+## SLIDE 13: The Silent Problem -- Same VAI Label, Very Different Patient Outcomes
 
 "Let me now show you what that signal looks like in practice, without any model involved -- just AE trajectories. **[PAUSE]**
 
@@ -166,21 +160,19 @@ Why did enforcement not follow? One explanation, documented by investigative rep
 
 ---
 
-## SLIDE 15: Summary
+## SLIDE 14: Summary
 
 "Let me summarize. **[PAUSE]**
 
 First: yes, 483 text is associated with future harm, but the signal concentrates in facilities FDA never penalized. In the full sample, text reaches AUC 0.585 and modestly outperforms the inspection outcome flag. In VAI-only facilities, text alone reaches AUC 0.656. **[PAUSE]**
 
-Second: Lab Controls is the leading dimension. The count and severity of Lab Controls observations reach rho up to 0.29 at Q+2. No other dimension is significant at both pre- and post-inspection snapshots. **[PAUSE]**
-
-Third: same VAI label, very different outcomes, and those outcomes are identifiable from text. Hi-sig VAI facilities produce 63 percent more AEs one year later than Lo-sig VAI. These are the silent cases -- facilities that stayed below the enforcement threshold even as patient harm accumulated."
+Second: same VAI label, very different outcomes, and those outcomes are identifiable from text. Hi-sig VAI facilities produce 63 percent more AEs one year later than Lo-sig VAI. These are the silent cases -- facilities that stayed below the enforcement threshold even as patient harm accumulated."
 
 **[PAUSE -- slow down here, let the last point settle]**
 
 ---
 
-## SLIDE 16: Limitations
+## SLIDE 15: Limitations
 
 "There are important limitations to be transparent about. **[PAUSE]**
 
@@ -296,4 +288,4 @@ For FDA's full dataset, which includes tens of thousands of inspections, the cos
 
 ---
 
-*Overall practice tip: The two most likely challenge points are slide 13 (AUC defensibility) and slide 14 (why no enforcement). Have the two-step answer ready: 13 establishes statistical signal in the hardest subgroup, 14 shows what that signal looks like in practice without requiring the audience to interpret AUC. Lead with the 63% trajectory number if the AUC question gets hostile.*
+*Overall practice tip: The two most likely challenge points are slide 12 (AUC defensibility) and slide 13 (why no enforcement). Have the two-step answer ready: 12 establishes statistical signal in the hardest subgroup, 13 shows what that signal looks like in practice without requiring the audience to interpret AUC. Lead with the 63% trajectory number if the AUC question gets hostile.*
