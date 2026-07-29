@@ -150,11 +150,11 @@ The point is not that these correlations are large -- Spearman rho of 0.29 is mo
 
 ## SLIDE 14: From Correlation to Prediction -- The VAI-Only Test
 
-"Now, can that information actually predict outcomes? **[PAUSE]**
+"The correlations give us confidence that the text carries real information. The next question is whether that information is strong enough to actually predict outcomes. **[PAUSE]**
 
-Before I show you the AUC results, I need to explain why we focus on VAI-only facilities. **[PAUSE]** 73 of the 98 FEIs in our sample were never classified OAI. Every inspection they ever received ended as VAI or NAI. **[PAUSE]** Within this group, the outcome label never varies. There is no enforcement signal that differentiates them. 483 text is the only available signal we can use. **[PAUSE]**
+The prediction task is: given the 17 LLM features from a single inspection, can we predict whether that facility will produce above-median AEs over the following four quarters? We use FEI-grouped 5-fold cross-validation, logistic regression, and a baseline of AUC 0.5 because the outcome is constructed as a 50/50 median split. 176 inspection events across 78 facilities with ANDA-matched AE data. **[PAUSE]**
 
-The prediction task is: given the 17 LLM features from a single inspection, can we predict whether that facility will be in the above-median half of AE producers over the following four quarters? **[PAUSE]** We use FEI-grouped 5-fold cross-validation -- facilities never appear in both training and test -- logistic regression, and a baseline of AUC 0.5 because the outcome is constructed as 50/50 by the median split."
+Now, why focus on VAI-only? 55 of those 78 facilities were never classified OAI -- every inspection they ever received ended as VAI or NAI. Within this group the outcome label never varies. There is no enforcement signal to differentiate them. 483 text is the only available signal. **[PAUSE]** This is the hardest and most policy-relevant test: can text find the high-risk facilities that FDA's classification missed entirely?"
 
 ---
 

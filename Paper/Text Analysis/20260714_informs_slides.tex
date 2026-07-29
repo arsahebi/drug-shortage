@@ -464,36 +464,43 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \begin{frame}{From Correlation to Prediction: The VAI-Only Test}
 \begin{columns}[T]
 \column{0.50\textwidth}
-\textbf{Why VAI-only facilities are the critical test:}
+\textbf{From association to prediction:}
 
-\vspace{6pt}
-\begin{itemize}
-  \setlength{\itemsep}{8pt}
-  \item 73 facilities in our sample were \emph{never} classified OAI -- every inspection ended as VAI or NAI
-  \item Within this group the outcome label never varies -- 483 text is the only available signal to differentiate facilities
-\end{itemize}
+\vspace{4pt}
+{\small Correlations show text signals track future AEs. The next question: can they \emph{predict} which facilities will generate above-median harm?}
 
-\vspace{10pt}
-\begin{alertblock}{Key question}
-\small Does 483 text separate high- from low-harm producers where FDA's classification cannot?
-\end{alertblock}
-
-\column{0.47\textwidth}
+\vspace{8pt}
 \textbf{Prediction setup:}
 
 \vspace{4pt}
 {\small
 \begin{itemize}
   \setlength{\itemsep}{5pt}
-  \item \textbf{Unit:} one inspection event
+  \item \textbf{Unit:} one inspection event (176 with ANDA-matched AEs)
   \item \textbf{Features:} 17 LLM text signals from the 483
   \item \textbf{Outcome:} above-median AEs in the post-inspection year
         $$\mathbf{1}\!\left[\,\textstyle\sum_{q=1}^{4}\,\text{AE}_{t+q} > \text{median}\,\right]$$
-  \item \textbf{CV:} FEI-grouped 5-fold
-  \item \textbf{Model:} logistic regression
-  \item \textbf{Baseline:} AUC\,=\,0.5 (50/50 outcome by construction)
+  \item \textbf{CV:} FEI-grouped 5-fold logistic regression
+  \item \textbf{Baseline:} AUC\,=\,0.5 (50/50 by construction)
 \end{itemize}
 }
+
+\column{0.47\textwidth}
+\textbf{Why focus on VAI-only?}
+
+\vspace{6pt}
+\begin{itemize}
+  \setlength{\itemsep}{8pt}
+  \item \highlight{55 facilities} never received an OAI -- every inspection ended VAI or NAI
+  \item Within this group the outcome label never varies; text is the \emph{only} available signal to differentiate facilities
+  \item This is the hardest and most policy-relevant test: can text find the high-risk facilities that FDA's classification missed?
+\end{itemize}
+
+\vspace{8pt}
+\begin{alertblock}{Key question}
+\small Does 483 text separate high- from low-harm producers where FDA's classification cannot?
+\end{alertblock}
+
 \end{columns}
 \end{frame}
 
