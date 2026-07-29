@@ -78,7 +78,7 @@ Let me walk through each step in a bit more detail."
 
 ## SLIDE 8: Step 00 -- What a 483 Observation Looks Like
 
-"Here are two actual observations from a Sun Pharma inspection in 2022. This was an OAI inspection -- eight observations across eight pages. **[PAUSE -- let them read the boxes]**
+"Here are two actual observations from a Sun Pharma inspection in 2022. This was an OAI inspection -- six observations. **[PAUSE -- let them read the boxes]**
 
 Observation 1 is a data integrity finding. The header cites a failure to thoroughly investigate discrepancies. The body describes instances of backdating by QA and QC personnel. **[PAUSE]**
 
@@ -110,7 +110,7 @@ The example on the left shows what this looks like in practice. The input is: 'B
 
 The JSON schema is fixed, so the model cannot invent new fields or add free-text commentary. This keeps the output clean for aggregation. **[PAUSE]**
 
-On the trustworthiness question: a 2026 paper in NPJ Digital Medicine reported 93 to 97 percent agreement between LLMs and human annotators on structured extraction from FDA regulatory documents. We also had Redica GMP specialists review our prompt definitions in June. **[PAUSE]** Manual human labeling is in progress and findings should be treated as preliminary, but we have reasonable confidence the extraction is capturing what we intend."
+On the trustworthiness question: Khairallah et al. (2024) tested 18 LLMs including Claude Haiku on clinical entity extraction from surgical notes and found 90.2 percent accuracy. We also had Redica GMP specialists review our prompt definitions in June. **[PAUSE]** Manual human labeling is in progress and findings should be treated as preliminary, but we have reasonable confidence the extraction is capturing what we intend."
 
 ---
 
@@ -196,9 +196,7 @@ First: yes, 483 text is associated with future harm, but the signal concentrates
 
 Second: Lab Controls is the leading dimension. The count and severity of Lab Controls observations reach rho up to 0.29 at Q+2. No other dimension is significant at both pre- and post-inspection snapshots. **[PAUSE]**
 
-Third: 483 text carries information the inspection outcome label does not. The outcome label cannot differentiate VAI facilities from each other. The 483 text from the same visit can. **[PAUSE]**
-
-Fourth: same VAI label, very different outcomes, and those outcomes are identifiable from text. Hi-sig VAI facilities produce 63 percent more AEs one year later than Lo-sig VAI. These are the silent cases -- facilities that stayed below the enforcement threshold even as patient harm accumulated."
+Third: same VAI label, very different outcomes, and those outcomes are identifiable from text. Hi-sig VAI facilities produce 63 percent more AEs one year later than Lo-sig VAI. These are the silent cases -- facilities that stayed below the enforcement threshold even as patient harm accumulated."
 
 **[PAUSE -- slow down here, let the last point settle]**
 
@@ -217,18 +215,6 @@ FAERS attribution has a known limitation: when one manufacturer operates multipl
 LLM extraction quality is still being validated. Human labeling is in progress. Findings should be treated as preliminary. **[PAUSE]**
 
 We also have not integrated commercial volume. Facility size is a potential confounder. And finally, all associations are correlational. Testing the shortage-pressure hypothesis properly requires market concentration data we do not currently have."
-
----
-
-## SLIDE 19: Next Steps
-
-"We have three main directions. **[PAUSE]**
-
-First, refine the LLM extraction. We will update prompts based on expert feedback and validate against the manual human labels that are being collected now. **[PAUSE]**
-
-Second, add MarketScan as an outcome source. MarketScan links prescriptions to NDC-level dispensing records and patient outcomes. It gives a cleaner tie between a specific facility and patient harm than FAERS, which relies on spontaneous reporting. **[PAUSE]**
-
-Third, add volume controls. Commercial volume data would let us properly account for facility size as a confounder and potentially convert from raw AE counts to AE rates."
 
 ---
 
@@ -284,7 +270,7 @@ The LLM reads the full context of the observation and makes a judgment about mea
 
 "We chose Claude Haiku because it is a smaller, faster model well-suited for structured extraction tasks where the instructions are explicit and the output schema is fixed. We are not asking it to reason through complex ambiguous problems -- we are asking it to read a paragraph and fill in a JSON form. For that task, a smaller model with a well-defined prompt performs comparably to larger models at a fraction of the cost.
 
-We did not run a full benchmark across multiple models for this version of the work. That is something we plan to do in the next phase, and the Li et al. 2026 paper I cited provides some external benchmarking evidence that supports using LLMs for this class of task."
+We did not run a full benchmark across multiple models for this version of the work. That is something we plan to do in the next phase, and the Khairallah et al. 2024 paper I cited provides some external benchmarking evidence that supports using LLMs for this class of task."
 
 ### Q: "How do you know the LLM is not hallucinating or making up classifications?"
 
