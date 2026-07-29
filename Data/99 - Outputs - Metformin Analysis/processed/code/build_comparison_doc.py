@@ -132,6 +132,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
         3: NEW_FIG / "Figure3_Price_vs_Quality.png",
         4: NEW_FIG / "Figure4_Quality_by_Country.png",
     }
+    new_singlefei = {
+        1: NEW_FIG / "Figure1_Market_by_Outcome_SingleFEI.png",
+        2: NEW_FIG / "Figure2_Volume_vs_Quality_SingleFEI.png",
+    }
+    figS1 = NEW_FIG / "FigureS1_Months_Since_Inspection.png"
 
     # ── build document ─────────────────────────────────────────────────────────
     doc = Document()
@@ -525,6 +530,53 @@ with tempfile.TemporaryDirectory() as tmpdir:
         'are weakened to marginal significance and should be softened in the paper. '
         'DMF country differences remain non-significant in both datasets.'
     ).font.size = Pt(10)
+
+    # ── Figure S1 — Months Since Last Inspection ──────────────────────────────
+    doc.add_page_break()
+    doc.add_heading('Figure S1 — Distribution of Months Since Last Inspection', 1)
+    add_note(doc, (
+        'For each (NDC11 × TestYear) row with a prior classified inspection, '
+        '"months since inspection" = (TestYear − prior_event_year) × 12. '
+        'Year-level resolution only (Redica does not record exact inspection dates consistently). '
+        'This shows how stale the prior inspection signal is relative to the Valisure test year.'
+    ))
+    p_img = doc.add_paragraph()
+    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if figS1.exists():
+        p_img.add_run().add_picture(str(figS1), width=Inches(6.2))
+    else:
+        p_img.add_run('(FigureS1_Months_Since_Inspection.png not found)')
+    doc.add_paragraph()
+
+    # ── Single-FEI Sensitivity: Figures 1 and 2 ──────────────────────────────
+    doc.add_page_break()
+    doc.add_heading('Sensitivity: Single-FEI NDCs Only (Figures 1 and 2)', 1)
+    add_note(doc, (
+        '25 NDC11s in the panel are linked to two manufacturing FEIs (n_feis > 1). '
+        'For these NDCs, the prior inspection is selected from whichever FEI had the most recent '
+        'classified inspection before the test year — but the other FEI\'s inspection history is '
+        'ignored. The plots below re-run Figures 1 and 2 after excluding all 25 multi-FEI NDC11s '
+        '(261 rows, 87 NDC11s remain). Figure 4 (quality by country) is unchanged — country '
+        'assignment for multi-FEI NDCs is handled the same way regardless.'
+    ))
+
+    doc.add_heading('Figure 1 — Volume by Inspection Outcome (single-FEI NDCs only)', 2)
+    p_img = doc.add_paragraph()
+    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if new_singlefei[1].exists():
+        p_img.add_run().add_picture(str(new_singlefei[1]), width=Inches(6.2))
+    else:
+        p_img.add_run('(Figure1_Market_by_Outcome_SingleFEI.png not found)')
+    doc.add_paragraph()
+
+    doc.add_heading('Figure 2 — Volume vs Quality (single-FEI NDCs only)', 2)
+    p_img = doc.add_paragraph()
+    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if new_singlefei[2].exists():
+        p_img.add_run().add_picture(str(new_singlefei[2]), width=Inches(6.2))
+    else:
+        p_img.add_run('(Figure2_Volume_vs_Quality_SingleFEI.png not found)')
+    doc.add_paragraph()
 
     doc.save(str(OUT_DOC))
     print(f'Saved: {OUT_DOC}')

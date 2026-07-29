@@ -235,11 +235,20 @@ print("Loading step5 panel...")
 df = pd.read_csv(STEP5, dtype=str)
 for col in [DMF_COL, NDMA_COL, DIFF_COL, VOL_COL,
             "iqvia_trx", "sdud_num_prescriptions", "sdud_units_reimbursed",
-            "prior_score", "n_lots"]:
+            "prior_score", "n_lots", "prior_event_year", "n_feis"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 df["TestYear"] = pd.to_numeric(df["TestYear"], errors="coerce").astype("Int64")
 print(f"  {len(df):,} rows | {df['NDC11'].nunique()} NDC11s")
+
+# Months from start of inspection year to start of test year (year-level resolution)
+df["months_since_inspection"] = (df["TestYear"].astype(float) - df["prior_event_year"]) * 12
+
+# Multi-FEI NDC11s (n_feis > 1); excluded from Figs 1-3; Figure 4 unchanged
+MULTI_FEI_NDCS = set(df.loc[df["n_feis"] > 1, "NDC11"].unique())
+df_single = df[~df["NDC11"].isin(MULTI_FEI_NDCS)].copy()
+print(f"  Multi-FEI NDC11s excluded from single-FEI plots: {len(MULTI_FEI_NDCS)}")
+print(f"  df_single: {len(df_single):,} rows | {df_single['NDC11'].nunique()} NDC11s")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -247,14 +256,16 @@ print(f"  {len(df):,} rows | {df['NDC11'].nunique()} NDC11s")
 # Left:  NADAC price per unit (blank — not yet in current pipeline)
 # Right: IQVIA annual volume (box + jitter by country, log scale)
 # ═══════════════════════════════════════════════════════════════════════════════
-def plot_fig1_market_by_outcome() -> None:
-    print("\nPlotting Figure 1 — Market Outcomes by Prior Inspection Outcome...")
+def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
+    _df = data if data is not None else df
+    label = " (single-FEI NDCs only)" if suffix else ""
+    print(f"\nPlotting Figure 1{label} — Market Outcomes by Prior Inspection Outcome...")
 
-    sub = df[
-        df["prior_outcome"].notna() &
-        df[VOL_COL].notna() &
-        (df[VOL_COL] > 0) &
-        df["CountryCode"].isin(COUNTRY_ORDER)
+    sub = _df[
+        _df["prior_outcome"].notna() &
+        _df[VOL_COL].notna() &
+        (_df[VOL_COL] > 0) &
+        _df["CountryCode"].isin(COUNTRY_ORDER)
     ].copy()
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
@@ -330,10 +341,10 @@ def plot_fig1_market_by_outcome() -> None:
     ax_vol.legend(handles=legend_handles, title="Country", loc="upper right")
 
     fig.suptitle(
-        "Figure 1 — Relationship between Market Outcomes and Prior FDA Inspection Outcome",
+        f"Figure 1 — Relationship between Market Outcomes and Prior FDA Inspection Outcome{label}",
         fontsize=11, fontweight="bold", y=1.01)
     plt.tight_layout()
-    _save(fig, "Figure1_Market_by_Outcome")
+    _save(fig, f"Figure1_Market_by_Outcome{suffix}")
     plt.close(fig)
     print_fig1_stats(sub)
 
@@ -432,10 +443,12 @@ def _add_trend_line(ax, x: np.ndarray, y: np.ndarray,
         pass
 
 
-def plot_fig2_volume_vs_quality() -> None:
-    print("\nPlotting Figure 2 — Market Volume vs Tested Drug Quality (all years pooled)...")
+def plot_fig2_volume_vs_quality(data=None, suffix="") -> None:
+    _df = data if data is not None else df
+    label = " (single-FEI NDCs only)" if suffix else ""
+    print(f"\nPlotting Figure 2{label} — Market Volume vs Tested Drug Quality (all years pooled)...")
 
-    d_core = df[df["CountryCode"].isin(COUNTRY_ORDER) & df[VOL_COL].notna() & (df[VOL_COL] > 0)].copy()
+    d_core = _df[_df["CountryCode"].isin(COUNTRY_ORDER) & _df[VOL_COL].notna() & (_df[VOL_COL] > 0)].copy()
 
     metrics = [
         (DMF_COL,  "DMF (ng/day)",       [2020, 2022, 2024], "symlog", 1.0),
@@ -474,10 +487,10 @@ def plot_fig2_volume_vs_quality() -> None:
     ]
     fig.legend(handles=legend_handles, title="Country",
                loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=3, framealpha=0.9)
-    fig.suptitle("Figure 2 — Market Volume vs Tested Drug Quality",
+    fig.suptitle(f"Figure 2 — Market Volume vs Tested Drug Quality{label}",
                  fontsize=12, fontweight="bold", y=1.01)
     plt.tight_layout(rect=[0, 0.06, 1, 1])
-    _save(fig, "Figure2_Volume_vs_Quality")
+    _save(fig, f"Figure2_Volume_vs_Quality{suffix}")
     plt.close(fig)
     print_fig2_stats(d_core)
 
@@ -911,12 +924,67 @@ def run_statistical_models() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Figure S1 — Distribution of Months Since Last Inspection
+# X-axis: (TestYear - prior_event_year) * 12  (year-level resolution)
+# Faceted by TestYear; restricted to rows with a prior classified inspection
+# ═══════════════════════════════════════════════════════════════════════════════
+def plot_figS1_months_since_inspection() -> None:
+    print("\nPlotting Figure S1 — Distribution of Months Since Last Inspection...")
+
+    sub = df[df["months_since_inspection"].notna() & df["prior_outcome"].notna()].copy()
+    sub["months_since_inspection"] = sub["months_since_inspection"].astype(float)
+
+    year_colors = {2020: "#3b82f6", 2022: "#f59e0b", 2024: "#22c55e"}
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5), sharey=False)
+
+    all_vals = sub["months_since_inspection"]
+    bins = np.arange(0, all_vals.max() + 13, 12)  # 12-month bins (= 1 year)
+
+    for ax, yr in zip(axes, TEST_YEARS):
+        s = sub[sub["TestYear"] == yr]["months_since_inspection"]
+        ax.hist(s, bins=bins, color=year_colors[yr], edgecolor="white",
+                linewidth=0.6, alpha=0.85, zorder=2)
+        ax.axvline(s.median(), color="#1f2937", linewidth=1.5,
+                   linestyle="--", label=f"Median = {s.median():.0f} mo")
+        ax.set_xlabel("Months since last inspection\n(Jan of inspection year → Jan of test year)")
+        ax.set_ylabel("Number of NDC-years")
+        ax.set_title(f"Test Year {yr}\n(n={len(s)}, median={s.median():.0f} mo, "
+                     f"IQR [{np.percentile(s,25):.0f}–{np.percentile(s,75):.0f}])",
+                     fontsize=10)
+        ax.legend(fontsize=9)
+        ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
+        ax.set_axisbelow(True)
+        ax.set_xticks(bins)
+
+    fig.suptitle("Figure S1 — Distribution of Months Between Last Inspection and Valisure Test Year",
+                 fontsize=11, fontweight="bold", y=1.02)
+    plt.tight_layout()
+    _save(fig, "FigureS1_Months_Since_Inspection")
+    plt.close(fig)
+
+    print("\n  Summary — Months Since Last Inspection:")
+    for yr in TEST_YEARS:
+        s = sub[sub["TestYear"] == yr]["months_since_inspection"]
+        print(f"    {yr}: n={len(s)}  mean={s.mean():.1f}  median={s.median():.0f}  "
+              f"IQR=[{np.percentile(s,25):.0f}, {np.percentile(s,75):.0f}]  "
+              f"range=[{s.min():.0f}, {s.max():.0f}]")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # RUN ALL
 # ═══════════════════════════════════════════════════════════════════════════════
-plot_fig1_market_by_outcome()   # Fig 1: Price (blank) + Volume by inspection outcome
-plot_fig2_volume_vs_quality()   # Fig 2: Volume vs DMF | NDMA | DiffFactor (pooled)
-plot_fig3_price_vs_quality()    # Fig 3: Price vs Quality (blank — NADAC pending)
-plot_fig4_quality_by_country()  # Fig 4: Quality by Country (bar charts)
+# Full dataset
+plot_fig1_market_by_outcome()                           # Fig 1: all NDCs
+plot_fig2_volume_vs_quality()                           # Fig 2: all NDCs
+plot_fig3_price_vs_quality()                            # Fig 3: blank (NADAC pending)
+plot_fig4_quality_by_country()                          # Fig 4: all NDCs (country; unchanged)
+
+# Single-FEI NDCs only (25 multi-FEI NDCs excluded from Figs 1–2)
+plot_fig1_market_by_outcome(data=df_single, suffix="_SingleFEI")
+plot_fig2_volume_vs_quality(data=df_single, suffix="_SingleFEI")
+
+# Months-since-inspection distribution
+plot_figS1_months_since_inspection()
 
 run_statistical_models()
 
