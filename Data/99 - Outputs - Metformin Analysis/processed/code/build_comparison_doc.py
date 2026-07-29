@@ -98,22 +98,25 @@ def simple_table(doc, headers, rows, col_widths=None, zebra=True):
                 row.cells[ci].width = Inches(w)
     return t
 
-def add_fig_pair(doc, label_old, old_img, label_new, new_img, width=6.2):
-    """Old figure above, new figure below — each full-width for readability."""
-    for label, img in [(label_old, old_img), (label_new, new_img)]:
-        p_lbl = doc.add_paragraph()
-        r = p_lbl.add_run(label)
-        r.bold = True
-        r.font.size = Pt(9)
-        p_lbl.alignment = WD_ALIGN_PARAGRAPH.CENTER
+def _add_labeled_figure(doc, label, img, width=6.2):
+    p_lbl = doc.add_paragraph()
+    r = p_lbl.add_run(label); r.bold = True; r.font.size = Pt(9)
+    p_lbl.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_img = doc.add_paragraph()
+    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if img and Path(img).exists():
+        p_img.add_run().add_picture(str(img), width=Inches(width))
+    else:
+        p_img.add_run('(not available)')
+    doc.add_paragraph()
 
-        p_img = doc.add_paragraph()
-        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if img and Path(img).exists():
-            p_img.add_run().add_picture(str(img), width=Inches(width))
-        else:
-            p_img.add_run('(not available)')
-        doc.add_paragraph()
+def add_fig_pair(doc, label_old, old_img, label_new, new_img, width=6.2):
+    for label, img in [(label_old, old_img), (label_new, new_img)]:
+        _add_labeled_figure(doc, label, img, width)
+
+def add_fig_triple(doc, label_old, old_img, label_new, new_img, label_sfei, sfei_img, width=6.2):
+    for label, img in [(label_old, old_img), (label_new, new_img), (label_sfei, sfei_img)]:
+        _add_labeled_figure(doc, label, img, width)
 
 SIG_NOTE = '(*) p < 0.05;  (**) p < 0.01;  (***) p < 0.001.  Significant p-values shown in bold red.'
 
@@ -135,6 +138,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     new_singlefei = {
         1: NEW_FIG / "Figure1_Market_by_Outcome_SingleFEI.png",
         2: NEW_FIG / "Figure2_Volume_vs_Quality_SingleFEI.png",
+        3: NEW_FIG / "Figure3_Price_vs_Quality_SingleFEI.png",
     }
     figS1 = NEW_FIG / "FigureS1_Months_Since_Inspection.png"
 
@@ -157,286 +161,135 @@ with tempfile.TemporaryDirectory() as tmpdir:
     add_note(doc, 'Pre-revision: Health Affairs Scholars, submitted 2026-05-29  |  New pipeline: Steps 1–6, Redica July 2026 refresh')
     doc.add_paragraph()
 
-    # ── 1. Universe Counts ─────────────────────────────────────────────────────
-    doc.add_heading('1. Universe Counts', 1)
-    simple_table(doc,
-        headers=['', 'Pre-revision', 'July 2026'],
-        rows=[
-            ['Total NDC11s (Valisure file)', '112', '112'],
-            ['NDC11s with FEI found', '88', '89'],
-            ['NDC11s excluded (CAN / BGD)', '6  (CAN=4, BGD=2)', '5  (CAN=3, BGD=2)'],
-            ['NDC11s in analysis (IND/CHN/USA)', '82', '84'],
-            ['Unique FEIs in analysis', '15', '28'],
-            ['Redica: classified FDA inspections', '82  (18 FEIs, through 2025)', '195  (29 FEIs, through May 2026)'],
-        ],
-        col_widths=[2.8, 2.1, 2.1]
-    )
-    p = doc.add_paragraph()
-    p.add_run('Country breakdown of FEI-mapped NDC11s — ').font.size = Pt(9)
-    r = p.add_run('Pre-revision: '); r.bold = True; r.font.size = Pt(9)
-    p.add_run('IND=54 · USA=16 · CHN=12 · CAN=4 · BGD=2   ').font.size = Pt(9)
-    r3 = p.add_run('July 2026: '); r3.bold = True; r3.font.size = Pt(9)
-    p.add_run('IND=55 · USA=17 · CHN=12 · CAN=3 · BGD=2').font.size = Pt(9)
-
-    add_note(doc, (
-        'Why counts differ: The NDC→FEI linking was done manually in both versions, but the new version uses '
-        'DailyMed drug labels and ProPublica facility data for higher accuracy and explicitly handles NDCs '
-        'linked to multiple manufacturing sites (multi-FEI NDCs). '
-        'The Redica July 2026 refresh covers inspections through May 2026 and adds 11 FEIs not previously '
-        'captured, more than doubling the classified inspection count (82 → 195).'
-    ))
-
-    # ── 2. Panel Details ───────────────────────────────────────────────────────
-    doc.add_page_break()
-    doc.add_heading('2. Panel Details and Sample Composition', 1)
-    add_note(doc, (
-        'All panels restricted to IND, CHN, USA. '
-        'The 84 NDC11s in analysis reduce to 81 unique NDC11s in the Figure 1 volume panel '
-        'because 3 NDCs have no prior classified inspection before any test year in the Redica data '
-        'and are therefore excluded from the inspection-outcome analysis. '
-        'Pre-revision data sourced from Q&A file (Q&As1234_v8_v02.xlsx, Sheet1); '
-        'prior inspection assigned using the same strict EventYear < TestYear rule applied to July 2026 data.'
-    ))
-    doc.add_paragraph()
-
-    # 2.1
-    doc.add_heading('2.1  NDC-Year Panel Counts by Figure', 2)
-    simple_table(doc,
-        headers=['Panel', 'Pre-revision', 'July 2026'],
-        rows=[
-            ['Fig 1 — Volume by inspection outcome', '111 NDC-years, 82 NDC11s', '221 NDC-years, 81 NDC11s'],
-            ['Fig 2 — DMF vs volume  (2020+2022+2024)', '111 NDC-years, 82 NDC11s', '126 NDC-years, 94 NDC11s'],
-            ['Fig 2 — NDMA vs volume  (2020+2022)', '63 NDC-years, 54 NDC11s', '71 NDC-years, 62 NDC11s'],
-            ['Fig 2 — Diff Factor vs volume  (2024)', '48 NDC-years, 48 NDC11s', '25 NDC-years, 25 NDC11s'],
-            ['Fig 3 — Quality vs price', 'same as Fig 2  (NADAC available)', 'NADAC not yet in pipeline'],
-            ['Fig 4 — DMF by country  (2020+2022+2024)', '111  (IND=79, CHN=18, USA=14)', '127  (IND=87, CHN=18, USA=22)'],
-            ['Fig 4 — NDMA by country  (2020+2022)', '63  (IND=44, CHN=13, USA=6)', '71  (IND=46, CHN=13, USA=12)'],
-            ['Fig 4 — Diff Factor by country  (2024)', '48  (IND=30, CHN=10, USA=8)', '25  (IND=16, CHN=5, USA=4)'],
-        ],
-        col_widths=[2.9, 2.1, 2.1]
-    )
-    add_note(doc, (
-        'Why NDC-years are more in July 2026: In the new data, all 84 NDC11s × 3 Valisure test years = 252 '
-        'NDC-year combinations are populated (the July 2026 Valisure file covers all three test years for '
-        'every NDC in the dataset). Of these, 243 have a prior classified Redica inspection (96%). '
-        'In pre-revision, the same 82 NDC11s × 3 years = 246 combinations were possible, but the old '
-        'Redica file (82 inspections, 18 FEIs) left most NDC-years without an eligible prior classified '
-        'inspection — only 111 of 246 (45%) had the required inspection coverage. '
-        'The Fig 1 regression panel uses 221 NDC-years (of 243) after requiring non-null IQVIA volume.'
-    ))
-    add_note(doc, (
-        'Pre-revision paper reported 110 NDC-years (NAI=64, VAI=33, OAI=13) — a minor discrepancy '
-        'from the 111 derived here, arising from differences in panel assembly at submission time.'
-    ))
-
-    # 2.2
-    doc.add_paragraph()
-    doc.add_heading('2.2  Figure 1 Panel — Outcome Distribution by Year', 2)
-    simple_table(doc,
-        headers=['Outcome', 'Pre-rev 2020', 'Pre-rev 2022', 'Pre-rev 2024', 'Pre-rev Total',
-                 'New 2020', 'New 2022', 'New 2024', 'New Total'],
-        rows=[
-            ['NAI', '7',  '16', '16', '39  (25 NDC11s)',  '20', '6',  '4',  '30  (25 NDC11s)'],
-            ['VAI', '13', '16', '27', '56  (40 NDC11s)',  '45', '63', '64', '172  (80 NDC11s)'],
-            ['OAI', '6',  '5',  '5',  '16  (12 NDC11s)',  '16', '12', '13', '41  (29 NDC11s)'],
-            ['Total (w/ prior)', '26', '37', '48', '111  (82 NDC11s)', '81', '81', '81', '243  (84 NDC11s)'],
-        ],
-        col_widths=[1.05, 0.72, 0.72, 0.72, 1.25, 0.62, 0.62, 0.62, 1.25]
-    )
-    add_note(doc, (
-        'The NDC11 counts in parentheses (e.g., 25+80+29 = 134 for July 2026) sum to more than the universe '
-        'of 84 NDC11s because the same NDC11 can carry different inspection outcomes in different test years. '
-        'For example, an NDC whose manufacturing site received a VAI inspection prior to 2020 and a NAI '
-        'inspection prior to 2024 will be counted in both the VAI group (for TestYear=2020) and the NAI '
-        'group (for TestYear=2024). The unique NDC11 count in the Total row (82 / 84) is the unduplicated '
-        'universe; the per-outcome NDC11 counts overlap across rows.'
-    ))
-
-    # 2.3
-    doc.add_paragraph()
-    doc.add_heading('2.3  Descriptive Volume by Outcome', 2)
-    simple_table(doc,
-        headers=['Outcome', 'Pre-rev n', 'Pre-rev Mean', 'Pre-rev Median', 'New n', 'New Mean', 'New Median'],
-        rows=[
-            ['NAI', '39', '125,591,916', '15,944,388', '26', '24,745,069', '862,990'],
-            ['VAI', '56', '30,308,175',  '2,392,105',  '155', '38,744,119', '2,483,318'],
-            ['OAI', '16', '85,051,570',  '18,425,376', '40', '46,534,770', '1,453,286'],
-        ],
-        col_widths=[0.9, 0.8, 1.35, 1.35, 0.7, 1.35, 1.25]
-    )
-    add_note(doc, (
-        'IQVIA extended units. Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 '
-        'NDC-year observations (22 NDC11s), driving the high NAI mean.'
-    ))
-
-    # 2.4 — OAI (July 2026 only)
-    doc.add_paragraph()
-    doc.add_heading('2.4  OAI Facilities — July 2026 (strict rule, 4 FEIs)', 2)
-    simple_table(doc,
-        headers=['FEI', 'Country', 'Prior Insp Year', 'n_obs', 'n_ndc', 'Test Years', 'Facility'],
-        rows=[
-            ['3002984011', 'IND', '2019', '16', '8',  '2020, 2022', 'Zydus Lifesciences (Sanand)'],
-            ['3007373532', 'IND', '2019', '8',  '4',  '2020, 2022', 'Aurobindo Pharma (Jadcherla)'],
-            ['3004819820', 'IND', '2019', '4',  '4',  '2020',       'Lupin Limited (Mormugao)'],
-            ['3008298016', 'USA', '2023', '13', '13', '2024',       'ScieGen Pharmaceuticals (Hauppauge, NY)'],
-        ],
-        col_widths=[0.9, 0.7, 1.1, 0.5, 0.5, 0.9, 2.6]
-    )
-    add_note(doc, (
-        'Zydus/Aurobindo/Lupin: OAI in 2019 is the most recent prior inspection for TestYears 2020 and 2022. '
-        'ScieGen: OAI in 2023 becomes prior for TestYear 2024 under the strict rule (same-year 2024 NAI excluded).'
-    ))
-
-    # 2.5 — NAI (July 2026 only)
-    doc.add_paragraph()
-    doc.add_heading('2.5  NAI Facilities — July 2026 (strict rule, 6 FEIs)', 2)
-    simple_table(doc,
-        headers=['FEI', 'Country', 'n_obs', 'n_ndc', 'Facility'],
-        rows=[
-            ['3004097901', 'IND', '17', '17', 'Granules India (Qutubullapur) — prior NAI 2018; VAI for 2022 & 2024'],
-            ['3006346108', 'CHN', '4',  '2',  'Novast Laboratories (Nantong)'],
-            ['3008565058', 'IND', '3',  '1',  'Glenmark Pharmaceuticals (Dhar)'],
-            ['3005263655', 'USA', '2',  '2',  'Amneal Pharmaceuticals of New York (Centereach)'],
-            ['3008223599', 'IND', '2',  '1',  'Amneal Pharmaceuticals (Bavla)'],
-            ['3010254278', 'IND', '2',  '2',  'Amneal Pharmaceuticals (Sanand)'],
-        ],
-        col_widths=[1.0, 0.75, 0.55, 0.55, 4.25]
-    )
-
-    # 2.6 — VAI (July 2026 only)
-    doc.add_paragraph()
-    doc.add_heading('2.6  VAI Top Facilities — July 2026 (21 FEIs total)', 2)
-    simple_table(doc,
-        headers=['FEI', 'Country', 'n_obs', 'n_ndc', 'Facility'],
-        rows=[
-            ['3004097901', 'IND', '34', '17', 'Granules India (Qutubullapur) — 2022 & 2024 only'],
-            ['3008298016', 'USA', '26', '13', 'ScieGen Pharmaceuticals (Hauppauge) — 2020 & 2022'],
-            ['2000021110', 'CHN', '21', '7',  'CSPC Ouyi Pharmaceutical (Shijiazhuang)'],
-            ['3011922870', 'CHN', '9',  '3',  'Qingdao BAHEAL Pharmaceutical (Jimo)'],
-            ['3011538548', 'IND', '9',  '3',  'Laurus Labs (Rambilli)'],
-            ['3006370533', 'IND', '9',  '3',  'Alkem Laboratories (Baddi)'],
-            ['3006230648', 'IND', '9',  '3',  'Marksans Pharma (Mormugao)'],
-            ['3007938603', 'IND', '7',  '7',  'Zydus Lifesciences (Sanand — separate unit)'],
-            ['3004819820', 'IND', '6',  '4',  'Lupin Limited (Mormugao) — 2022 & 2024'],
-            ['3008232264', 'IND', '6',  '2',  'Inventia Healthcare (Ambernath)'],
-            ['1930436',    'USA', '6',  '2',  'MPP Pharma (Kansas City)'],
-            ['3006785788', 'IND', '6',  '2',  'Ajanta Pharma (Paithan)'],
-            ['9 more FEIs', '', '1–4', '', ''],
-        ],
-        col_widths=[1.0, 0.75, 0.55, 0.55, 4.25]
-    )
-
     # ── Figure 1 ──────────────────────────────────────────────────────────────
     doc.add_page_break()
     doc.add_heading('Figure 1 — Market Outcomes by Prior FDA Inspection Outcome', 1)
     add_note(doc, 'Left panel: NADAC price per unit (blank in July 2026 — not yet in pipeline). Right panel: Annual IQVIA extended units by inspection outcome (IND/CHN/USA, log scale).')
-    add_fig_pair(doc, 'Pre-revision (Health Affairs Scholars)', old[1],
-                      'July 2026 (strict rule: EventYear < TestYear)', new[1])
+    add_note(doc, 'All NDCs = full July 2026 panel including 25 multi-FEI NDC11s.  Single-FEI = those 25 excluded (87 NDC11s, 261 rows remain).')
+    add_fig_triple(doc,
+        'Pre-revision (Health Affairs Scholars)', old[1],
+        'July 2026 — All NDCs (strict rule: EventYear < TestYear)', new[1],
+        'July 2026 — Single-FEI NDCs only', new_singlefei[1])
 
-    doc.add_heading('Statistics Comparison — Model B (MixedLM + CGM two-way clustered SE)', 2)
+    doc.add_heading('Statistics — Model B (MixedLM + CGM two-way clustered SE)', 2)
     add_note(doc, SIG_NOTE)
     simple_table(doc,
-        headers=['Coefficient', 'Pre-revision', 'July 2026'],
+        headers=['Coefficient', 'Pre-revision', 'July 2026 — All NDCs', 'July 2026 — Single-FEI'],
         rows=[
             ['VAI vs NAI',
-             [
-                 {'text': 'β = −1.820, SE = 0.801\n95% CI [−3.389, −0.250],  '},
-                 {'text': 'p = 0.025 (*)', 'bold': True, 'red': True},
-             ],
-             'β = +2.311, SE = 1.421\n95% CI [−0.474, +5.096],  p = 0.105'],
+             [{'text': 'β = −1.820, SE = 0.801\n95% CI [−3.389, −0.250],  '},
+              {'text': 'p = 0.025 (*)', 'bold': True, 'red': True}],
+             'β = +2.311, SE = 1.421\n95% CI [−0.474, +5.096],  p = 0.105',
+             'β = +1.054, SE = 1.681\n95% CI [−2.241, +4.350],  p = 0.532'],
             ['OAI vs NAI',
              'β = +1.747, SE = 0.952\n95% CI [−0.120, +3.613],  p = 0.069',
-             'β = +2.182, SE = 1.895\n95% CI [−1.533, +5.897],  p = 0.251'],
+             'β = +2.182, SE = 1.895\n95% CI [−1.533, +5.897],  p = 0.251',
+             'β = −0.100, SE = 1.899\n95% CI [−3.821, +3.621],  p = 0.958'],
             ['OAI vs VAI',
-             [
-                 {'text': 'β = +3.566, SE = 0.782\n95% CI [+2.033, +5.100],  '},
-                 {'text': 'p < 0.001 (***)', 'bold': True, 'red': True},
-             ],
-             'implied ≈ −0.129,  ns'],
+             [{'text': 'β = +3.566, SE = 0.782\n95% CI [+2.033, +5.100],  '},
+              {'text': 'p < 0.001 (***)', 'bold': True, 'red': True}],
+             'implied ≈ −0.129,  ns',
+             'implied ≈ −1.154,  ns'],
         ],
-        col_widths=[1.5, 3.0, 2.6]
+        col_widths=[1.3, 2.3, 2.2, 2.2]
     )
-    add_note(doc, 'Reference = NAI. n_obs = 110 (pre-revision) / 221 (July 2026), n_NDC = 81, n_FEI = 23.')
+    add_note(doc, (
+        'Reference = NAI.  '
+        'All NDCs: n_obs=221, n_NDC=80, n_FEI=23.  '
+        'Single-FEI: n_obs=149, n_NDC=55, n_FEI=18.'
+    ))
     doc.add_paragraph()
 
-    doc.add_heading('Descriptive Volume (July 2026 panel)', 2)
+    doc.add_heading('Descriptive Volume (IQVIA extended units)', 2)
     simple_table(doc,
-        headers=['Outcome', 'n', 'Mean', 'Median', 'P25', 'P75'],
+        headers=['Outcome', 'Pre-rev n', 'Pre-rev Median',
+                 'All-NDC n', 'All-NDC Median',
+                 'Single-FEI n', 'Single-FEI Median'],
         rows=[
-            ['NAI', '26', '24,745,069', '862,990', '47,187', '6,535,536'],
-            ['VAI', '155', '38,744,119', '2,483,318', '363,740', '16,434,334'],
-            ['OAI', '40', '46,534,770', '1,453,286', '212,008', '8,824,912'],
+            ['NAI', '39', '15,944,388', '26', '862,990',   '20', '1,364,730'],
+            ['VAI', '56', '2,392,105',  '155','2,483,318',  '113','2,168,090'],
+            ['OAI', '16', '18,425,376', '40', '1,453,286',  '16', '515,978'],
         ],
-        col_widths=[0.85, 0.5, 1.35, 1.25, 1.2, 1.45]
+        col_widths=[0.75, 0.65, 1.25, 0.65, 1.25, 0.75, 1.25]
     )
+    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median.')
     doc.add_paragraph()
     p = doc.add_paragraph()
     r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
-        'Old Observation 1 (volume part) is not supported in the updated data. '
-        'The primary model shows no significant relationship between inspection outcome and market volume '
-        '(VAI p = 0.105, OAI p = 0.251). The direction is reversed from the old paper: the new data show '
-        'NAI < VAI < OAI, whereas the old paper claimed NAI > VAI (β = −1.820, p = 0.025). '
-        'The price part cannot be evaluated until NADAC is added to the pipeline.'
+        'Neither version supports the original observation that NAI facilities have higher volume. '
+        'The primary model shows no significant relationship between inspection outcome and volume in either '
+        'the all-NDC (VAI p = 0.105, OAI p = 0.251) or single-FEI (VAI p = 0.532, OAI p = 0.958) panel. '
+        'In the single-FEI panel OAI median volume drops sharply (516K vs 1.5M in all-NDC), suggesting '
+        'that multi-FEI NDCs inflate OAI volume in the full panel. '
+        'The price side cannot be evaluated until NADAC is added to the pipeline.'
     ).font.size = Pt(10)
 
     # ── Figure 2 ──────────────────────────────────────────────────────────────
     doc.add_page_break()
     doc.add_heading('Figure 2 — Market Volume vs Tested Drug Quality', 1)
     add_note(doc, 'Each panel pools all available years for that metric. Spearman ρ with NDC-cluster block bootstrap (2,000 resamples).')
-    add_fig_pair(doc, 'Pre-revision (Health Affairs Scholars)', old[2],
-                      'July 2026 (new pipeline)', new[2])
+    add_note(doc, 'All NDCs = full July 2026 panel.  Single-FEI = 25 multi-FEI NDC11s excluded.')
+    add_fig_triple(doc,
+        'Pre-revision (Health Affairs Scholars)', old[2],
+        'July 2026 — All NDCs', new[2],
+        'July 2026 — Single-FEI NDCs only', new_singlefei[2])
 
-    doc.add_heading('Statistics Comparison — Spearman ρ (NDC-cluster block bootstrap)', 2)
+    doc.add_heading('Statistics — Spearman ρ (NDC-cluster block bootstrap, 2,000 resamples)', 2)
     add_note(doc, SIG_NOTE)
     simple_table(doc,
-        headers=['Association', 'Pre-revision', 'July 2026'],
+        headers=['Association', 'Pre-revision', 'July 2026 — All NDCs', 'July 2026 — Single-FEI'],
         rows=[
             ['DMF vs Volume',
-             [
-                 {'text': 'ρ = +0.279,  '},
-                 {'text': 'p = 0.004 (**)', 'bold': True, 'red': True},
-                 {'text': '\n95% CI [+0.064, +0.454]'},
-             ],
-             [
-                 {'text': 'ρ = +0.302,  '},
-                 {'text': 'p_boot = 0.002 (**)', 'bold': True, 'red': True},
-                 {'text': '\n95% CI [+0.112, +0.467],  n = 126'},
-             ]],
+             [{'text': 'ρ = +0.279,  '},
+              {'text': 'p = 0.004 (**)', 'bold': True, 'red': True},
+              {'text': '\n95% CI [+0.064, +0.454]'}],
+             [{'text': 'ρ = +0.302,  '},
+              {'text': 'p_boot = 0.002 (**)', 'bold': True, 'red': True},
+              {'text': '\n95% CI [+0.112, +0.467],  n = 126'}],
+             [{'text': 'ρ = +0.307,  '},
+              {'text': 'p_boot = 0.003 (**)', 'bold': True, 'red': True},
+              {'text': '\n95% CI [+0.090, +0.500],  n = 91'}]],
             ['NDMA vs Volume',
              'not significant  (p > 0.10)',
-             'ρ = −0.064,  p_boot = 0.635\nn = 71'],
-            ['Difference Factor vs Volume',
+             'ρ = −0.064,  p_boot = 0.635\nn = 71',
+             'ρ = +0.018,  p_boot = 0.898\nn = 54'],
+            ['Diff Factor vs Volume',
              'not significant  (p > 0.10)',
-             'ρ = −0.162,  p_boot = 0.454\nn = 25'],
+             'ρ = −0.162,  p_boot = 0.454\nn = 25',
+             'ρ = −0.118,  p_boot = 0.613\nn = 21'],
         ],
-        col_widths=[2.0, 2.5, 2.6]
+        col_widths=[1.5, 1.9, 2.1, 2.1]
     )
     add_note(doc, 'NDC-cluster block bootstrap resamples whole NDC clusters to obtain cluster-robust p-values and 95% CI.')
     doc.add_paragraph()
     p = doc.add_paragraph()
     r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
-        'Old Observation 2 (DMF vs market volume) is still supported and strengthened '
-        '(ρ = +0.30, p = 0.002, n = 126 vs n ≈ 86 previously). '
-        'The positive association between higher DMF contamination and higher market volume is robust. '
-        'NDMA and Difference Factor versus volume remain non-significant in both datasets.'
+        'Old Observation 2 (DMF vs market volume) is supported and robust in both the all-NDC '
+        '(ρ = +0.30, p = 0.002, n = 126) and single-FEI (ρ = +0.31, p = 0.003, n = 91) panels. '
+        'Excluding multi-FEI NDCs slightly increases the effect size. '
+        'NDMA and Difference Factor versus volume remain non-significant in both versions.'
     ).font.size = Pt(10)
 
     # ── Figure 3 ──────────────────────────────────────────────────────────────
     doc.add_page_break()
     doc.add_heading('Figure 3 — Price vs Tested Drug Quality', 1)
-    add_note(doc, 'July 2026 figure is blank — NADAC price data not yet integrated into the pipeline. NADAC is available in the pre-revision Q&A file (107 of 111 NDC-years have NADAC).')
-    add_fig_pair(doc, 'Pre-revision (Health Affairs Scholars)', old[3],
-                      'July 2026 (NADAC pending)', new[3])
+    add_note(doc, 'July 2026 figures are blank — NADAC price data not yet integrated into the pipeline. NADAC is available in the pre-revision Q&A file (107 of 111 NDC-years have NADAC).')
+    add_note(doc, 'All NDCs = full July 2026 panel.  Single-FEI = 25 multi-FEI NDC11s excluded.')
+    add_fig_triple(doc,
+        'Pre-revision (Health Affairs Scholars)', old[3],
+        'July 2026 — All NDCs (NADAC pending)', new[3],
+        'July 2026 — Single-FEI NDCs only (NADAC pending)', new_singlefei[3])
 
     doc.add_heading('Statistics Comparison — Spearman ρ (NDC-cluster block bootstrap)', 2)
     add_note(doc, SIG_NOTE)
     simple_table(doc,
-        headers=['Association', 'Pre-revision', 'July 2026'],
+        headers=['Association', 'Pre-revision', 'July 2026 — All NDCs', 'July 2026 — Single-FEI'],
         rows=[
             ['DMF vs Price',
              'not significant  (p > 0.10)',
+             'pending NADAC integration',
              'pending NADAC integration'],
             ['NDMA vs Price',
              [
@@ -444,12 +297,14 @@ with tempfile.TemporaryDirectory() as tmpdir:
                  {'text': 'p = 0.013 (*)', 'bold': True, 'red': True},
                  {'text': '\n95% CI [+0.056, +0.490]'},
              ],
+             'pending NADAC integration',
              'pending NADAC integration'],
             ['Difference Factor vs Price',
              'not significant  (p > 0.10)',
+             'pending NADAC integration',
              'pending NADAC integration'],
         ],
-        col_widths=[2.0, 2.5, 2.6]
+        col_widths=[1.5, 1.9, 1.7, 2.0]
     )
     doc.add_paragraph()
     p = doc.add_paragraph()
@@ -546,36 +401,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
         p_img.add_run().add_picture(str(figS1), width=Inches(6.2))
     else:
         p_img.add_run('(FigureS1_Months_Since_Inspection.png not found)')
-    doc.add_paragraph()
-
-    # ── Single-FEI Sensitivity: Figures 1 and 2 ──────────────────────────────
-    doc.add_page_break()
-    doc.add_heading('Sensitivity: Single-FEI NDCs Only (Figures 1 and 2)', 1)
-    add_note(doc, (
-        '25 NDC11s in the panel are linked to two manufacturing FEIs (n_feis > 1). '
-        'For these NDCs, the prior inspection is selected from whichever FEI had the most recent '
-        'classified inspection before the test year — but the other FEI\'s inspection history is '
-        'ignored. The plots below re-run Figures 1 and 2 after excluding all 25 multi-FEI NDC11s '
-        '(261 rows, 87 NDC11s remain). Figure 4 (quality by country) is unchanged — country '
-        'assignment for multi-FEI NDCs is handled the same way regardless.'
-    ))
-
-    doc.add_heading('Figure 1 — Volume by Inspection Outcome (single-FEI NDCs only)', 2)
-    p_img = doc.add_paragraph()
-    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if new_singlefei[1].exists():
-        p_img.add_run().add_picture(str(new_singlefei[1]), width=Inches(6.2))
-    else:
-        p_img.add_run('(Figure1_Market_by_Outcome_SingleFEI.png not found)')
-    doc.add_paragraph()
-
-    doc.add_heading('Figure 2 — Volume vs Quality (single-FEI NDCs only)', 2)
-    p_img = doc.add_paragraph()
-    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if new_singlefei[2].exists():
-        p_img.add_run().add_picture(str(new_singlefei[2]), width=Inches(6.2))
-    else:
-        p_img.add_run('(Figure2_Volume_vs_Quality_SingleFEI.png not found)')
     doc.add_paragraph()
 
     doc.save(str(OUT_DOC))
