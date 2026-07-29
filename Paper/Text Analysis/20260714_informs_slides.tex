@@ -485,6 +485,7 @@ Feature & $\rho_{\text{Q-2}}$ & & $\rho_{\text{Q+2}}$ & \\
 \end{itemize}
 }
 
+\pause
 \column{0.47\textwidth}
 \textbf{Why focus on VAI-only?}
 
@@ -532,18 +533,15 @@ E & Text only, OAI-ever facilities & 0.473 & \\
 \vspace{4pt}
 {\small Config D: 55 VAI-only FEIs, 110 inspections.}
 
-\column{0.47\textwidth}
+\hfill\column{0.42\textwidth}
 \begin{itemize}
   \setlength{\itemsep}{7pt}
-  \item \textbf{Full sample (A--C):} text (0.585) modestly outperforms the inspection outcome flag (0.545); adding the flag provides no gain
+  \item \textbf{Full sample (A--C):} text (0.585) beats the OAI flag (0.545); combining adds no gain
   \pause
-  \item \textbf{VAI-only (D):} text reaches \highlight{AUC\,=\,0.66} ($p{=}0.046$) -- stronger signal in the subgroup where the outcome label provides no differentiation
+  \item \textbf{VAI-only (D):} \highlight{AUC\,=\,0.66} ($p{=}0.046$) -- text separates facilities where the outcome label cannot
   \pause
-  \item \textbf{OAI-ever (E):} text adds little -- enforcement may have corrected the underlying problems
+  \item \textbf{OAI-ever (E):} text adds little -- enforcement likely corrected the problems
 \end{itemize}
-
-\vspace{8pt}
-{\footnotesize \textit{Text features only -- no volume or market controls. Goal: isolate the unique contribution of 483 inspection text.}}
 \end{columns}
 \end{frame}
 
