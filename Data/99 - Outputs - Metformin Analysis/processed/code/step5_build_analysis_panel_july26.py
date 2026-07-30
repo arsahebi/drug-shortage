@@ -74,10 +74,11 @@ insp_sorted = insp.sort_values(
 prior = (
     insp_sorted
     .drop_duplicates(subset=['NDC11', 'TestYear'], keep='first')
-    [['NDC11', 'TestYear', '_outcome', 'EventYear', 'FEI', 'CountryCode', 'CountryName', 'Site Display Name']]
+    [['NDC11', 'TestYear', '_outcome', 'EventYear', 'Event End Date', 'FEI', 'CountryCode', 'CountryName', 'Site Display Name']]
     .rename(columns={
         '_outcome':          'prior_outcome',
         'EventYear':         'prior_event_year',
+        'Event End Date':    'prior_inspection_date',
         'FEI':               'prior_fei',
         'CountryCode':       'prior_country_code',
         'CountryName':       'prior_country_name',
@@ -85,6 +86,7 @@ prior = (
     })
 )
 prior['prior_score'] = prior['prior_outcome'].map(OUTCOME_SCORE)
+prior['prior_inspection_date'] = pd.to_datetime(prior['prior_inspection_date'], errors='coerce')
 
 print(f"  Prior inspection found for {len(prior)} (NDC11, TestYear) pairs")
 print("  Prior outcome distribution:")
@@ -136,6 +138,13 @@ agg = agg.merge(fallback_country, on='NDC11', how='left')
 # ── 5. Merge prior inspection ─────────────────────────────────────────────────
 agg = agg.merge(prior, on=['NDC11', 'TestYear'], how='left')
 
+# Compute exact months from inspection date to Jan 1 of test year
+_test_jan1 = pd.to_datetime(agg['TestYear'].astype(str) + '-01-01', errors='coerce')
+agg['prior_inspection_date'] = pd.to_datetime(agg['prior_inspection_date'], errors='coerce')
+agg['months_since_inspection'] = (
+    (_test_jan1 - agg['prior_inspection_date']) / pd.Timedelta(days=365.25 / 12)
+).round(1)
+
 # Fill country from prior inspection; otherwise use fallback
 agg['CountryCode'] = agg['prior_country_code'].fillna(agg['_fallback_cc'])
 agg['CountryName'] = agg['prior_country_name'].fillna(agg['_fallback_cn'])
@@ -154,7 +163,8 @@ FINAL_COLS = [
     'redica_firm', 'valisure_firm', 'valisure_labeler',
     'CountryCode', 'CountryName',
     'fei_count', 'n_feis',
-    'prior_fei', 'prior_event_year', 'prior_outcome', 'prior_score', 'prior_site',
+    'prior_fei', 'prior_inspection_date', 'prior_event_year', 'months_since_inspection',
+    'prior_outcome', 'prior_score', 'prior_site',
 ]
 FINAL_COLS = [c for c in FINAL_COLS if c in agg.columns]
 

@@ -235,14 +235,13 @@ print("Loading step5 panel...")
 df = pd.read_csv(STEP5, dtype=str)
 for col in [DMF_COL, NDMA_COL, DIFF_COL, VOL_COL,
             "iqvia_trx", "sdud_num_prescriptions", "sdud_units_reimbursed",
-            "prior_score", "n_lots", "prior_event_year", "n_feis"]:
+            "prior_score", "n_lots", "prior_event_year", "n_feis",
+            "months_since_inspection"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 df["TestYear"] = pd.to_numeric(df["TestYear"], errors="coerce").astype("Int64")
+df["prior_inspection_date"] = pd.to_datetime(df.get("prior_inspection_date"), errors="coerce")
 print(f"  {len(df):,} rows | {df['NDC11'].nunique()} NDC11s")
-
-# Months from start of inspection year to start of test year (year-level resolution)
-df["months_since_inspection"] = (df["TestYear"].astype(float) - df["prior_event_year"]) * 12
 
 # Multi-FEI NDC11s (n_feis > 1); excluded from Figs 1-3; Figure 4 unchanged
 MULTI_FEI_NDCS = set(df.loc[df["n_feis"] > 1, "NDC11"].unique())
@@ -925,7 +924,7 @@ def run_statistical_models() -> None:
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Figure S1 — Distribution of Months Since Last Inspection
-# X-axis: (TestYear - prior_event_year) * 12  (year-level resolution)
+# X-axis: months_since_inspection from step5 (exact inspection date → Jan 1 of TestYear)
 # Faceted by TestYear; restricted to rows with a prior classified inspection
 # ═══════════════════════════════════════════════════════════════════════════════
 def plot_figS1_months_since_inspection() -> None:
