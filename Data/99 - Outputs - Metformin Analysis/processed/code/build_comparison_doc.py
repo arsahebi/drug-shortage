@@ -165,7 +165,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_page_break()
     doc.add_heading('Figure 1 — Market Outcomes by Prior FDA Inspection Outcome', 1)
     add_note(doc, 'Left panel: NADAC price per unit (blank in July 2026 — not yet in pipeline). Right panel: Annual IQVIA extended units by inspection outcome (IND/CHN/USA, log scale).')
-    add_note(doc, 'All NDCs = full July 2026 panel including 25 multi-FEI NDC11s.  Single-FEI = those 25 excluded (87 NDC11s, 261 rows remain).')
+    add_note(doc, 'All NDCs = full July 2026 panel including 25 multi-FEI NDC11s.  Single-FEI = those 25 excluded (85 NDC11s, 110 rows).  Both panels restricted to Valisure-tested rows only (145 rows total).')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[1],
         'July 2026 — All NDCs (strict rule: EventYear < TestYear)', new[1],
@@ -179,24 +179,25 @@ with tempfile.TemporaryDirectory() as tmpdir:
             ['VAI vs NAI',
              [{'text': 'β = −1.820, SE = 0.801\n95% CI [−3.389, −0.250],  '},
               {'text': 'p = 0.025 (*)', 'bold': True, 'red': True}],
-             'β = +1.799, SE = 1.450\n95% CI [−1.043, +4.641],  p = 0.216',
-             'β = +0.762, SE = 1.489\n95% CI [−2.157, +3.681],  p = 0.610'],
+             'β = +0.340, SE = 1.538\n95% CI [−2.676, +3.355],  p = 0.826',
+             'β = +0.240, SE = 1.554\n95% CI [−2.806, +3.286],  p = 0.878'],
             ['OAI vs NAI',
              'β = +1.747, SE = 0.952\n95% CI [−0.120, +3.613],  p = 0.069',
-             'β = +2.512, SE = 2.088\n95% CI [−1.580, +6.604],  p = 0.230',
-             'β = +0.343, SE = 1.867\n95% CI [−3.317, +4.004],  p = 0.854'],
+             'β = +0.902, SE = 2.242\n95% CI [−3.491, +5.296],  p = 0.688',
+             'β = −1.248, SE = 1.988\n95% CI [−5.145, +2.649],  p = 0.532'],
             ['OAI vs VAI',
              [{'text': 'β = +3.566, SE = 0.782\n95% CI [+2.033, +5.100],  '},
               {'text': 'p < 0.001 (***)', 'bold': True, 'red': True}],
-             'implied ≈ +0.713,  p = 0.779,  ns',
-             'implied ≈ −0.419,  p = 0.861,  ns'],
+             'implied ≈ +0.562,  ns',
+             'implied ≈ −1.488,  ns'],
         ],
         col_widths=[1.3, 2.3, 2.2, 2.2]
     )
     add_note(doc, (
         'Reference = NAI.  Prior inspection restricted to Drug Quality Assurance outcomes only.  '
-        'All NDCs: n_obs=221, n_NDC=80, n_FEI=23.  '
-        'Single-FEI: n_obs=149, n_NDC=55, n_FEI=18.'
+        'Panel restricted to Valisure-tested rows only.  '
+        'All NDCs: n_obs=106, n_NDC=80, n_FEI=23.  '
+        'Single-FEI: n_obs=71, n_NDC=55, n_FEI=18.'
     ))
     doc.add_paragraph()
 
@@ -206,22 +207,22 @@ with tempfile.TemporaryDirectory() as tmpdir:
                  'All-NDC n', 'All-NDC Median',
                  'Single-FEI n', 'Single-FEI Median'],
         rows=[
-            ['NAI', '39', '15,944,388', '48', '2,798,032',  '40', '4,862,626'],
-            ['VAI', '56', '2,392,105',  '147', '1,606,850', '105', '1,355,808'],
-            ['OAI', '16', '18,425,376', '26', '3,938,817',  '4',  '3,962,666'],
+            ['NAI', '39', '15,944,388', '18', '6,174,142',  '18', '6,174,142'],
+            ['VAI', '56', '2,392,105',  '77', '2,465,777',  '51', '1,962,991'],
+            ['OAI', '16', '18,425,376', '11', '4,357,583',  '2',  '2,697,354'],
         ],
         col_widths=[0.75, 0.65, 1.25, 0.65, 1.25, 0.75, 1.25]
     )
-    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median. July 2026: OAI n drops sharply under DQA-only rule (28 all-NDC, 4 single-FEI) because many non-DQA OAI inspections are excluded.')
+    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median. July 2026: OAI n drops sharply under DQA-only rule (11 all-NDC, 2 single-FEI) because many non-DQA OAI inspections are excluded. Panel further restricted to Valisure-tested rows only.')
     doc.add_paragraph()
     p = doc.add_paragraph()
     r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
         'Neither version supports the original observation that NAI facilities have higher volume. '
-        'Under the DQA-only prior inspection rule (most recent inspection date wins ties within a year), '
+        'Under the DQA-only prior inspection rule with exact-date tie-breaking and Valisure-tested rows only, '
         'the model shows no significant relationship between inspection outcome and volume in either '
-        'the all-NDC (VAI p = 0.216, OAI p = 0.230) or single-FEI (VAI p = 0.610, OAI p = 0.854) panel. '
-        'OAI cell sizes are small (26 all-NDC, 4 single-FEI), so OAI estimates are imprecise. '
+        'the all-NDC (VAI p = 0.826, OAI p = 0.688, n = 106) or single-FEI (VAI p = 0.878, OAI p = 0.532, n = 71) panel. '
+        'OAI cell sizes are very small (11 all-NDC, 2 single-FEI), so OAI estimates are highly imprecise. '
         'The price side cannot be evaluated until NADAC is added to the pipeline.'
     ).font.size = Pt(10)
 
@@ -229,7 +230,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_page_break()
     doc.add_heading('Figure 2 — Market Volume vs Tested Drug Quality', 1)
     add_note(doc, 'Each panel pools all available years for that metric. Spearman ρ with NDC-cluster block bootstrap (2,000 resamples).')
-    add_note(doc, 'All NDCs = full July 2026 panel.  Single-FEI = 25 multi-FEI NDC11s excluded.')
+    add_note(doc, 'All NDCs = full July 2026 panel (Valisure-tested rows only, 145 rows).  Single-FEI = 25 multi-FEI NDC11s excluded (110 rows).')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[2],
         'July 2026 — All NDCs', new[2],
@@ -276,7 +277,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_page_break()
     doc.add_heading('Figure 3 — Price vs Tested Drug Quality', 1)
     add_note(doc, 'July 2026 figures are blank — NADAC price data not yet integrated into the pipeline. NADAC is available in the pre-revision Q&A file (107 of 111 NDC-years have NADAC).')
-    add_note(doc, 'All NDCs = full July 2026 panel.  Single-FEI = 25 multi-FEI NDC11s excluded.')
+    add_note(doc, 'All NDCs = full July 2026 panel (Valisure-tested rows only).  Single-FEI = 25 multi-FEI NDC11s excluded.')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[3],
         'July 2026 — All NDCs (NADAC pending)', new[3],
@@ -391,8 +392,8 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_heading('Figure S1 — Distribution of Months Since Last Inspection', 1)
     add_note(doc, (
         'For each (NDC11 × TestYear) row with a prior classified inspection, '
-        '"months since inspection" = (TestYear − prior_event_year) × 12. '
-        'Year-level resolution only (Redica does not record exact inspection dates consistently). '
+        '"months since inspection" = exact days from inspection end date to Jan 1 of test year ÷ (365.25/12). '
+        'Uses exact inspection end dates from Redica (Event End Date column). '
         'This shows how stale the prior inspection signal is relative to the Valisure test year.'
     ))
     p_img = doc.add_paragraph()

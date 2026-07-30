@@ -913,9 +913,24 @@ def run_statistical_models() -> None:
     d_vol["VAI"] = (d_vol["prior_outcome"] == "VAI").astype(float)
     d_vol["OAI"] = (d_vol["prior_outcome"] == "OAI").astype(float)
     d_vol["_y"]  = np.log(d_vol[VOL_COL].astype(float))
-    print(f"\n  [log(IQVIA Extended Units)]")
+    print(f"\n  [log(IQVIA Extended Units) — All NDCs]")
     _modelB_re_twoway(d_vol, "_y", ["VAI", "OAI"],
                       ndc_col="NDC11", fei_col="prior_fei", tag="log(Volume)")
+
+    # Single-FEI version
+    d_vol_sfei = df_single[
+        df_single["CountryCode"].isin(COUNTRY_ORDER) &
+        df_single["prior_outcome"].notna() &
+        df_single["prior_fei"].notna() &
+        df_single[VOL_COL].notna() &
+        (df_single[VOL_COL] > 0)
+    ].copy()
+    d_vol_sfei["VAI"] = (d_vol_sfei["prior_outcome"] == "VAI").astype(float)
+    d_vol_sfei["OAI"] = (d_vol_sfei["prior_outcome"] == "OAI").astype(float)
+    d_vol_sfei["_y"]  = np.log(d_vol_sfei[VOL_COL].astype(float))
+    print(f"\n  [log(IQVIA Extended Units) — Single-FEI only]")
+    _modelB_re_twoway(d_vol_sfei, "_y", ["VAI", "OAI"],
+                      ndc_col="NDC11", fei_col="prior_fei", tag="log(Volume) Single-FEI")
 
     print("\n" + "═" * 80)
     print("  DONE")

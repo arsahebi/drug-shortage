@@ -180,6 +180,12 @@ FINAL_COLS = [
 ]
 FINAL_COLS = [c for c in FINAL_COLS if c in agg.columns]
 
+# Keep only (NDC11, TestYear) rows where Valisure actually tested that NDC in that year
+_val_cols = [c for c in ['DMF (ng/DAY) Valisure', 'NDMA (ng/DAY) Valisure', 'Difference Factor']
+             if c in agg.columns]
+agg = agg[agg[_val_cols].notna().any(axis=1)]
+print(f"  After Valisure-tested filter: {len(agg):,} rows | {agg['NDC11'].nunique()} NDC11s")
+
 panel = (
     agg[FINAL_COLS]
     .sort_values(['NDC11', 'TestYear'])
@@ -215,7 +221,7 @@ sub22 = panel[panel['TestYear'] == 2022]
 print(sub22['CountryCode'].value_counts().to_string())
 
 print("\n── Multi-FEI NDCs ──")
-print(f"  NDC11s with n_feis > 1: {(panel['n_feis'] > 1).sum() // 3}")
+print(f"  NDC11s with n_feis > 1: {panel[panel['n_feis'] > 1]['NDC11'].nunique()}")
 print(panel[panel['n_feis'] > 1][['NDC11','n_feis','fei_count']].drop_duplicates('NDC11').to_string(index=False))
 
 print("\n── Sample rows ──")
