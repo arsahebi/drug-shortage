@@ -66,10 +66,11 @@ insp = df[
 
 print(f"  Eligible inspection rows (EventYear < TestYear, classified): {len(insp):,}")
 
-# Within each (NDC11, TestYear), select most recent; tie-break: worst outcome
+# Sort by exact inspection date (most recent first); tie-break on same date: worst outcome wins
+insp['_event_date'] = pd.to_datetime(insp['Event End Date'], errors='coerce')
 insp_sorted = insp.sort_values(
-    ['NDC11', 'TestYear', 'EventYear', '_outcome_rank'],
-    ascending=[True, True, False, False]   # EventYear desc (most recent first), outcome desc (worst first)
+    ['NDC11', 'TestYear', '_event_date', '_outcome_rank'],
+    ascending=[True, True, False, False]   # _event_date desc (most recent date first), outcome desc (worst first)
 )
 prior = (
     insp_sorted

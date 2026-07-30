@@ -179,17 +179,17 @@ with tempfile.TemporaryDirectory() as tmpdir:
             ['VAI vs NAI',
              [{'text': 'β = −1.820, SE = 0.801\n95% CI [−3.389, −0.250],  '},
               {'text': 'p = 0.025 (*)', 'bold': True, 'red': True}],
-             'β = +2.281, SE = 1.452\n95% CI [−0.565, +5.127],  p = 0.118',
-             'β = +1.025, SE = 1.702\n95% CI [−2.310, +4.360],  p = 0.548'],
+             'β = +1.799, SE = 1.450\n95% CI [−1.043, +4.641],  p = 0.216',
+             'β = +0.762, SE = 1.489\n95% CI [−2.157, +3.681],  p = 0.610'],
             ['OAI vs NAI',
              'β = +1.747, SE = 0.952\n95% CI [−0.120, +3.613],  p = 0.069',
-             'β = +3.025, SE = 2.127\n95% CI [−1.143, +7.193],  p = 0.156',
-             'β = +0.643, SE = 2.174\n95% CI [−3.619, +4.904],  p = 0.768'],
+             'β = +2.512, SE = 2.088\n95% CI [−1.580, +6.604],  p = 0.230',
+             'β = +0.343, SE = 1.867\n95% CI [−3.317, +4.004],  p = 0.854'],
             ['OAI vs VAI',
              [{'text': 'β = +3.566, SE = 0.782\n95% CI [+2.033, +5.100],  '},
               {'text': 'p < 0.001 (***)', 'bold': True, 'red': True}],
-             'implied ≈ +0.743,  p = 0.773,  ns',
-             'implied ≈ −0.382,  p = 0.890,  ns'],
+             'implied ≈ +0.713,  p = 0.779,  ns',
+             'implied ≈ −0.419,  p = 0.861,  ns'],
         ],
         col_widths=[1.3, 2.3, 2.2, 2.2]
     )
@@ -206,9 +206,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
                  'All-NDC n', 'All-NDC Median',
                  'Single-FEI n', 'Single-FEI Median'],
         rows=[
-            ['NAI', '39', '15,944,388', '26', '862,990',    '20', '1,364,730'],
-            ['VAI', '56', '2,392,105',  '167', '2,168,090', '125', '1,691,856'],
-            ['OAI', '16', '18,425,376', '28', '3,061,682',  '4',  '3,962,666'],
+            ['NAI', '39', '15,944,388', '48', '2,798,032',  '40', '4,862,626'],
+            ['VAI', '56', '2,392,105',  '147', '1,606,850', '105', '1,355,808'],
+            ['OAI', '16', '18,425,376', '26', '3,938,817',  '4',  '3,962,666'],
         ],
         col_widths=[0.75, 0.65, 1.25, 0.65, 1.25, 0.75, 1.25]
     )
@@ -218,11 +218,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
     r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
         'Neither version supports the original observation that NAI facilities have higher volume. '
-        'Under the DQA-only prior inspection rule, the model shows no significant relationship between '
-        'inspection outcome and volume in either the all-NDC (VAI p = 0.118, OAI p = 0.156) or '
-        'single-FEI (VAI p = 0.548, OAI p = 0.768) panel. '
-        'OAI cell sizes are small under the DQA-only rule (28 all-NDC, 4 single-FEI), so OAI estimates '
-        'are imprecise. The price side cannot be evaluated until NADAC is added to the pipeline.'
+        'Under the DQA-only prior inspection rule (most recent inspection date wins ties within a year), '
+        'the model shows no significant relationship between inspection outcome and volume in either '
+        'the all-NDC (VAI p = 0.216, OAI p = 0.230) or single-FEI (VAI p = 0.610, OAI p = 0.854) panel. '
+        'OAI cell sizes are small (26 all-NDC, 4 single-FEI), so OAI estimates are imprecise. '
+        'The price side cannot be evaluated until NADAC is added to the pipeline.'
     ).font.size = Pt(10)
 
     # ── Figure 2 ──────────────────────────────────────────────────────────────
