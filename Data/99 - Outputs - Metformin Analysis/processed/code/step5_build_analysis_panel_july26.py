@@ -103,7 +103,7 @@ NDC_COLS = [
     'valisure_tested_years', 'n_lots',
     'NDMA (ng/DAY) Valisure', 'DMF (ng/DAY) Valisure', 'Difference Factor',
     'iqvia_trx', 'iqvia_extended_units',
-    'sdud_num_prescriptions', 'sdud_units_reimbursed',
+    'sdud_num_prescriptions', 'sdud_units_reimbursed', 'medicaid_amount_reimbursed',
     'redica_firm', 'valisure_firm', 'valisure_labeler',
     'fei_count',
 ]
@@ -152,6 +152,16 @@ agg['CountryName'] = agg['prior_country_name'].fillna(agg['_fallback_cn'])
 agg.drop(columns=['prior_country_code', 'prior_country_name', '_fallback_cc', '_fallback_cn'],
          inplace=True)
 
+# ── Price per unit and outlier flag ───────────────────────────────────────────
+for col in ['medicaid_amount_reimbursed', 'sdud_units_reimbursed']:
+    agg[col] = pd.to_numeric(agg[col], errors='coerce')
+agg['price'] = np.where(
+    agg['sdud_units_reimbursed'].notna() & (agg['sdud_units_reimbursed'] > 0),
+    agg['medicaid_amount_reimbursed'] / agg['sdud_units_reimbursed'],
+    np.nan
+)
+agg['price_outlier'] = np.where(agg['price'].notna() & (agg['price'] > 50), 1, 0)
+
 
 # ── 6. Final column order and types ───────────────────────────────────────────
 FINAL_COLS = [
@@ -160,7 +170,8 @@ FINAL_COLS = [
     'valisure_tested_years', 'n_lots',
     'NDMA (ng/DAY) Valisure', 'DMF (ng/DAY) Valisure', 'Difference Factor',
     'iqvia_trx', 'iqvia_extended_units',
-    'sdud_num_prescriptions', 'sdud_units_reimbursed',
+    'sdud_num_prescriptions', 'sdud_units_reimbursed', 'medicaid_amount_reimbursed',
+    'price', 'price_outlier',
     'redica_firm', 'valisure_firm', 'valisure_labeler',
     'CountryCode', 'CountryName',
     'fei_count', 'n_feis',

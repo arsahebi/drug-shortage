@@ -162,15 +162,17 @@ for yr in TEST_YEARS:
     print(f"{len(df)} metformin rows")
 
     # Convert numeric columns
-    df['Number of Prescriptions'] = pd.to_numeric(df['Number of Prescriptions'], errors='coerce')
-    df['Units Reimbursed']        = pd.to_numeric(df['Units Reimbursed'],        errors='coerce')
+    df['Number of Prescriptions']    = pd.to_numeric(df['Number of Prescriptions'],    errors='coerce')
+    df['Units Reimbursed']           = pd.to_numeric(df['Units Reimbursed'],           errors='coerce')
+    df['Medicaid Amount Reimbursed'] = pd.to_numeric(df['Medicaid Amount Reimbursed'], errors='coerce')
 
     # Sum FFSU + MCOU across all states and all quarters of the year
     annual = (
         df.groupby('ndc11_bare', as_index=False)
         .agg(
-            sdud_num_prescriptions=('Number of Prescriptions', 'sum'),
-            sdud_units_reimbursed =('Units Reimbursed',        'sum'),
+            sdud_num_prescriptions     =('Number of Prescriptions',    'sum'),
+            sdud_units_reimbursed      =('Units Reimbursed',           'sum'),
+            medicaid_amount_reimbursed =('Medicaid Amount Reimbursed', 'sum'),
         )
     )
     annual['TestYear'] = yr
@@ -208,7 +210,7 @@ FINAL_COLS = [
     'valisure_tested_years', 'n_lots',
     'NDMA (ng/DAY) Valisure', 'DMF (ng/DAY) Valisure', 'Difference Factor',
     'iqvia_trx', 'iqvia_extended_units',
-    'sdud_num_prescriptions', 'sdud_units_reimbursed',
+    'sdud_num_prescriptions', 'sdud_units_reimbursed', 'medicaid_amount_reimbursed',
     'FEI', 'fei_count', 'facility_distance_km',
     'CountryName', 'CountryCode',
     'Event Start Date', 'Event End Date', 'EventYear',
