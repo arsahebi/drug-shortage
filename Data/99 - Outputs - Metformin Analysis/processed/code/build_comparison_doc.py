@@ -179,22 +179,22 @@ with tempfile.TemporaryDirectory() as tmpdir:
             ['VAI vs NAI',
              [{'text': 'β = −1.820, SE = 0.801\n95% CI [−3.389, −0.250],  '},
               {'text': 'p = 0.025 (*)', 'bold': True, 'red': True}],
-             'β = +2.311, SE = 1.421\n95% CI [−0.474, +5.096],  p = 0.105',
-             'β = +1.054, SE = 1.681\n95% CI [−2.241, +4.350],  p = 0.532'],
+             'β = +2.281, SE = 1.452\n95% CI [−0.565, +5.127],  p = 0.118',
+             'β = +1.025, SE = 1.702\n95% CI [−2.310, +4.360],  p = 0.548'],
             ['OAI vs NAI',
              'β = +1.747, SE = 0.952\n95% CI [−0.120, +3.613],  p = 0.069',
-             'β = +2.182, SE = 1.895\n95% CI [−1.533, +5.897],  p = 0.251',
-             'β = −0.100, SE = 1.899\n95% CI [−3.821, +3.621],  p = 0.958'],
+             'β = +3.025, SE = 2.127\n95% CI [−1.143, +7.193],  p = 0.156',
+             'β = +0.643, SE = 2.174\n95% CI [−3.619, +4.904],  p = 0.768'],
             ['OAI vs VAI',
              [{'text': 'β = +3.566, SE = 0.782\n95% CI [+2.033, +5.100],  '},
               {'text': 'p < 0.001 (***)', 'bold': True, 'red': True}],
-             'implied ≈ −0.129,  ns',
-             'implied ≈ −1.154,  ns'],
+             'implied ≈ +0.743,  p = 0.773,  ns',
+             'implied ≈ −0.382,  p = 0.890,  ns'],
         ],
         col_widths=[1.3, 2.3, 2.2, 2.2]
     )
     add_note(doc, (
-        'Reference = NAI.  '
+        'Reference = NAI.  Prior inspection restricted to Drug Quality Assurance outcomes only.  '
         'All NDCs: n_obs=221, n_NDC=80, n_FEI=23.  '
         'Single-FEI: n_obs=149, n_NDC=55, n_FEI=18.'
     ))
@@ -206,23 +206,23 @@ with tempfile.TemporaryDirectory() as tmpdir:
                  'All-NDC n', 'All-NDC Median',
                  'Single-FEI n', 'Single-FEI Median'],
         rows=[
-            ['NAI', '39', '15,944,388', '26', '862,990',   '20', '1,364,730'],
-            ['VAI', '56', '2,392,105',  '155','2,483,318',  '113','2,168,090'],
-            ['OAI', '16', '18,425,376', '40', '1,453,286',  '16', '515,978'],
+            ['NAI', '39', '15,944,388', '26', '862,990',    '20', '1,364,730'],
+            ['VAI', '56', '2,392,105',  '167', '2,168,090', '125', '1,691,856'],
+            ['OAI', '16', '18,425,376', '28', '3,061,682',  '4',  '3,962,666'],
         ],
         col_widths=[0.75, 0.65, 1.25, 0.65, 1.25, 0.75, 1.25]
     )
-    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median.')
+    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median. July 2026: OAI n drops sharply under DQA-only rule (28 all-NDC, 4 single-FEI) because many non-DQA OAI inspections are excluded.')
     doc.add_paragraph()
     p = doc.add_paragraph()
     r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
         'Neither version supports the original observation that NAI facilities have higher volume. '
-        'The primary model shows no significant relationship between inspection outcome and volume in either '
-        'the all-NDC (VAI p = 0.105, OAI p = 0.251) or single-FEI (VAI p = 0.532, OAI p = 0.958) panel. '
-        'In the single-FEI panel OAI median volume drops sharply (516K vs 1.5M in all-NDC), suggesting '
-        'that multi-FEI NDCs inflate OAI volume in the full panel. '
-        'The price side cannot be evaluated until NADAC is added to the pipeline.'
+        'Under the DQA-only prior inspection rule, the model shows no significant relationship between '
+        'inspection outcome and volume in either the all-NDC (VAI p = 0.118, OAI p = 0.156) or '
+        'single-FEI (VAI p = 0.548, OAI p = 0.768) panel. '
+        'OAI cell sizes are small under the DQA-only rule (28 all-NDC, 4 single-FEI), so OAI estimates '
+        'are imprecise. The price side cannot be evaluated until NADAC is added to the pipeline.'
     ).font.size = Pt(10)
 
     # ── Figure 2 ──────────────────────────────────────────────────────────────
@@ -252,12 +252,12 @@ with tempfile.TemporaryDirectory() as tmpdir:
               {'text': '\n95% CI [+0.090, +0.500],  n = 91'}]],
             ['NDMA vs Volume',
              'not significant  (p > 0.10)',
-             'ρ = −0.064,  p_boot = 0.635\nn = 71',
-             'ρ = +0.018,  p_boot = 0.898\nn = 54'],
+             'ρ = −0.064,  p_boot = 0.635\n95% CI [−0.312, +0.181],  n = 71',
+             'ρ = +0.018,  p_boot = 0.898\n95% CI [−0.272, +0.319],  n = 54'],
             ['Diff Factor vs Volume',
              'not significant  (p > 0.10)',
-             'ρ = −0.162,  p_boot = 0.454\nn = 25',
-             'ρ = −0.118,  p_boot = 0.613\nn = 21'],
+             'ρ = −0.162,  p_boot = 0.454\n95% CI [−0.566, +0.246],  n = 25',
+             'ρ = −0.118,  p_boot = 0.613\n95% CI [−0.555, +0.343],  n = 21'],
         ],
         col_widths=[1.5, 1.9, 2.1, 2.1]
     )

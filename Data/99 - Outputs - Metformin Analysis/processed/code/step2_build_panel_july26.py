@@ -49,20 +49,6 @@ COUNTRY_MAP = {
     "Australia": "AUS", "Singapore": "SGP", "South Korea": "KOR",
 }
 
-DQA_PROGRAMS = {
-    "VAI: Drug Quality Assurance",
-    "NAI: Drug Quality Assurance",
-    "OAI: Drug Quality Assurance",
-}
-NON_DQA_PROGRAMS = {
-    "VAI: Generic Drug Evaluation", "NAI: Generic Drug Evaluation", "OAI: Generic Drug Evaluation",
-    "VAI: Bioresearch Monitoring", "NAI: Bioresearch Monitoring", "OAI: Bioresearch Monitoring",
-    "VAI: Postmarketing Surveillance and Epidemiology: Human Drugs",
-    "NAI: Postmarketing Surveillance and Epidemiology: Human Drugs",
-    "OAI: Postmarketing Surveillance and Epidemiology: Human Drugs",
-    "VAI: New Drug Evaluation", "NAI: New Drug Evaluation", "OAI: New Drug Evaluation",
-    "VAI: Compliance: Medical Devices",
-}
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 def parse_list(x) -> list:
@@ -106,19 +92,12 @@ def extract_country(site_display_name: str):
     return country, COUNTRY_MAP.get(country)
 
 def dqa_classification(outcome_vals: list) -> Optional[str]:
-    """NAI/VAI/OAI: DQA takes priority; fallback highest severity."""
-    candidates = []
+    """Return NAI/VAI/OAI only for Drug Quality Assurance outcomes; None otherwise."""
     for v in outcome_vals:
         if not isinstance(v, str): continue
-        for cls in ("OAI", "VAI", "NAI"):
-            if v.startswith(cls):
-                prog = v.split(":", 1)[1].strip() if ":" in v else ""
-                candidates.append((cls, prog))
-    dqa = next((cls for cls, prog in candidates if prog == "Drug Quality Assurance"), None)
-    if dqa: return dqa
-    for priority in ("OAI", "VAI", "NAI"):
-        m = next((cls for cls, _ in candidates if cls == priority), None)
-        if m: return m
+        if v == "OAI: Drug Quality Assurance": return "OAI"
+        if v == "VAI: Drug Quality Assurance": return "VAI"
+        if v == "NAI: Drug Quality Assurance": return "NAI"
     return None
 
 # ── 1. FEI mapping (Redica ID → FEI) ─────────────────────────────────────────
@@ -166,17 +145,11 @@ for (fei, site_name, end_dt), grp in df_fda.groupby(
         if "Inspection Outcome" in row["attr"]:
             outcome_vals.extend(row["vals"])
 
-    outcome_set = set(v for v in outcome_vals if isinstance(v, str))
-
-    # Skip if only non-DQA programs and no 483/No 483 signal
-    has_dqa   = bool(outcome_set & DQA_PROGRAMS)
-    has_483   = "483" in outcome_set or "No 483" in outcome_set
-    has_not_provided = "Not Provided" in outcome_set
-    pure_non_dqa = bool(outcome_set & NON_DQA_PROGRAMS) and not has_dqa
-    if pure_non_dqa and not has_483 and not has_not_provided:
-        continue
-
     classification = dqa_classification(outcome_vals)
+    if classification is None:
+        continue  # only DQA-classified inspections enter the panel
+
+    outcome_set = set(v for v in outcome_vals if isinstance(v, str))
     is_483 = 1 if "483" in outcome_set else 0
 
     insp_rows.append({
