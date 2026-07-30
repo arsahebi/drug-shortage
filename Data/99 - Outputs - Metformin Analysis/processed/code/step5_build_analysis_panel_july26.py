@@ -145,6 +145,10 @@ agg['prior_inspection_date'] = pd.to_datetime(agg['prior_inspection_date'], erro
 agg['months_since_inspection'] = (
     (_test_jan1 - agg['prior_inspection_date']) / pd.Timedelta(days=365.25 / 12)
 ).round(1)
+agg['month_gap_test_inspection'] = agg['months_since_inspection']
+agg['gap_test_inspection_more_than_3_years'] = np.where(
+    agg['month_gap_test_inspection'].notna() & (agg['month_gap_test_inspection'] > 36), 1, 0
+).astype(int)
 
 # Fill country from prior inspection; otherwise use fallback
 agg['CountryCode'] = agg['prior_country_code'].fillna(agg['_fallback_cc'])
@@ -175,7 +179,8 @@ FINAL_COLS = [
     'redica_firm', 'valisure_firm', 'valisure_labeler',
     'CountryCode', 'CountryName',
     'fei_count', 'n_feis',
-    'prior_fei', 'prior_inspection_date', 'prior_event_year', 'months_since_inspection',
+    'prior_fei', 'prior_inspection_date', 'prior_event_year',
+    'months_since_inspection', 'month_gap_test_inspection', 'gap_test_inspection_more_than_3_years',
     'prior_outcome', 'prior_score', 'prior_site',
 ]
 FINAL_COLS = [c for c in FINAL_COLS if c in agg.columns]

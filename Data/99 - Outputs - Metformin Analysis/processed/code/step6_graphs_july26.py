@@ -231,12 +231,16 @@ def _kruskal_p(groups: dict) -> float | None:
 
 
 # ── load data ──────────────────────────────────────────────────────────────────
+PRICE_COL = "price"
+
 print("Loading step5 panel...")
 df = pd.read_csv(STEP5, dtype=str)
 for col in [DMF_COL, NDMA_COL, DIFF_COL, VOL_COL,
             "iqvia_trx", "sdud_num_prescriptions", "sdud_units_reimbursed",
             "prior_score", "n_lots", "prior_event_year", "n_feis",
-            "months_since_inspection"]:
+            "months_since_inspection", "month_gap_test_inspection",
+            "gap_test_inspection_more_than_3_years",
+            PRICE_COL, "price_outlier"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 df["TestYear"] = pd.to_numeric(df["TestYear"], errors="coerce").astype("Int64")
@@ -249,6 +253,12 @@ df_single = df[~df["NDC11"].isin(MULTI_FEI_NDCS)].copy()
 print(f"  Multi-FEI NDC11s excluded from single-FEI plots: {len(MULTI_FEI_NDCS)}")
 print(f"  df_single: {len(df_single):,} rows | {df_single['NDC11'].nunique()} NDC11s")
 
+# Gap-filtered: drop rows where gap between test year and prior inspection > 36 months
+df_gap36 = df[df["gap_test_inspection_more_than_3_years"] != 1].copy()
+df_single_gap36 = df_single[df_single["gap_test_inspection_more_than_3_years"] != 1].copy()
+print(f"  df_gap36 (≤36mo): {len(df_gap36):,} rows | {df_gap36['NDC11'].nunique()} NDC11s")
+print(f"  df_single_gap36:  {len(df_single_gap36):,} rows | {df_single_gap36['NDC11'].nunique()} NDC11s")
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Figure 1 — Market Outcomes by Prior Inspection Outcome (2 panels)
@@ -257,7 +267,12 @@ print(f"  df_single: {len(df_single):,} rows | {df_single['NDC11'].nunique()} ND
 # ═══════════════════════════════════════════════════════════════════════════════
 def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
     _df = data if data is not None else df
-    label = " (single-FEI NDCs only)" if suffix else ""
+    label_parts = []
+    if "_SingleFEI" in suffix:
+        label_parts.append("single-FEI NDCs only")
+    if "_Gap36" in suffix:
+        label_parts.append("≤36 months gap")
+    label = f" ({', '.join(label_parts)})" if label_parts else ""
     print(f"\nPlotting Figure 1{label} — Market Outcomes by Prior Inspection Outcome...")
 
     sub = _df[
@@ -269,23 +284,62 @@ def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
 
-    # ── Left panel: NADAC Price (not in pipeline) ─────────────────────────────
+    # ── Left panel: Medicaid Price ────────────────────────────────────────────
     ax_price = axes[0]
-    ax_price.set_xlim(-0.5, 2.5)
-    ax_price.set_ylim(0.01, 100)
-    ax_price.set_yscale("log")
-    ax_price.set_xticks([0, 1, 2])
-    ax_price.set_xticklabels(["NAI (0)", "VAI (1.5)", "OAI (3.5)"])
-    ax_price.text(0.5, 0.5,
-                  "NADAC price data\nnot available\nin current pipeline",
-                  transform=ax_price.transAxes, ha="center", va="center",
-                  fontsize=12, color="#9ca3af",
-                  bbox=dict(boxstyle="round,pad=0.4", facecolor="#f9fafb",
-                            edgecolor="#e5e7eb", alpha=0.9))
+    sub_price = _df[
+        _df["prior_outcome"].notna() &
+        _df[PRICE_COL].notna() &
+        (_df[PRICE_COL] > 0) &
+        (_df["price_outlier"] == 0) &
+        _df["CountryCode"].isin(COUNTRY_ORDER)
+    ].copy()
+
+    x_pos_p = {out: i for i, out in enumerate(OUTCOME_ORDER)}
+    n_price_vals = []
+    rng_p = np.random.default_rng(99)
+    has_price_data = len(sub_price) > 0
+
+    if has_price_data:
+        for out in OUTCOME_ORDER:
+            d_out = sub_price[sub_price["prior_outcome"] == out]
+            n_price_vals.append(len(d_out))
+            xi = x_pos_p[out]
+            vals = d_out[PRICE_COL].values
+            if len(vals) > 0:
+                ax_price.boxplot(vals, positions=[xi], widths=0.45,
+                                 patch_artist=True, showfliers=False,
+                                 boxprops=dict(facecolor="#fce7f3", color="#9d174d"),
+                                 medianprops=dict(color="#500724", linewidth=2),
+                                 whiskerprops=dict(color="#9d174d"),
+                                 capprops=dict(color="#9d174d"))
+            for cc in COUNTRY_ORDER:
+                d_cc = d_out[d_out["CountryCode"] == cc]
+                if d_cc.empty:
+                    continue
+                jitter = rng_p.uniform(-0.15, 0.15, size=len(d_cc))
+                ax_price.scatter(xi + jitter, d_cc[PRICE_COL].values,
+                                 c=COUNTRY_COLORS[cc], s=40, alpha=0.75,
+                                 edgecolor="white", linewidth=0.4, zorder=3)
+        ax_price.set_yscale("log")
+        _n_label(ax_price, list(x_pos_p.values()), n_price_vals, y_frac=0.01)
+        p_grps = {out: sub_price.loc[sub_price["prior_outcome"] == out, PRICE_COL].dropna().values
+                  for out in OUTCOME_ORDER}
+        kw_p = _kruskal_p(p_grps)
+        p_str_p = (f"KW p={kw_p:.3f}" if kw_p is not None and kw_p >= 0.001
+                   else ("KW p<0.001" if kw_p is not None else ""))
+        ax_price.set_title(f"Market Price by FDA Inspection Outcome  ({p_str_p})",
+                           fontsize=11, fontweight="bold")
+    else:
+        ax_price.text(0.5, 0.5, "No price data", transform=ax_price.transAxes,
+                      ha="center", va="center", fontsize=12, color="#9ca3af")
+        ax_price.set_title("Market Price by FDA Inspection Outcome", fontsize=11, fontweight="bold")
+
+    ax_price.set_xticks(list(x_pos_p.values()))
+    ax_price.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
     ax_price.set_xlabel("Prior Inspection Outcome (prior_score)")
-    ax_price.set_ylabel("Price per Unit ($/unit)")
-    ax_price.set_title("Market Price by FDA Inspection Outcome", fontsize=11, fontweight="bold")
+    ax_price.set_ylabel("Medicaid Price per Unit ($/unit, log scale)")
     ax_price.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
+    ax_price.set_axisbelow(True)
 
     # ── Right panel: IQVIA Volume ─────────────────────────────────────────────
     ax_vol = axes[1]
@@ -403,7 +457,19 @@ def print_fig1_stats(sub: pd.DataFrame) -> None:
     else:
         print("    prior_fei column not available")
 
-    print("  [PRICE: NADAC data not yet in pipeline — price statistics pending]")
+    print(f"\nMARKET PRICE — Medicaid Price per Unit ($/unit, outliers >$50 excluded):")
+    sub_pr = sub[sub[PRICE_COL].notna() & (sub[PRICE_COL] > 0) &
+                 (sub.get("price_outlier", pd.Series(0, index=sub.index)) == 0)].copy()
+    p_grps = {out: sub_pr.loc[sub_pr["prior_outcome"] == out, PRICE_COL].dropna().values
+              for out in OUTCOME_ORDER}
+    print(f"  {'Outcome':>8s}  {'n':>5s}  {'mean':>10s}  {'median':>10s}  {'p25':>10s}  {'p75':>10s}")
+    print(f"  {'-'*58}")
+    for out in OUTCOME_ORDER:
+        vals = p_grps[out]
+        if len(vals):
+            print(f"  {out:>8s}  {len(vals):>5d}  {np.mean(vals):>10.4f}  "
+                  f"{np.median(vals):>10.4f}  "
+                  f"{np.percentile(vals,25):>10.4f}  {np.percentile(vals,75):>10.4f}")
     print("=" * 80)
 
 
@@ -444,7 +510,12 @@ def _add_trend_line(ax, x: np.ndarray, y: np.ndarray,
 
 def plot_fig2_volume_vs_quality(data=None, suffix="") -> None:
     _df = data if data is not None else df
-    label = " (single-FEI NDCs only)" if suffix else ""
+    label_parts = []
+    if "_SingleFEI" in suffix:
+        label_parts.append("single-FEI NDCs only")
+    if "_Gap36" in suffix:
+        label_parts.append("≤36 months gap")
+    label = f" ({', '.join(label_parts)})" if label_parts else ""
     print(f"\nPlotting Figure 2{label} — Market Volume vs Tested Drug Quality (all years pooled)...")
 
     d_core = _df[_df["CountryCode"].isin(COUNTRY_ORDER) & _df[VOL_COL].notna() & (_df[VOL_COL] > 0)].copy()
@@ -523,42 +594,96 @@ def print_fig2_stats(d_core: pd.DataFrame) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Figure 3 — Price vs Tested Drug Quality (3 panels — NADAC pending)
+# Figure 3 — Medicaid Price vs Tested Drug Quality
 # ═══════════════════════════════════════════════════════════════════════════════
-def plot_fig3_price_vs_quality() -> None:
-    print("\nPlotting Figure 3 — Price vs Quality (NADAC data not in pipeline)...")
+def plot_fig3_price_vs_quality(data=None, suffix="") -> None:
+    _df = data if data is not None else df
+    label_parts = []
+    if "_SingleFEI" in suffix:
+        label_parts.append("single-FEI NDCs only")
+    if "_Gap36" in suffix:
+        label_parts.append("≤36 months gap")
+    label = f" ({', '.join(label_parts)})" if label_parts else ""
+    print(f"\nPlotting Figure 3{label} — Price vs Tested Drug Quality...")
 
-    labels = ["DMF (ng/day)", "NDMA (ng/day)", "Difference Factor"]
+    d_core = _df[
+        _df["CountryCode"].isin(COUNTRY_ORDER) &
+        _df[PRICE_COL].notna() &
+        (_df[PRICE_COL] > 0) &
+        (_df["price_outlier"] == 0)
+    ].copy()
+
+    metrics = [
+        (DMF_COL,  "DMF (ng/day)",       [2020, 2022, 2024], "symlog", 1.0),
+        (NDMA_COL, "NDMA (ng/day)",      [2020, 2022],       "symlog", 1.0),
+        (DIFF_COL, "Difference Factor",   [2024],             "linear", None),
+    ]
+
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
-    for ax, xlabel in zip(axes, labels):
-        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
-        ax.text(0.5, 0.5,
-                "NADAC price data\nnot available\nin current pipeline",
-                transform=ax.transAxes, ha="center", va="center",
-                fontsize=12, color="#9ca3af",
-                bbox=dict(boxstyle="round,pad=0.4", facecolor="#f9fafb",
-                          edgecolor="#e5e7eb", alpha=0.9))
+    for ax, (qcol, xlabel, years, xscale, linthresh) in zip(axes, metrics):
+        sub = d_core[d_core["TestYear"].isin(years) & d_core[qcol].notna()].copy()
+        for cc in COUNTRY_ORDER:
+            d_cc = sub[sub["CountryCode"] == cc]
+            if d_cc.empty:
+                continue
+            ax.scatter(d_cc[qcol].values, d_cc[PRICE_COL].values,
+                       s=55, alpha=0.65, c=COUNTRY_COLORS[cc],
+                       edgecolor="white", linewidth=0.4, zorder=3)
+        _add_trend_line(ax, sub[qcol].values.astype(float), sub[PRICE_COL].values.astype(float),
+                        xscale=xscale, linthresh=linthresh if linthresh is not None else 1.0)
+        if xscale == "symlog" and linthresh is not None:
+            ax.set_xscale("symlog", linthresh=linthresh)
+        ax.set_yscale("log")
         ax.set_xlabel(xlabel)
-        ax.set_ylabel("Price per Unit ($/unit)")
-        ax.grid(True, alpha=0.2, linestyle="--", linewidth=0.5)
+        ax.set_ylabel("Medicaid Price per Unit ($/unit)")
+        ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
+        _spearman_annotation(ax, sub[qcol].values.astype(float),
+                             sub[PRICE_COL].values.astype(float),
+                             ndc_clusters=sub["NDC11"].values)
 
-    fig.suptitle("Figure 3 — Price vs Tested Drug Quality  [NADAC data pending]",
+    legend_handles = [
+        Line2D([0], [0], marker="o", linestyle="",
+               color=COUNTRY_COLORS[cc], label=COUNTRY_LABELS[cc],
+               markeredgecolor="white", markeredgewidth=0.5, markersize=9)
+        for cc in COUNTRY_ORDER
+    ]
+    fig.legend(handles=legend_handles, title="Country",
+               loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=3, framealpha=0.9)
+    fig.suptitle(f"Figure 3 — Medicaid Price vs Tested Drug Quality{label}",
                  fontsize=12, fontweight="bold", y=1.01)
-    plt.tight_layout()
-    _save(fig, "Figure3_Price_vs_Quality")
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
+    _save(fig, f"Figure3_Price_vs_Quality{suffix}")
     plt.close(fig)
-    print_fig3_stats()
+    print_fig3_stats(d_core)
 
 
-def print_fig3_stats() -> None:
+def print_fig3_stats(d_core: pd.DataFrame) -> None:
     print("\n" + "=" * 80)
-    print("FIGURE 3 – Price vs Quality")
+    print("FIGURE 3 – Price vs Quality  (Spearman ρ, NDC-cluster bootstrap, 2000 resamples)")
     print("=" * 80)
-    print("  NADAC price data not yet integrated into step5 pipeline.")
-    print("  Statistics pending. When available, results should include:")
-    print("    - Spearman ρ (naive + NDC-cluster bootstrap) for price vs DMF, NDMA, DiffFactor")
-    print("    - Old result: NDMA vs price ρ=+0.282, NDC-clustered p=0.013, 95% CI [+0.056, +0.490]")
+    metrics = [
+        (DMF_COL,  "DMF",              [2020, 2022, 2024]),
+        (NDMA_COL, "NDMA",             [2020, 2022]),
+        (DIFF_COL, "Difference Factor", [2024]),
+    ]
+    sub_all = d_core[d_core[PRICE_COL].notna() & (d_core[PRICE_COL] > 0)].copy()
+    print(f"\n  Y = Medicaid price per unit (outliers >$50 excluded)")
+    for qcol, label, years in metrics:
+        sub = sub_all[sub_all["TestYear"].isin(years) & sub_all[qcol].notna()].copy()
+        print(f"    {label}:")
+        x = sub[qcol].values.astype(float)
+        y = sub[PRICE_COL].values.astype(float)
+        if np.isfinite(x).sum() >= 5:
+            res = _block_bootstrap_spearman(x, y, sub["NDC11"].values)
+            print(f"      Naive Spearman: rho={res['rho']:+.4f}  p={res['p_naive']:.5f}  n={res['n_obs']}")
+            if np.isfinite(res["p_boot"]):
+                print(f"      Clustered (NDC bootstrap): rho={res['rho']:+.4f}  "
+                      f"p_boot={res['p_boot']:.5f}  "
+                      f"95%CI=[{res['ci_lo']:+.4f}, {res['ci_hi']:+.4f}]  "
+                      f"n_ndcs={res['n_clusters']}")
+        else:
+            print(f"      n < 5 — skipped")
     print("=" * 80)
 
 
@@ -932,6 +1057,29 @@ def run_statistical_models() -> None:
     _modelB_re_twoway(d_vol_sfei, "_y", ["VAI", "OAI"],
                       ndc_col="NDC11", fei_col="prior_fei", tag="log(Volume) Single-FEI")
 
+    # ── Gap ≤ 36 months: volume ~ inspection outcome ─────────────────────────
+    print("\n" + "─" * 80)
+    print("  FIGURE 1 (right panel) — Volume by Inspection Outcome  [≤36mo gap filter]")
+    print("─" * 80)
+
+    def _vol_model(src_df, tag_suffix):
+        d = src_df[
+            src_df["CountryCode"].isin(COUNTRY_ORDER) &
+            src_df["prior_outcome"].notna() &
+            src_df["prior_fei"].notna() &
+            src_df[VOL_COL].notna() &
+            (src_df[VOL_COL] > 0)
+        ].copy()
+        d["VAI"] = (d["prior_outcome"] == "VAI").astype(float)
+        d["OAI"] = (d["prior_outcome"] == "OAI").astype(float)
+        d["_y"]  = np.log(d[VOL_COL].astype(float))
+        print(f"\n  [log(IQVIA Extended Units) — {tag_suffix}]")
+        _modelB_re_twoway(d, "_y", ["VAI", "OAI"],
+                          ndc_col="NDC11", fei_col="prior_fei", tag=f"log(Volume) {tag_suffix}")
+
+    _vol_model(df_gap36,        "All NDCs ≤36mo gap")
+    _vol_model(df_single_gap36, "Single-FEI ≤36mo gap")
+
     print("\n" + "═" * 80)
     print("  DONE")
     print("═" * 80)
@@ -987,15 +1135,26 @@ def plot_figS1_months_since_inspection() -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUN ALL
 # ═══════════════════════════════════════════════════════════════════════════════
-# Full dataset
-plot_fig1_market_by_outcome()                           # Fig 1: all NDCs
-plot_fig2_volume_vs_quality()                           # Fig 2: all NDCs
-plot_fig3_price_vs_quality()                            # Fig 3: blank (NADAC pending)
-plot_fig4_quality_by_country()                          # Fig 4: all NDCs (country; unchanged)
+# Full dataset — no gap filter
+plot_fig1_market_by_outcome()
+plot_fig2_volume_vs_quality()
+plot_fig3_price_vs_quality()
+plot_fig4_quality_by_country()
 
-# Single-FEI NDCs only (25 multi-FEI NDCs excluded from Figs 1–2)
+# Single-FEI, no gap filter
 plot_fig1_market_by_outcome(data=df_single, suffix="_SingleFEI")
 plot_fig2_volume_vs_quality(data=df_single, suffix="_SingleFEI")
+plot_fig3_price_vs_quality(data=df_single, suffix="_SingleFEI")
+
+# All NDCs, ≤36 months gap filter
+plot_fig1_market_by_outcome(data=df_gap36,        suffix="_Gap36")
+plot_fig2_volume_vs_quality(data=df_gap36,        suffix="_Gap36")
+plot_fig3_price_vs_quality( data=df_gap36,        suffix="_Gap36")
+
+# Single-FEI, ≤36 months gap filter
+plot_fig1_market_by_outcome(data=df_single_gap36, suffix="_SingleFEI_Gap36")
+plot_fig2_volume_vs_quality(data=df_single_gap36, suffix="_SingleFEI_Gap36")
+plot_fig3_price_vs_quality( data=df_single_gap36, suffix="_SingleFEI_Gap36")
 
 # Months-since-inspection distribution
 plot_figS1_months_since_inspection()

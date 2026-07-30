@@ -140,6 +140,16 @@ with tempfile.TemporaryDirectory() as tmpdir:
         2: NEW_FIG / "Figure2_Volume_vs_Quality_SingleFEI.png",
         3: NEW_FIG / "Figure3_Price_vs_Quality_SingleFEI.png",
     }
+    new_gap36 = {
+        1: NEW_FIG / "Figure1_Market_by_Outcome_Gap36.png",
+        2: NEW_FIG / "Figure2_Volume_vs_Quality_Gap36.png",
+        3: NEW_FIG / "Figure3_Price_vs_Quality_Gap36.png",
+    }
+    new_sfei_gap36 = {
+        1: NEW_FIG / "Figure1_Market_by_Outcome_SingleFEI_Gap36.png",
+        2: NEW_FIG / "Figure2_Volume_vs_Quality_SingleFEI_Gap36.png",
+        3: NEW_FIG / "Figure3_Price_vs_Quality_SingleFEI_Gap36.png",
+    }
     figS1 = NEW_FIG / "FigureS1_Months_Since_Inspection.png"
 
     # ── build document ─────────────────────────────────────────────────────────
@@ -213,17 +223,56 @@ with tempfile.TemporaryDirectory() as tmpdir:
         ],
         col_widths=[0.75, 0.65, 1.25, 0.65, 1.25, 0.75, 1.25]
     )
-    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median. July 2026: OAI n drops sharply under DQA-only rule (11 all-NDC, 2 single-FEI) because many non-DQA OAI inspections are excluded. Panel further restricted to Valisure-tested rows only.')
+    add_note(doc, 'Pre-revision: Granules India (FEI 3004097901) dominates NAI with 30 NDC-year observations, driving the high NAI mean/median. July 2026: OAI n drops sharply under DQA-only rule (11 all-NDC, 2 single-FEI) because many non-DQA OAI inspections are excluded. Panel restricted to Valisure-tested rows only.')
     doc.add_paragraph()
     p = doc.add_paragraph()
-    r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
+    r = p.add_run('Conclusion (no gap filter): '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
-        'Neither version supports the original observation that NAI facilities have higher volume. '
-        'Under the DQA-only prior inspection rule with exact-date tie-breaking and Valisure-tested rows only, '
-        'the model shows no significant relationship between inspection outcome and volume in either '
-        'the all-NDC (VAI p = 0.826, OAI p = 0.688, n = 106) or single-FEI (VAI p = 0.878, OAI p = 0.532, n = 71) panel. '
-        'OAI cell sizes are very small (11 all-NDC, 2 single-FEI), so OAI estimates are highly imprecise. '
-        'The price side cannot be evaluated until NADAC is added to the pipeline.'
+        'No significant relationship between inspection outcome and volume in either the all-NDC '
+        '(VAI p = 0.826, OAI p = 0.688, n = 106) or single-FEI (VAI p = 0.878, OAI p = 0.532, n = 71) panel. '
+        'OAI cell sizes are very small (11 all-NDC, 2 single-FEI), making OAI estimates highly imprecise.'
+    ).font.size = Pt(10)
+
+    # ── Figure 1 — Gap ≤ 36 Months Subsection ──────────────────────────────────
+    doc.add_heading('Figure 1 — Gap ≤ 36 Months Subsection (prior inspection ≤ 3 years before test)', 2)
+    add_note(doc, 'Excludes rows where the prior DQA inspection is more than 36 months before Jan 1 of the Valisure test year. '
+                  'NAI drops from 18 to 8 (long-ago inspections removed); OAI unchanged (11) because all OAI inspections happen to be within 36 months.')
+    add_fig_pair(doc,
+        'July 2026 — All NDCs (≤36mo gap)', new_gap36[1],
+        'July 2026 — Single-FEI (≤36mo gap)', new_sfei_gap36[1])
+    simple_table(doc,
+        headers=['Coefficient', 'Pre-revision', 'July 2026 — All NDCs ≤36mo', 'July 2026 — Single-FEI ≤36mo'],
+        rows=[
+            ['VAI vs NAI',
+             [{'text': 'β = −1.820, SE = 0.801\n95% CI [−3.389, −0.250],  '},
+              {'text': 'p = 0.025 (*)', 'bold': True, 'red': True}],
+             'β = +0.152, SE = 2.383\n95% CI [−4.518, +4.822],  p = 0.949',
+             'β = +0.046, SE = 2.393\n95% CI [−4.645, +4.737],  p = 0.985'],
+            ['OAI vs NAI',
+             'β = +1.747, SE = 0.952\n95% CI [−0.120, +3.613],  p = 0.069',
+             'β = +0.640, SE = 2.867\n95% CI [−4.979, +6.259],  p = 0.824',
+             'β = −1.711, SE = 2.806\n95% CI [−7.211, +3.788],  p = 0.545'],
+        ],
+        col_widths=[1.3, 2.3, 2.2, 2.2]
+    )
+    add_note(doc, 'All NDCs ≤36mo: n_obs=76, n_NDC=62, n_FEI=19.  Single-FEI ≤36mo: n_obs=49, n_NDC=41, n_FEI=14.  OAI n=11 (all NDCs) / n=2 (single-FEI).')
+    simple_table(doc,
+        headers=['Outcome', 'All-NDC ≤36mo n', 'All-NDC ≤36mo Median',
+                 'Single-FEI ≤36mo n', 'Single-FEI ≤36mo Median'],
+        rows=[
+            ['NAI', '8',  '4,659,759',  '8',  '4,659,759'],
+            ['VAI', '57', '2,465,777',  '39', '1,606,850'],
+            ['OAI', '11', '4,357,583',  '2',  '2,697,354'],
+        ],
+        col_widths=[0.8, 1.0, 1.5, 1.2, 1.5]
+    )
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    r = p.add_run('Conclusion (≤36mo gap filter): '); r.bold = True; r.font.size = Pt(10)
+    p.add_run(
+        'After restricting to inspections within 3 years of the test date, NAI drops to n=8 and OAI remains n=11 (all-NDC). '
+        'Results remain fully non-significant (VAI p = 0.949, OAI p = 0.824). '
+        'The gap filter does not reveal any hidden pattern — if anything, SEs widen due to the smaller NAI cell.'
     ).font.size = Pt(10)
 
     # ── Figure 2 ──────────────────────────────────────────────────────────────
@@ -265,55 +314,126 @@ with tempfile.TemporaryDirectory() as tmpdir:
     add_note(doc, 'NDC-cluster block bootstrap resamples whole NDC clusters to obtain cluster-robust p-values and 95% CI.')
     doc.add_paragraph()
     p = doc.add_paragraph()
-    r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
+    r = p.add_run('Conclusion (no gap filter): '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
         'Old Observation 2 (DMF vs market volume) is supported and robust in both the all-NDC '
         '(ρ = +0.30, p = 0.002, n = 126) and single-FEI (ρ = +0.31, p = 0.003, n = 91) panels. '
-        'Excluding multi-FEI NDCs slightly increases the effect size. '
-        'NDMA and Difference Factor versus volume remain non-significant in both versions.'
+        'NDMA and Difference Factor versus volume remain non-significant.'
+    ).font.size = Pt(10)
+
+    # ── Figure 2 — Gap ≤ 36 Months Subsection ──────────────────────────────────
+    doc.add_heading('Figure 2 — Gap ≤ 36 Months Subsection (prior inspection ≤ 3 years before test)', 2)
+    add_note(doc, 'Same filter as Figure 1 gap section: drops NDC-year rows where prior DQA inspection is >36 months before test year.')
+    add_fig_pair(doc,
+        'July 2026 — All NDCs (≤36mo gap)', new_gap36[2],
+        'July 2026 — Single-FEI (≤36mo gap)', new_sfei_gap36[2])
+    simple_table(doc,
+        headers=['Association', 'July 2026 — All NDCs (no gap)', 'July 2026 — All NDCs ≤36mo', 'July 2026 — Single-FEI ≤36mo'],
+        rows=[
+            ['DMF vs Volume',
+             [{'text': 'ρ = +0.302,  '},
+              {'text': 'p_boot = 0.002 (**)', 'bold': True, 'red': True},
+              {'text': '\n95% CI [+0.112, +0.467],  n = 126'}],
+             [{'text': 'ρ = +0.359,  '},
+              {'text': 'p_boot = 0.001 (**)', 'bold': True, 'red': True},
+              {'text': '\n95% CI [+0.152, +0.527],  n = 96'}],
+             [{'text': 'ρ = +0.357,  '},
+              {'text': 'p_boot = 0.002 (**)', 'bold': True, 'red': True},
+              {'text': '\n95% CI [+0.117, +0.551],  n = 69'}]],
+            ['NDMA vs Volume',
+             'ρ = −0.064,  p_boot = 0.635\n95% CI [−0.312, +0.181],  n = 71',
+             'ρ = −0.031,  p_boot = 0.812\n95% CI [−0.263, +0.220],  n = 62',
+             'ρ = +0.073,  p_boot = 0.605\n95% CI [−0.212, +0.351],  n = 45'],
+            ['Diff Factor vs Volume',
+             'ρ = −0.162,  p_boot = 0.454\n95% CI [−0.566, +0.246],  n = 25',
+             'ρ = +0.187,  p_boot = 0.546\n95% CI [−0.457, +0.720],  n = 14',
+             'ρ = +0.154,  p_boot = 0.638\n95% CI [−0.529, +0.723],  n = 12'],
+        ],
+        col_widths=[1.4, 2.0, 2.0, 2.0]
+    )
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    r = p.add_run('Conclusion (≤36mo gap filter): '); r.bold = True; r.font.size = Pt(10)
+    p.add_run(
+        'The DMF–volume relationship strengthens slightly under the gap filter (ρ = +0.36 vs +0.30), '
+        'remaining highly significant (p = 0.001). NDMA and Difference Factor remain non-significant. '
+        'The gap filter does not weaken the key finding.'
     ).font.size = Pt(10)
 
     # ── Figure 3 ──────────────────────────────────────────────────────────────
     doc.add_page_break()
     doc.add_heading('Figure 3 — Price vs Tested Drug Quality', 1)
-    add_note(doc, 'July 2026 figures are blank — NADAC price data not yet integrated into the pipeline. NADAC is available in the pre-revision Q&A file (107 of 111 NDC-years have NADAC).')
+    add_note(doc, 'July 2026: Medicaid price per unit = Medicaid Amount Reimbursed / Units Reimbursed (from SDUD). Outliers > $50/unit excluded. Pre-revision used NADAC; 3 NDCs have no SDUD coverage.')
     add_note(doc, 'All NDCs = full July 2026 panel (Valisure-tested rows only).  Single-FEI = 25 multi-FEI NDC11s excluded.')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[3],
-        'July 2026 — All NDCs (NADAC pending)', new[3],
-        'July 2026 — Single-FEI NDCs only (NADAC pending)', new_singlefei[3])
+        'July 2026 — All NDCs (Medicaid price)', new[3],
+        'July 2026 — Single-FEI NDCs only (Medicaid price)', new_singlefei[3])
 
     doc.add_heading('Statistics Comparison — Spearman ρ (NDC-cluster block bootstrap)', 2)
     add_note(doc, SIG_NOTE)
     simple_table(doc,
-        headers=['Association', 'Pre-revision', 'July 2026 — All NDCs', 'July 2026 — Single-FEI'],
+        headers=['Association', 'Pre-revision (NADAC)', 'July 2026 — All NDCs', 'July 2026 — Single-FEI'],
         rows=[
             ['DMF vs Price',
              'not significant  (p > 0.10)',
-             'pending NADAC integration',
-             'pending NADAC integration'],
+             'ρ = −0.110,  p_boot = 0.318\n95% CI [−0.313, +0.128],  n = 117',
+             'ρ = −0.115,  p_boot = 0.407\n95% CI [−0.375, +0.155],  n = 84'],
             ['NDMA vs Price',
              [
                  {'text': 'ρ = +0.282,  '},
                  {'text': 'p = 0.013 (*)', 'bold': True, 'red': True},
                  {'text': '\n95% CI [+0.056, +0.490]'},
              ],
-             'pending NADAC integration',
-             'pending NADAC integration'],
-            ['Difference Factor vs Price',
+             'ρ = −0.091,  p_boot = 0.500\n95% CI [−0.338, +0.187],  n = 68',
+             'ρ = −0.161,  p_boot = 0.318\n95% CI [−0.449, +0.160],  n = 51'],
+            ['Diff Factor vs Price',
              'not significant  (p > 0.10)',
-             'pending NADAC integration',
-             'pending NADAC integration'],
+             'ρ = +0.046,  p_boot = 0.849\n95% CI [−0.399, +0.495],  n = 21',
+             'ρ = +0.029,  p_boot = 0.911\n95% CI [−0.470, +0.533],  n = 17'],
         ],
         col_widths=[1.5, 1.9, 1.7, 2.0]
     )
     doc.add_paragraph()
     p = doc.add_paragraph()
-    r = p.add_run('Conclusion: '); r.bold = True; r.font.size = Pt(10)
+    r = p.add_run('Conclusion (no gap filter): '); r.bold = True; r.font.size = Pt(10)
     p.add_run(
-        'Cannot evaluate. Old Observation 2 (NDMA vs price, ρ = +0.282, p = 0.013) '
-        'cannot be reproduced until NADAC pricing is added to Step 5 of the pipeline. '
-        'This remains an open item.'
+        'The pre-revision finding (NDMA vs NADAC price, ρ = +0.282, p = 0.013) does not replicate '
+        'with Medicaid price — all associations are non-significant (DMF p = 0.318, NDMA p = 0.500). '
+        'This likely reflects the price-source difference (NADAC vs Medicaid reimbursement) rather than '
+        'a change in the underlying relationship. NADAC integration remains a future step.'
+    ).font.size = Pt(10)
+
+    # ── Figure 3 — Gap ≤ 36 Months Subsection ──────────────────────────────────
+    doc.add_heading('Figure 3 — Gap ≤ 36 Months Subsection (prior inspection ≤ 3 years before test)', 2)
+    add_note(doc, 'Note: Figure 3 (price vs quality) does not require prior inspection data — the gap filter here drops rows where the NDC-year has a stale inspection (>36mo), which affects only inspection-linked rows in other analyses. All price-quality rows are retained unless the NDC-year is removed from df_gap36.')
+    add_fig_pair(doc,
+        'July 2026 — All NDCs (≤36mo gap)', new_gap36[3],
+        'July 2026 — Single-FEI (≤36mo gap)', new_sfei_gap36[3])
+    simple_table(doc,
+        headers=['Association', 'July 2026 — All NDCs (no gap)', 'July 2026 — All NDCs ≤36mo', 'July 2026 — Single-FEI ≤36mo'],
+        rows=[
+            ['DMF vs Price',
+             'ρ = −0.110,  p_boot = 0.318\nn = 117',
+             'ρ = −0.148,  p_boot = 0.193\nn = 89',
+             'ρ = −0.183,  p_boot = 0.197\nn = 63'],
+            ['NDMA vs Price',
+             'ρ = −0.091,  p_boot = 0.500\nn = 68',
+             'ρ = −0.072,  p_boot = 0.622\nn = 59',
+             'ρ = −0.150,  p_boot = 0.378\nn = 42'],
+            ['Diff Factor vs Price',
+             'ρ = +0.046,  p_boot = 0.849\nn = 21',
+             'ρ = +0.046,  p_boot = 0.906\nn = 11',
+             'ρ = +0.000,  p_boot = 1.000\nn = 9'],
+        ],
+        col_widths=[1.5, 1.9, 1.7, 2.0]
+    )
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    r = p.add_run('Conclusion (≤36mo gap filter): '); r.bold = True; r.font.size = Pt(10)
+    p.add_run(
+        'All price vs quality associations remain non-significant after applying the gap filter. '
+        'No pattern emerges between Medicaid price and contamination level regardless of inspection recency.'
     ).font.size = Pt(10)
 
     # ── Figure 4 ──────────────────────────────────────────────────────────────
