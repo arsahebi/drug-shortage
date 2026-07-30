@@ -43,10 +43,22 @@ LOQ_VAL = 151.54   # sentinel for <LOQ / BLOQ results
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 def to_ndc11_bare(x) -> Optional[str]:
-    """Any NDC format → bare 11-digit string (5-4-2 no hyphens)."""
+    """Any NDC format → bare 11-digit string (5-4-2 no hyphens).
+
+    Handles non-standard hyphenated formats (e.g. 5-4-1 where package
+    segment is missing a leading zero) by padding each segment before
+    concatenating.  Falls back to positional padding for bare digit strings.
+    """
     if pd.isna(x):
         return None
-    d = re.sub(r'[^0-9]', '', str(x).strip())
+    s = str(x).strip()
+    parts = s.split('-')
+    if len(parts) == 3 and all(p.isdigit() for p in parts):
+        labeler, product, package = parts
+        d = labeler.zfill(5) + product.zfill(4) + package.zfill(2)
+        if len(d) == 11:
+            return d
+    d = re.sub(r'[^0-9]', '', s)
     if len(d) == 10:
         return d[:5] + '0' + d[5:]
     if len(d) == 11:

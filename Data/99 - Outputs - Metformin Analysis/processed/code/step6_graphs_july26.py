@@ -238,7 +238,7 @@ df = pd.read_csv(STEP5, dtype=str)
 for col in [DMF_COL, NDMA_COL, DIFF_COL, VOL_COL,
             "iqvia_trx", "sdud_num_prescriptions", "sdud_units_reimbursed",
             "prior_score", "n_lots", "prior_event_year", "n_feis",
-            "months_since_inspection", "month_gap_test_inspection",
+            "months_since_inspection",
             "gap_test_inspection_more_than_3_years",
             PRICE_COL, "price_outlier"]:
     if col in df.columns:
