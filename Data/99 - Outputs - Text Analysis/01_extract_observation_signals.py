@@ -263,18 +263,27 @@ on site -> Major; deficient system or procedure only -> Moderate; paperwork only
 
 - scope: the breadth of the failure described in THIS observation.
   * SingleBatch = confined to one batch, lot, line event, or single occurrence
-  * MultipleProducts = affects several batches, products, or production lines
-  * FacilityWide = quality-system-level failure affecting all production (e.g., "there \
-are no written procedures for production and process controls" — nothing batch-specific)
+  * MultipleProducts = the text explicitly names or counts more than one specific \
+batch, lot, or product (e.g., "batches X, Y, and Z", "three lots"). A general \
+procedural gap that COULD apply across production, with no specific batches named, \
+is NOT MultipleProducts by default.
+  * FacilityWide = a quality-system-level failure affecting all production (e.g., "there \
+are no written procedures for production and process controls" — nothing batch-specific), \
+regardless of how many batches happen to be named
   * Unclear = text insufficient to judge breadth
 
 - remediation_signal: Strong = specific corrective actions clearly stated; \
 Partial = some corrective intent mentioned; Weak = vague; None = not mentioned
 
-- repeat_flag_llm: mark true ONLY when the observation explicitly states this is \
-a repeat observation/finding, previously observed, previously cited, recurring from \
-a prior inspection, or equivalent. Do NOT mark true merely because multiple examples \
-within the same current observation recur or affect multiple products/lines.
+- repeat_flag_llm: mark true when the observation explicitly ties this finding to a \
+prior inspection, using phrasing such as "previous FDA 483 observation", "repeat FDA 483 \
+observation", "repeat observation", "repeated deficiency", "similar FDA 483 observation", \
+"similar observation", "similar CGMP violations", "repeated violations at multiple sites", \
+"cited similar CGMP violations", "cited during the previous inspection of your facility", \
+"similar to violations cited", "repeat violation", "firm was previously cited", "repeat \
+finding", "repeated failures at multiple sites", "repeat of observation", or equivalent \
+language. Do NOT mark true merely because multiple examples within the same current \
+observation recur or affect multiple products/lines.
 
 - patient_risk_flag_llm: {patient_risk_rule}
 
@@ -297,7 +306,11 @@ batch failure, OOS/OOT result, positive unit, contamination event, or particulat
 event. Examples include missing root cause, missing CAPA, or failure to assess \
 product impact. Do NOT mark true for general missing evaluation/assessment/rationale \
 or because a procedure says an investigation would be required. Do NOT mark true for \
-validation/remediation acceptance-criteria weaknesses unless a specific event investigation failed.
+validation/remediation acceptance-criteria weaknesses unless a specific event investigation failed. \
+True example: "The investigation into the failing assay result did not identify a root \
+cause or assess impact to other batches." False example: "There is no written procedure \
+for conducting investigations of deviations." (a missing-procedure statement belongs \
+under root_cause_type / violation_category, not this flag).
 
 - evidence_quote: copy-paste a short exact phrase from the observation text — do NOT \
 paraphrase. Prefer 6–30 words and avoid OCR-damaged text when a cleaner exact quote exists.
@@ -334,8 +347,9 @@ OPENAI_JSON_SCHEMA = {
             "enum": sorted(VALID_SCOPE),
             "description": (
                 "Breadth of the failure: SingleBatch (one batch/lot/event), "
-                "MultipleProducts (several batches/products/lines), FacilityWide "
-                "(quality-system level affecting all production), Unclear."
+                "MultipleProducts (text explicitly names/counts more than one batch, "
+                "lot, or product — not a generic gap that could apply anywhere), "
+                "FacilityWide (quality-system level affecting all production), Unclear."
             ),
         },
         "root_cause_type": {
@@ -350,10 +364,11 @@ OPENAI_JSON_SCHEMA = {
         "repeat_flag_llm": {
             "type": "boolean",
             "description": (
-                "True only when the observation explicitly states this is a repeat "
-                "observation or finding, previously observed, previously cited, or "
-                "recurring from a prior inspection. False for repeated examples within "
-                "the same current observation."
+                "True when the observation explicitly ties this finding to a prior "
+                "inspection (e.g. 'previous FDA 483 observation', 'repeat observation', "
+                "'similar CGMP violations', 'firm was previously cited', or equivalent "
+                "language). False for repeated examples within the same current "
+                "observation."
             ),
         },
         "patient_risk_flag_llm": {
@@ -509,8 +524,13 @@ on site → Major; deficient system or procedure only → Moderate; paperwork on
 
 - scope:
   * SingleBatch = confined to one batch, lot, line event, or single occurrence
-  * MultipleProducts = affects several batches, products, or production lines
-  * FacilityWide = quality-system-level failure affecting all production
+  * MultipleProducts = the text explicitly names or counts more than one specific \
+batch, lot, or product (e.g., "batches X, Y, and Z", "three lots"). A general \
+procedural gap that COULD apply across production, with no specific batches named, \
+is NOT MultipleProducts by default.
+  * FacilityWide = a quality-system-level failure (e.g., CAPA program, deviation \
+management, quality unit oversight) affecting all production, regardless of how many \
+batches are named
   * Unclear = text insufficient to judge breadth
 
 - root_cause_type: why did this failure occur? Choose based on the mechanism described, \
@@ -536,9 +556,14 @@ text that drove the assignment. If Unclear, state what information is missing.
 - remediation_signal: Strong = specific corrective actions clearly stated; \
 Partial = some corrective intent mentioned; Weak = vague; None = not mentioned
 
-- repeat_flag_llm: mark true ONLY when the observation explicitly states this is \
-a repeat observation/finding from a prior inspection. False if examples merely recur \
-within the same current observation.
+- repeat_flag_llm: mark true when the observation explicitly ties this finding to a \
+prior inspection, using phrasing such as "previous FDA 483 observation", "repeat FDA 483 \
+observation", "repeat observation", "repeated deficiency", "similar FDA 483 observation", \
+"similar observation", "similar CGMP violations", "repeated violations at multiple sites", \
+"cited similar CGMP violations", "cited during the previous inspection of your facility", \
+"similar to violations cited", "repeat violation", "firm was previously cited", "repeat \
+finding", "repeated failures at multiple sites", "repeat of observation", or equivalent \
+language. False if examples merely recur within the same current observation.
 
 - patient_risk_flag_llm: mark true ONLY for these three scenarios — nothing else qualifies:
   (a) Sterile or injectable product with CONFIRMED contamination or sterility breach \
@@ -574,7 +599,11 @@ monitoring failures, microbial/particulate contamination, inadequate cleaning/st
 
 - investigation_flag_llm: mark true ONLY for an explicit failed, missing, delayed, \
 or inadequate investigation of a concrete event (deviation, OOS/OOT, contamination event, \
-batch failure). False for general missing evaluation or weak procedure requirements.
+batch failure). False for general missing evaluation or weak procedure requirements. \
+True example: "The investigation into the failing assay result did not identify a root \
+cause or assess impact to other batches." False example: "There is no written procedure \
+for conducting investigations of deviations." (a missing-procedure statement belongs \
+under root_cause_type / violation_category, not this flag).
 
 - evidence_quote: copy-paste a short exact phrase from the observation text (6–30 words). \
 Do NOT paraphrase.
@@ -605,7 +634,11 @@ Scope calibration:
   (1) An observation describing failures across all production batches reviewed = FacilityWide \
 only if the failure is in the quality management system itself (e.g., CAPA program, deviation \
 management). If it is an operational failure affecting many batches = MultipleProducts.
-  (2) SingleBatch is correct even when multiple examples within the same batch are cited.
+  (2) MultipleProducts requires the text to explicitly name or count more than one batch, \
+lot, or product. A general procedural gap that could apply to any production line, with no \
+specific batches named, is FacilityWide (if system-level) or SingleBatch/Unclear (if not) — \
+never MultipleProducts by default.
+  (3) SingleBatch is correct even when multiple examples within the same batch are cited.
 
 Analyze the following observation:\
 """
