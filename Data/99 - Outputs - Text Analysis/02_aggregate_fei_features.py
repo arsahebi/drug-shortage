@@ -67,6 +67,17 @@ DENOMINATOR RULES
   LLM shares       : scored (ok/partial) cumulative rows only
   Agreement/lift   : scored rows only (both regex and LLM present)
   Failed rows      : excluded from LLM features; never become false/zero labels
+
+PROMPT VERSIONS (--prompt-version {v1,v2})
+  v1 (default, unchanged): reads step01_*_llm_signals_anthropic.csv, writes
+  step02_483_fei_text_features_timeseries_{redica,fdapdf}.csv — same
+  filenames as always.
+  v2 (expert-review revision, see 01_extract_observation_signals.py):
+  reads step01_*_llm_signals_anthropic_v2.csv, writes
+  step02_483_fei_text_features_timeseries_{redica,fdapdf}_v2.csv — a
+  SEPARATE file. violation_category uses the FDA six-system (QSIT)
+  framework (7 categories instead of 8) and an extra contamination_risk_
+  flag_llm share is added. v1 output is never touched by a v2 run.
 """
 
 from __future__ import annotations
@@ -90,7 +101,32 @@ REDICA_SIGNALS_CSV = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
 OUT_REDICA_CSV     = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
 
+def _versioned(path: Path, version: str) -> Path:
+    """Insert a _v2 (etc.) suffix before the extension for non-v1 prompt versions."""
+    if version == "v1":
+        return path
+    return path.with_name(path.stem + f"_{version}" + path.suffix)
+
+
 LOW_CONFIDENCE_THRESHOLD = 0.70
+
+# ── violation_category sets by prompt version ───────────────────────────────
+# v1: original 8-category scheme. v2: FDA six-system (QSIT) framework, see
+# 01_extract_observation_signals.py VALID_VIOLATION_CATEGORY_V2.
+VC_CATEGORIES_V1 = ["LabControls", "ProductionControls", "BuildingsEquipment",
+                     "OrgPersonnel", "PackagingLabeling", "RecordsReports",
+                     "QualitySystem", "Other"]
+VC_CATEGORIES_V2 = ["QualitySystem", "ProductionSystem", "MaterialsSystem",
+                     "FacilitiesEquipmentSystem", "LaboratoryControlsSystem",
+                     "PackagingLabelingSystem", "Other"]
+
+# Category-name equivalents used to build the joint co-occurrence flags below
+# (same output column names across versions; different underlying category
+# per version so v1 and v2 stay comparable at the column-name level).
+_JOINT_CAT_EQUIV = {
+    "v1": {"lab": "LabControls",  "production": "ProductionControls", "facilities": "BuildingsEquipment"},
+    "v2": {"lab": "LaboratoryControlsSystem", "production": "ProductionSystem", "facilities": "FacilitiesEquipmentSystem"},
+}
 
 
 # ── Generic helpers ────────────────────────────────────────────────────────
@@ -223,7 +259,7 @@ def _layer2_regex(grp: pd.DataFrame) -> dict:
 
 # ── Layer 3: LLM semantic ──────────────────────────────────────────────────
 
-def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
+def _layer3_llm(scored: pd.DataFrame, ns: int, categories: list[str]) -> dict:
     sev = scored["severity_tier"]      if ns > 0 else pd.Series(dtype=str)
     rem = scored["remediation_signal"] if ns > 0 else pd.Series(dtype=str)
     rc  = scored["root_cause_type"]    if ns > 0 else pd.Series(dtype=str)
@@ -243,14 +279,15 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
         ("contamination_llm_share",  "contamination_flag_llm"),
         ("investigation_llm_share",  "investigation_flag_llm"),
     ]
+    # v2 only: contamination split into confirmed (above) vs. control-risk (below)
+    if "contamination_risk_flag_llm" in scored.columns:
+        llm_flags.append(("contamination_risk_llm_share", "contamination_risk_flag_llm"))
     flag_shares = {}
     for feat, col in llm_flags:
         flag_shares[feat] = round(_share(_to_bool(scored[col])), 4) \
             if col in scored.columns and ns > 0 else float("nan")
 
     # Per-category violation share (not just dominant)
-    categories = ["LabControls", "ProductionControls", "BuildingsEquipment",
-                  "OrgPersonnel", "PackagingLabeling", "RecordsReports", "QualitySystem", "Other"]
     vc_shares = {}
     for cat in categories:
         key = f"vc_{cat.lower()}_share"
@@ -291,13 +328,9 @@ def _layer3_llm(scored: pd.DataFrame, ns: int) -> dict:
 #   the same inspection. Key for two-failure-mode hypothesis:
 #   governance failures (QualitySystem) vs technical failures (LabControls/DI).
 
-def _layer5_counts_and_joints(scored: pd.DataFrame, ns: int) -> dict:
+def _layer5_counts_and_joints(scored: pd.DataFrame, ns: int, categories: list[str], version: str) -> dict:
     vc  = scored["violation_category"] if ns > 0 else pd.Series(dtype=str)
     sev = scored["severity_tier"]      if ns > 0 else pd.Series(dtype=str)
-
-    categories = ["LabControls", "ProductionControls", "BuildingsEquipment",
-                  "OrgPersonnel", "PackagingLabeling", "RecordsReports",
-                  "QualitySystem", "Other"]
 
     # Raw counts per violation category
     vc_counts = {}
@@ -312,18 +345,21 @@ def _layer5_counts_and_joints(scored: pd.DataFrame, ns: int) -> dict:
         "n_minor_obs":    int((sev == "Minor").sum())    if ns > 0 else 0,
     }
 
-    # Joint co-occurrence flags: True if BOTH categories present in this inspection
+    # Joint co-occurrence flags: True if BOTH categories present in this inspection.
+    # Output column names are stable across versions; the underlying category
+    # names differ (see _JOINT_CAT_EQUIV) so v1/v2 stay comparable by column.
     def _has(cat):
         return (vc == cat).any() if ns > 0 else False
 
+    equiv = _JOINT_CAT_EQUIV[version]
     joint_flags = {
         # Two-failure-mode pairs (governance vs technical)
-        "joint_labcontrols_qualitysystem":   bool(_has("LabControls")   and _has("QualitySystem")),
-        "joint_labcontrols_dataintegrity":   bool(_has("LabControls")   and
+        "joint_labcontrols_qualitysystem":   bool(_has(equiv["lab"])        and _has("QualitySystem")),
+        "joint_labcontrols_dataintegrity":   bool(_has(equiv["lab"])        and
                                                   (scored["data_integrity_flag_llm"].astype(str).str.lower() == "true").any()
                                                   if ns > 0 and "data_integrity_flag_llm" in scored.columns else False),
-        "joint_contamination_labcontrols":   bool(_has("LabControls")   and _has("BuildingsEquipment")),
-        "joint_qualitysystem_production":    bool(_has("QualitySystem") and _has("ProductionControls")),
+        "joint_contamination_labcontrols":   bool(_has(equiv["lab"])        and _has(equiv["facilities"])),
+        "joint_qualitysystem_production":    bool(_has("QualitySystem")     and _has(equiv["production"])),
         # Breadth flags: inspection hits 3+ distinct domains
         "multi_domain_insp":                 bool(vc.nunique() >= 3)    if ns > 0 else False,
     }
@@ -360,16 +396,16 @@ def _layer4_agreement(scored: pd.DataFrame, ns: int) -> dict:
 
 # ── Snapshot aggregation ───────────────────────────────────────────────────
 
-def _aggregate_snapshot(subset: pd.DataFrame) -> dict:
+def _aggregate_snapshot(subset: pd.DataFrame, categories: list[str], version: str) -> dict:
     """Aggregate all observations in subset (cumulative up to snapshot_date)."""
     scored = subset[subset["extraction_status"].isin(["ok", "partial"])]
     ns     = len(scored)
 
     l1 = _layer1_quality(subset, ns)
     l2 = _layer2_regex(subset)
-    l3 = _layer3_llm(scored, ns)
+    l3 = _layer3_llm(scored, ns, categories)
     l4 = _layer4_agreement(scored, ns)
-    l5 = _layer5_counts_and_joints(scored, ns)
+    l5 = _layer5_counts_and_joints(scored, ns, categories, version)
 
     flat = {}
     for layer in (l1, l2, l3, l4, l5):
@@ -439,8 +475,9 @@ _COL_ORDER = [
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def _run_aggregation(df: pd.DataFrame, out_csv: Path, label: str) -> pd.DataFrame:
+def _run_aggregation(df: pd.DataFrame, out_csv: Path, label: str, version: str = "v1") -> pd.DataFrame:
     """Core aggregation logic shared by all source modes."""
+    categories = VC_CATEGORIES_V2 if version == "v2" else VC_CATEGORIES_V1
     sep = "=" * 70
     print(sep)
     print(f"02_aggregate_fei_features.py — {label}")
@@ -480,7 +517,7 @@ def _run_aggregation(df: pd.DataFrame, out_csv: Path, label: str) -> pd.DataFram
         fei  = snap["fei"]
         date = snap["insp_date"]
         subset = df[(df["fei"] == fei) & (df["insp_date"] == date)].copy()
-        agg = _aggregate_snapshot(subset)
+        agg = _aggregate_snapshot(subset, categories, version)
         agg["fei"]           = int(fei)
         agg["snapshot_date"] = date.date().isoformat()
         agg["year_month"]    = date.strftime("%Y-%m")
@@ -518,27 +555,43 @@ def main() -> None:
             "(38 FEIs; kept for reference/comparison)."
         ),
     )
+    parser.add_argument(
+        "--prompt-version", choices=["v1", "v2"], default="v1",
+        help=(
+            "'v1' (default, unchanged) reads/writes the usual step01/step02 "
+            "filenames. 'v2' reads step01_*_v2.csv (see "
+            "01_extract_observation_signals.py --prompt-version v2) and writes "
+            "step02_*_v2.csv — a separate file; v1 output is never touched."
+        ),
+    )
     args = parser.parse_args()
+    version = args.prompt_version
 
     if args.source == "redica":
-        if not REDICA_SIGNALS_CSV.exists():
-            sys.exit(f"\n[ERROR] Redica LLM signals not found:\n  {REDICA_SIGNALS_CSV}\n"
-                     "Run 01_extract_observation_signals.py --source redica --provider anthropic first.\n")
-        df = pd.read_csv(REDICA_SIGNALS_CSV)
+        signals_csv = _versioned(REDICA_SIGNALS_CSV, version)
+        out_csv     = _versioned(OUT_REDICA_CSV, version)
+        if not signals_csv.exists():
+            sys.exit(f"\n[ERROR] Redica LLM signals not found:\n  {signals_csv}\n"
+                     "Run 01_extract_observation_signals.py --source redica --provider anthropic "
+                     f"--prompt-version {version} first.\n")
+        df = pd.read_csv(signals_csv)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
-        _run_aggregation(df, OUT_REDICA_CSV, label="Redica pipeline (claude-haiku, 98 FEIs)")
+        label = f"Redica pipeline (claude-haiku, 98 FEIs, prompt {version})"
+        _run_aggregation(df, out_csv, label=label, version=version)
         return
 
     # Default: PDF-only pipeline
-    if not SIGNALS_CSV.exists():
+    signals_csv = _versioned(SIGNALS_CSV, version)
+    out_csv     = _versioned(OUT_CSV, version)
+    if not signals_csv.exists():
         sys.exit(
-            f"\n[ERROR] Observation signals file not found:\n  {SIGNALS_CSV}\n"
-            "Run 01_extract_observation_signals.py first.\n"
+            f"\n[ERROR] Observation signals file not found:\n  {signals_csv}\n"
+            f"Run 01_extract_observation_signals.py --prompt-version {version} first.\n"
         )
 
-    df = pd.read_csv(SIGNALS_CSV)
-    out_df = _run_aggregation(df, OUT_CSV, label="PDF pipeline — 38 FEIs")
+    df = pd.read_csv(signals_csv)
+    out_df = _run_aggregation(df, out_csv, label=f"PDF pipeline — 38 FEIs, prompt {version}", version=version)
 
     print("\n-- LLM lift at latest snapshot per FEI (mean across facilities) --")
     latest = out_df.sort_values("snapshot_date").groupby("fei").last().reset_index()
