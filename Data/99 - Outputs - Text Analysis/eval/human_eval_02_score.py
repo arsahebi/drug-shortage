@@ -5,9 +5,13 @@ Scores a completed labeling_template_v2.xlsx (RA labels) against
 DO_NOT_SHARE_answer_key_v2.csv (model predictions), joined on (fei, obs_num).
 
 Computes per-field accuracy, macro-F1, and per-class precision/recall/F1 for
-every categorical and binary field, and reports simple agreement + a small
-qualitative sample for the two free-text fields (human_patient_risk_why vs.
-patient_risk_rationale) rather than trying to score prose automatically.
+every categorical and binary field, and reports two qualitative free-text
+checks rather than trying to score prose automatically:
+  - human_patient_risk_why vs. the model's own patient_risk_rationale
+    (side-by-side comparison -- the model has a dedicated rationale field here)
+  - human_contamination_why on rows where contamination_flag or
+    contamination_risk_flag disagree (disagreement audit trail -- the model
+    has no dedicated rationale field for this split)
 
 Outputs:
   eval/human_eval_metrics_v2.md  -- per-field metrics table (paper audit trail)
@@ -168,6 +172,23 @@ def main():
         print(f"\nRows where both RA and model set patient_risk = TRUE: {len(both_true)} "
               "(see human_eval_metrics_v2.md for the side-by-side text)")
 
+    # Qualitative check for contamination_why -- the model has no dedicated
+    # rationale field for this split (unlike patient_risk), so this is a
+    # disagreement audit trail rather than a side-by-side comparison: every
+    # row where the RA's contamination_flag or contamination_risk_flag
+    # differs from the model's, with the RA's stated reasoning attached.
+    if "human_contamination_why" in merged.columns:
+        contam_disagree = merged[
+            (merged["human_contamination_flag"].astype(str).str.upper()
+             != merged["contamination_flag_llm"].astype(str).str.upper())
+            | (merged["human_contamination_risk_flag"].astype(str).str.upper()
+               != merged["contamination_risk_flag_llm"].astype(str).str.upper())
+        ]
+        contam_disagree = contam_disagree[contam_disagree["human_contamination_why"].notna()]
+        print(f"Rows where RA and model disagree on contamination_flag or "
+              f"contamination_risk_flag: {len(contam_disagree)} "
+              "(see human_eval_metrics_v2.md for the RA's stated reasoning)")
+
     _write_metrics_md(all_metrics, merged)
     print(f"\nMetrics written to: {METRICS_MD}")
 
@@ -212,10 +233,39 @@ def _write_metrics_md(all_metrics: dict, merged: pd.DataFrame):
                          f"{r.get('patient_risk_rationale', '')}")
             lines.append("")
 
+    if "human_contamination_why" in merged.columns:
+        lines.append("## contamination_flag / contamination_risk_flag Disagreements "
+                     "(qualitative)\n")
+        lines.append("The model has no dedicated rationale field for this split (unlike "
+                     "patient_risk), so this is a disagreement audit trail, not a side-by-side "
+                     "comparison: every row where the RA's contamination_flag or "
+                     "contamination_risk_flag differs from the model's, with the RA's stated "
+                     "reasoning. Use this to tell a genuine misread of the confirmed-event-vs-"
+                     "control-risk split apart from a defensible close call.\n")
+        contam_disagree = merged[
+            (merged["human_contamination_flag"].astype(str).str.upper()
+             != merged["contamination_flag_llm"].astype(str).str.upper())
+            | (merged["human_contamination_risk_flag"].astype(str).str.upper()
+               != merged["contamination_risk_flag_llm"].astype(str).str.upper())
+        ]
+        contam_disagree = contam_disagree[contam_disagree["human_contamination_why"].notna()]
+        if len(contam_disagree) == 0:
+            lines.append("*No disagreements with a stated rationale yet.*\n")
+        for _, r in contam_disagree.iterrows():
+            lines.append(f"**FEI {r['fei']}, obs {r['obs_num']}**")
+            lines.append(f"- RA: contamination_flag={r.get('human_contamination_flag', '')}, "
+                         f"contamination_risk_flag={r.get('human_contamination_risk_flag', '')} "
+                         f"-- {r.get('human_contamination_why', '')}")
+            lines.append(f"- Model: contamination_flag={r.get('contamination_flag_llm', '')}, "
+                         f"contamination_risk_flag={r.get('contamination_risk_flag_llm', '')}")
+            lines.append("")
+
     lines.append("## Notes for Paper\n")
     lines.append(
-        "- Field definitions match `483_Labeling_Manual_v2.docx`, itself a plain-language "
-        "rewrite of the v2 LLM prompt rules in `01_extract_observation_signals.py`.\n"
+        "- Field definitions match `483_Labeling_Rules_v2.docx` (rules) and "
+        "`483_Background_Reference_Guide.docx` (onboarding/background, not shown to the "
+        "model) -- the rules document is a plain-language rewrite of the v2 LLM prompt in "
+        "`01_extract_observation_signals.py`.\n"
         "- Labeling was blind: the RA never saw model predictions while labeling "
         "(see `human_eval_01_generate_template.py`).\n"
         "- `patient_risk_flag` carries a rationale comparison above -- treat the flag's "

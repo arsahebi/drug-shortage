@@ -83,6 +83,7 @@ COLUMNS = [
     ("human_patient_risk_why",        40, True),
     ("human_contamination_flag",      18, True),
     ("human_contamination_risk_flag", 22, True),
+    ("human_contamination_why",       40, True),
     ("human_investigation_flag",      16, True),
     ("human_data_integrity_flag",     18, True),
     ("human_confidence_1to5",         14, True),
@@ -217,9 +218,14 @@ def _write_template(df: pd.DataFrame) -> None:
          "lists -- click the cell and choose from the arrow.", False, 11),
         ("  3. human_patient_risk_why: a short sentence on WHY you set the patient-risk "
          "flag the way you did. Required whenever the flag is TRUE.", False, 11),
-        ("  4. human_confidence_1to5: how confident you are in your own labels for that "
+        ("  4. human_contamination_why: a short sentence on WHY you set "
+         "human_contamination_flag and human_contamination_risk_flag the way you did -- "
+         "this is the newest, subtlest distinction in the rules (confirmed event vs. "
+         "control-risk gap), so we want to see your reasoning even when you're confident.",
+         False, 11),
+        ("  5. human_confidence_1to5: how confident you are in your own labels for that "
          "row (1 = guessing, 5 = certain).", False, 11),
-        ("  5. notes: anything ambiguous, anything you'd flag for discussion, or where "
+        ("  6. notes: anything ambiguous, anything you'd flag for discussion, or where "
          "the text itself seems incomplete/redacted in a way that affects your answer.",
          False, 11),
         ("", False, 11),
