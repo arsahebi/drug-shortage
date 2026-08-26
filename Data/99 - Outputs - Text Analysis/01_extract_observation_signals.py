@@ -71,6 +71,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -100,6 +101,17 @@ MAX_TOKENS       = 4000
 RATE_LIMIT_RETRIES = 4    # retries per request on RateLimitError
 RATE_LIMIT_SLEEP   = 65   # seconds; grows linearly per attempt
 SAVE_EVERY = 50      # write partial results every N observations
+
+# Defaults, captured before any --model override, so output paths can tell a
+# comparison run (different model) apart from the standard run (default model).
+_DEFAULT_ANTHROPIC_MODEL = ANTHROPIC_MODEL
+_DEFAULT_OPENAI_MODEL    = MODEL_NAME
+
+
+def _model_slug(model_id: str) -> str:
+    """Short filesystem-safe tag for a model ID, used to distinguish model-
+    comparison output files (e.g. 'claude-sonnet-5' -> 'claudesonnet5')."""
+    return re.sub(r"[^a-z0-9]+", "", model_id.lower())
 
 # ── Prompt version — set via --prompt-version argument ─────────────────────
 # "v1" (default): original prompt/schema, output to the usual step01_*.csv
@@ -163,6 +175,55 @@ LLM_FLAG_FIELDS_V2 = [
     "investigation_flag_llm",
 ]
 
+# Self-contradiction guard (v2 only): patient_risk_rationale is required to
+# explain the decision. Observed during sample validation (July 2026): the
+# model occasionally returns patient_risk_flag_llm=True with a rationale
+# that itself argues the criteria are NOT met (e.g. "does NOT explicitly
+# state that any batch was released ... No patient is confirmed at risk").
+# When the rationale text negates its own flag this strongly, trust the
+# rationale and flip the flag to False rather than the inconsistent True.
+_PATIENT_RISK_NEGATION_RE = re.compile(
+    r"does not (apply|explicitly state|satisfy)|"
+    r"none of the (four )?scenarios? appl(y|ies)|"
+    r"no (patient|scenario) (is|applies)|"
+    r"not confirmed|cannot confirm|no scenario applies",
+    re.IGNORECASE,
+)
+
+# Scenario-grounding guard (v2 only): also observed during sample validation
+# — the model sometimes cites a specific scenario letter in patient_risk_
+# rationale without the observation text actually containing what that
+# scenario requires (e.g. "(a) sterile/injectable" cited for oral tablets;
+# "(a2) named high-risk class" cited for a drug not on the (a2) whitelist
+# and not described as NTI/oncology/nitrosamine in the text). Require the
+# grounding keywords for whichever scenario is cited to actually be present
+# in obs_text_clean; otherwise the flag is not trustworthy — flip to False.
+# IMPORTANT: citation regexes require the word "scenario" immediately
+# before the letter (the model's consistent phrasing, e.g. "Scenario (a)
+# applies"). A bare "\(b\)" pattern would also match FDA's ubiquitous
+# "(b)(4)" FOIA-redaction markers, which appear constantly in quoted
+# observation text and would cause false-positive guard triggers.
+_SCENARIO_A_CITED_RE  = re.compile(r"scenario\s*\(a\)", re.IGNORECASE)
+_SCENARIO_A2_CITED_RE = re.compile(r"scenario\s*\(a2\)", re.IGNORECASE)
+_SCENARIO_BC_CITED_RE = re.compile(r"scenario\s*\(b\)|scenario\s*\(c\)", re.IGNORECASE)
+
+_STERILE_KEYWORDS_RE = re.compile(
+    r"\bsteril|\baseptic|\binjectable|\binjection|\bparenteral|\bvial\b|\bampoule|"
+    r"\blyophiliz",
+    re.IGNORECASE,
+)
+_HIGH_RISK_CLASS_RE = re.compile(
+    r"narrow therapeutic index|\bNTI\b|\bwarfarin\b|\bdigoxin\b|\blevothyroxine\b|"
+    r"\bphenytoin\b|\blithium\b|\bcyclosporine\b|\btacrolimus\b|\bcarbamazepine\b|"
+    r"\btheophylline\b|\boncology\b|\bchemotherapy\b|\bcytotoxic\b|\bnitrosamine\b|"
+    r"\bNDMA\b|\bNDEA\b|\bNMBA\b|genotoxic impurity",
+    re.IGNORECASE,
+)
+_RELEASE_KEYWORDS_RE = re.compile(
+    r"\bdistributed\b|\breleased\b|\bshipped\b|reached the market|reached patients",
+    re.IGNORECASE,
+)
+
 # ── Patient risk rules (provider-specific) ─────────────────────────────────
 # OpenAI version: same as before — no changes.
 # Anthropic version: stricter negative examples to fix the 79% over-firing.
@@ -202,41 +263,63 @@ _PATIENT_RISK_RULE_ANTHROPIC = (
 _PATIENT_RISK_RULE_OPENAI_V2 = (
     "mark true when an EXPLICIT harm pathway to patients exists in the text: "
     "(a) sterile or injectable product with a contamination or sterility assurance failure, "
-    "OR (a2) a non-sterile product in a HIGH-RISK drug class named in the text — a narrow "
-    "therapeutic index (NTI) drug, an oral oncology/chemotherapy drug, or a product with a "
-    "confirmed nitrosamine/genotoxic impurity finding (e.g., NDMA, NDEA) — with a confirmed "
-    "quality defect, contamination, or OOS/impurity result in that product, OR (b) a confirmed "
-    "quality defect (OOS, mix-up, wrong potency, mislabeling) in product that was released or "
-    "distributed (any dosage form), OR (c) the text states product was released without "
-    "required QA disposition or testing (any dosage form). Ordinary oral solid dose products "
-    "outside the high-risk classes in (a2) do NOT qualify on dosage form alone. Do NOT mark "
-    'true for generic quality deviations where harm would require a chain of hypotheticals. '
-    '"Could affect quality" is NOT a harm pathway.'
+    "OR (a2) a non-sterile product where the text ITSELF uses one of these exact signals — "
+    "do NOT infer drug class from your own pharmacology knowledge: 'narrow therapeutic index' "
+    "or 'NTI', or names one of warfarin, digoxin, levothyroxine, phenytoin, lithium, "
+    "cyclosporine, tacrolimus, carbamazepine, theophylline; OR 'oncology', 'chemotherapy', "
+    "'cytotoxic', or a named chemotherapy agent; OR 'nitrosamine', 'NDMA', 'NDEA', 'NMBA', or "
+    "'genotoxic impurity' — with a confirmed quality defect, contamination, or OOS/impurity "
+    "result in that product, OR (b) a confirmed quality defect (OOS, mix-up, wrong potency, "
+    "mislabeling) in product the text AFFIRMATIVELY STATES was distributed, released, "
+    "shipped, or reached the market (any dosage form) — a generic CFR phrase like 'whether or "
+    "not the batch has already been distributed' does NOT count as an affirmative statement, "
+    "OR (c) the text states product was released without required QA disposition or testing "
+    "(any dosage form). If none of the (a2) signals appear verbatim in the text, ordinary "
+    "oral solid dose, topical, and other dosage forms do NOT qualify on dosage form or your "
+    "own clinical judgment alone. Do NOT mark true for generic quality deviations, "
+    "investigation-failure narratives with no stated release, or where harm would require a "
+    'chain of hypotheticals. "Could affect quality" is NOT a harm pathway. Do not confuse '
+    "this with severity: language like 'near-certain risk of a defect' or 'significant "
+    "systemic failure' can justify Major/Critical severity_tier on its own but does NOT "
+    "satisfy patient_risk_flag_llm without a stated release or a text-named high-risk class."
 )
 
 _PATIENT_RISK_RULE_ANTHROPIC_V2 = (
     "mark true for these scenarios — nothing else qualifies:\n"
     "  (a) Sterile or injectable product with CONFIRMED contamination or sterility breach "
     "documented in the observation.\n"
-    "  (a2) A non-sterile product in a HIGH-RISK drug class identified in the text — a narrow "
-    "therapeutic index (NTI) drug, an oral oncology/chemotherapy drug, or a product with a "
-    "CONFIRMED nitrosamine/genotoxic impurity finding (e.g., NDMA, NDEA) — where the "
-    "observation documents a CONFIRMED quality defect, contamination, or OOS/impurity result "
-    "in that specific product. Ordinary oral solid dose products outside these named "
-    "high-risk classes do NOT qualify under this scenario.\n"
+    "  (a2) A non-sterile product where the text EXPLICITLY uses one of these signals — do "
+    "NOT infer drug class from your own pharmacology knowledge if the text does not say so: "
+    "narrow therapeutic index (the text says 'narrow therapeutic index' or 'NTI', or names "
+    "warfarin, digoxin, levothyroxine, phenytoin, lithium, cyclosporine, tacrolimus, "
+    "carbamazepine, or theophylline); oncology/chemotherapy (the text says 'oncology', "
+    "'chemotherapy', 'cytotoxic', or names a recognized chemotherapy agent); or nitrosamine/"
+    "genotoxic impurity (the text says 'nitrosamine', 'NDMA', 'NDEA', 'NMBA', or 'genotoxic "
+    "impurity'). AND the observation documents a CONFIRMED quality defect, contamination, or "
+    "OOS/impurity result in that specific product. If none of these exact signals appear in "
+    "the text, (a2) does NOT apply — this includes cardiac, antibiotic, topical, and other "
+    "drugs you might independently consider clinically important; the class must be named IN "
+    "THE TEXT.\n"
     "  (b) A quality defect (OOS result, mix-up, wrong potency, mislabeling) confirmed in "
-    "product that was ALREADY released or distributed to patients — any dosage form.\n"
+    "product that the text AFFIRMATIVELY STATES was distributed, released, shipped, or "
+    "reached the market — any dosage form. A generic CFR-citation phrase like 'whether or "
+    "not the batch has already been distributed' does NOT affirmatively state distribution.\n"
     "  (c) The text explicitly states product was released without required QA testing or "
     "disposition — any dosage form.\n"
-    "  ALWAYS mark false for: routine oral solid dose forms outside the high-risk classes in "
-    "(a2); missing SOPs or documentation gaps; environmental monitoring gaps without confirmed "
-    "contamination; equipment validation gaps without confirmed product impact; data integrity "
-    "issues without confirmed release of affected product; any general quality system "
-    "failures; training or personnel qualification deficiencies; stability testing gaps; "
-    "specification issues without a released OOS result.\n"
+    "  ALWAYS mark false for: routine oral solid dose, topical, and other dosage forms where "
+    "the text does not name one of the (a2) signals; missing SOPs or documentation gaps; "
+    "environmental monitoring gaps without confirmed contamination; equipment validation gaps "
+    "without confirmed product impact; data integrity issues without confirmed release of "
+    "affected product; any general quality system failures; training or personnel "
+    "qualification deficiencies; stability testing gaps; specification issues without a "
+    "released OOS result; investigation-failure narratives that never state the affected "
+    "batch was actually distributed.\n"
     "  Rule of thumb: if a patient is not already at risk RIGHT NOW from something the "
-    "facility already released — or from a confirmed defect in a named high-risk drug class — "
-    "mark false."
+    "facility already released — or from a confirmed defect in a drug class the TEXT ITSELF "
+    "names as high-risk — mark false. Do not confuse this with severity_tier: language like "
+    "'near-certain risk of a defect' or 'significant systemic failure' can justify Major/"
+    "Critical severity on its own but does NOT satisfy patient_risk_flag_llm without a "
+    "stated release or a text-named high-risk class."
 )
 
 # ── Prompt template (OpenAI — observation before rules, JSON schema inline) ──
@@ -435,11 +518,15 @@ Unclear = text insufficient to decide>",
   "remediation_signal": "<Strong | Partial | Weak | None>",
   "repeat_flag_llm": <true or false — explicit evidence this is a repeat finding>,
   "patient_risk_flag_llm": <true or false — explicit harm pathway to patients exists>,
+  "patient_risk_rationale": "<1 sentence. If true, name which scenario applies: (a) sterile \
+CONFIRMED contamination, (a2) text-named high-risk drug class with confirmed defect, (b) \
+stated release/distribution, or (c) released without QA disposition. If false, say so>",
   "data_integrity_flag_llm": <true or false — explicit data integrity failure is documented>,
   "contamination_flag_llm": <true or false — ACTUAL/CONFIRMED contamination or sterility \
 failure is documented>,
   "contamination_risk_flag_llm": <true or false — a contamination-CONTROL risk/gap is \
-described, with no confirmed contamination event>,
+described AND no contamination is confirmed anywhere in this observation. False whenever \
+contamination_flag_llm is true — the two are mutually exclusive>,
   "investigation_flag_llm": <true or false — explicit failure to investigate or inadequate investigation is described>,
   "evidence_quote": "<verbatim substring from the observation text (6–30 words) that most \
 directly supports your severity and root-cause classification>",
@@ -552,14 +639,21 @@ cross-contamination detected in product (sterile OR non-sterile). Do NOT mark tr
 a contamination-control gap where no contamination was confirmed — use \
 contamination_risk_flag_llm for that.
 
-- contamination_risk_flag_llm: mark true for a contamination-CONTROL risk or gap where \
-NO contamination has been confirmed: sterility assurance failures, aseptic processing \
-deficiencies, environmental monitoring excursions without confirmed contamination, \
-inadequate cleaning/sanitization/sterilization procedures, or cross-contamination \
-controls (shared equipment, inadequate line clearance) — in ANY dosage form, sterile or \
-non-sterile. This flag applies to a broader range of products than contamination_flag_llm; \
-non-sterile facilities can still have real cross-contamination risk from shared \
-equipment or inadequate cleaning.
+- contamination_risk_flag_llm: mark true ONLY when NO contamination is confirmed \
+ANYWHERE in this observation, and a contamination-CONTROL risk or gap is described \
+instead: sterility assurance failures, aseptic processing deficiencies, environmental \
+monitoring excursions without confirmed contamination, inadequate \
+cleaning/sanitization/sterilization procedures, or cross-contamination controls (shared \
+equipment, inadequate line clearance) — in ANY dosage form, sterile or non-sterile \
+(this list is illustrative, not exhaustive). This flag applies to a broader range of \
+products than contamination_flag_llm; non-sterile facilities can still have real \
+cross-contamination risk from shared equipment or inadequate cleaning. \
+contamination_flag_llm and contamination_risk_flag_llm are MUTUALLY EXCLUSIVE — the \
+moment contamination_flag_llm is true, contamination_risk_flag_llm is false, with no \
+exception. If the observation ALSO shows the follow-up investigation into that confirmed \
+event was incomplete (e.g., root cause not traced, other batches not checked), that \
+belongs to investigation_flag_llm, not here — do not use unresolved follow-up on a \
+confirmed event to also justify contamination_risk_flag_llm.
 
 - investigation_flag_llm: mark true ONLY for an explicit failed, missing, delayed, \
 or inadequate investigation of a concrete event (deviation, OOS/OOT, contamination event, \
@@ -750,13 +844,26 @@ OPENAI_JSON_SCHEMA_V2 = {
             "type": "boolean",
             "description": (
                 "True for: sterile/injectable product with contamination or sterility "
-                "assurance failure; a named high-risk drug class (NTI, oral onco/chemo, "
-                "confirmed nitrosamine impurity) with a confirmed defect; confirmed "
-                "quality defect in released/distributed product (any dosage form); or "
-                "product released without required QA disposition (any dosage form). "
-                "False for generic quality deviations where harm requires a chain of "
-                "hypotheticals, or ordinary oral solid dose products outside the named "
-                "high-risk classes."
+                "assurance failure; a non-sterile product where the TEXT ITSELF names an "
+                "NTI drug, oncology/chemo drug, or nitrosamine finding (never infer this "
+                "from general pharmacology knowledge) with a confirmed defect; confirmed "
+                "quality defect in product the text affirmatively states was distributed/"
+                "released (a generic 'whether or not already distributed' CFR phrase does "
+                "not count); or product released without required QA disposition. False "
+                "for generic quality deviations, investigation-failure narratives with no "
+                "stated release, or dosage forms where the text does not name a high-risk "
+                "class. Not the same question as severity_tier — 'near-certain risk' or "
+                "'significant systemic failure' language can justify high severity without "
+                "satisfying this flag."
+            ),
+        },
+        "patient_risk_rationale": {
+            "type": "string",
+            "description": (
+                "If patient_risk_flag_llm is true, name which scenario applies: (a) sterile/"
+                "injectable confirmed contamination, (a2) text-named high-risk drug class "
+                "with confirmed defect, (b) text-affirmed release/distribution, or (c) "
+                "released without QA disposition. If false, state briefly why none apply."
             ),
         },
         "data_integrity_flag_llm": {
@@ -782,11 +889,15 @@ OPENAI_JSON_SCHEMA_V2 = {
         "contamination_risk_flag_llm": {
             "type": "boolean",
             "description": (
-                "True for a contamination-control risk or gap with NO confirmed "
-                "contamination: sterility assurance failures, aseptic processing "
+                "True ONLY when no contamination is confirmed anywhere in this "
+                "observation, and a contamination-control risk or gap is described "
+                "instead: sterility assurance failures, aseptic processing "
                 "deficiencies, environmental monitoring excursions, inadequate cleaning/"
-                "sanitization, or cross-contamination controls — in any dosage form, "
-                "sterile or non-sterile."
+                "sanitization, or cross-contamination controls (illustrative, not "
+                "exhaustive) — in any dosage form, sterile or non-sterile. Mutually "
+                "exclusive with contamination_flag_llm: always false when that flag is "
+                "true, even if the follow-up investigation on the confirmed event was "
+                "incomplete — that belongs to investigation_flag_llm instead."
             ),
         },
         "investigation_flag_llm": {
@@ -814,7 +925,7 @@ OPENAI_JSON_SCHEMA_V2 = {
     "required": [
         "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
-        "repeat_flag_llm", "patient_risk_flag_llm",
+        "repeat_flag_llm", "patient_risk_flag_llm", "patient_risk_rationale",
         "data_integrity_flag_llm", "contamination_flag_llm",
         "contamination_risk_flag_llm", "investigation_flag_llm",
         "evidence_quote", "confidence",
@@ -854,16 +965,20 @@ ANTHROPIC_TOOL = {
 _ANTHROPIC_SCHEMA_V2 = copy.deepcopy(OPENAI_JSON_SCHEMA_V2)
 _ANTHROPIC_SCHEMA_V2["properties"]["patient_risk_flag_llm"]["description"] = (
     "True for: (a) sterile/injectable with CONFIRMED contamination or sterility breach; "
-    "(a2) a named high-risk drug class (NTI, oral onco/chemo, confirmed nitrosamine "
-    "impurity) with a CONFIRMED defect in that product; (b) confirmed quality defect in "
-    "already-released/distributed product (any dosage form); (c) product explicitly "
-    "released without required QA disposition (any dosage form). "
-    "ALWAYS false for ordinary oral solid dose outside the named high-risk classes, missing "
-    "SOPs, monitoring gaps without confirmed contamination, equipment gaps without product "
-    "impact, DI issues without release, general QS failures, training deficiencies, "
-    "stability gaps. "
+    "(a2) a non-sterile product where the TEXT ITSELF names an NTI drug, oncology/chemo "
+    "drug, or nitrosamine finding (never infer this from your own pharmacology knowledge) "
+    "with a CONFIRMED defect in that product; (b) confirmed quality defect in product the "
+    "text AFFIRMATIVELY STATES was distributed/released (a generic 'whether or not already "
+    "distributed' CFR phrase does not count, even alongside a serious investigation-failure "
+    "narrative); (c) product explicitly released without required QA disposition. "
+    "ALWAYS false for dosage forms where the text does not name an (a2) high-risk class, "
+    "missing SOPs, monitoring gaps without confirmed contamination, equipment gaps without "
+    "product impact, DI issues without release, general QS failures, training deficiencies, "
+    "stability gaps, investigation-failure narratives with no stated release. "
     "If no patient is at risk RIGHT NOW from a released product or a confirmed defect in a "
-    "named high-risk drug class, return false."
+    "drug class the TEXT ITSELF names as high-risk, return false. Not the same question as "
+    "severity_tier — 'near-certain risk' or 'significant systemic failure' language can "
+    "justify high severity without satisfying this flag."
 )
 
 ANTHROPIC_TOOL_V2 = {
@@ -1168,29 +1283,71 @@ language. False if examples merely recur within the same current observation.
 - patient_risk_flag_llm: mark true for these scenarios — nothing else qualifies:
   (a) Sterile or injectable product with CONFIRMED contamination or sterility breach \
 documented in the observation.
-  (a2) A non-sterile product in a HIGH-RISK drug class identified in the text — a narrow \
-therapeutic index (NTI) drug, an oral oncology/chemotherapy drug, or a product with a \
-CONFIRMED nitrosamine/genotoxic impurity finding (e.g., NDMA, NDEA) — where the observation \
-documents a CONFIRMED quality defect, contamination, or OOS/impurity result in that \
-specific product. Ordinary oral solid dose products outside these named high-risk classes \
-do NOT qualify under this scenario.
+  (a2) A non-sterile product where the text EXPLICITLY uses one of these signals — do NOT \
+infer drug class from your own pharmacology knowledge if the text does not say so:
+    - narrow therapeutic index: the text says "narrow therapeutic index" or "NTI", or \
+names one of warfarin, digoxin, levothyroxine, phenytoin, lithium, cyclosporine, \
+tacrolimus, carbamazepine, theophylline.
+    - oncology/chemotherapy: the text says "oncology", "chemotherapy", "cytotoxic", or \
+names a recognized chemotherapy agent.
+    - nitrosamine/genotoxic impurity: the text says "nitrosamine", "NDMA", "NDEA", "NMBA", \
+or "genotoxic impurity".
+  AND the observation documents a CONFIRMED quality defect, contamination, or OOS/impurity \
+result in that specific product. If none of these exact signals appear in the text, (a2) \
+does NOT apply — this includes cardiac, antibiotic, topical, and other drugs you might \
+independently consider clinically important; the class must be named IN THE TEXT.
   (b) A quality defect (OOS result, mix-up, wrong potency, mislabeling) confirmed in \
-product that was ALREADY released or distributed to patients — any dosage form.
+product that the text AFFIRMATIVELY STATES was distributed, released, shipped, or reached \
+the market — any dosage form. A generic CFR-citation phrase like "whether or not the batch \
+has already been distributed" does NOT affirmatively state distribution — see the boilerplate \
+note below.
   (c) The text explicitly states product was released without required QA testing or \
 disposition — any dosage form.
-  ALWAYS mark false for: routine oral solid dose forms outside the high-risk classes in \
-(a2); missing SOPs or documentation gaps; environmental monitoring gaps without confirmed \
-contamination; equipment validation gaps without confirmed product impact; data integrity \
-issues without confirmed release of affected product; any general quality system failures; \
-training or personnel qualification deficiencies; stability testing gaps; specification \
-issues without a released OOS result.
+  ALWAYS mark false for: routine oral solid dose, topical, and other dosage forms where the \
+text does not name one of the (a2) signals; missing SOPs or documentation gaps; environmental \
+monitoring gaps without confirmed contamination; equipment validation gaps without confirmed \
+product impact; data integrity issues without confirmed release of affected product; any \
+general quality system failures; training or personnel qualification deficiencies; stability \
+testing gaps; specification issues without a released OOS result; investigation-failure \
+narratives that never state the affected batch was actually distributed.
   Rule of thumb: if a patient is not already at risk RIGHT NOW from something the facility \
-already released — or from a confirmed defect in a named high-risk drug class — mark false.
-  IMPORTANT — ignore CFR boilerplate: 483 observations often open with standard \
+already released — or from a confirmed defect in a drug class the TEXT ITSELF names as \
+high-risk — mark false.
+  IMPORTANT — ignore CFR boilerplate: 483 observations frequently open with standard \
 regulatory language such as "whether or not the batch has already been distributed" \
 or "that would alter the safety, identity, strength, quality or purity of the drug \
-product." This is boilerplate CFR citation text, NOT evidence of actual patient risk. \
-Do not trigger patient_risk based on this preamble language alone.
+product." This is boilerplate CFR citation text, NOT evidence of actual patient risk, even \
+when the rest of the observation goes on to describe a serious investigation failure or \
+systemic problem. Example — mark FALSE: an observation opens with "...whether or not the \
+batch has been already distributed" and then describes multiple inadequate investigations \
+(system suitability failures, mislabeled capsules, metallic particles on equipment) with no \
+sentence anywhere stating a specific affected batch was actually shipped or released — the \
+investigation failures alone do not satisfy (b). Do not trigger patient_risk based on the \
+boilerplate opening, and do not treat "no CAPA was implemented" or "no investigation was \
+extended to other batches" as equivalent to a stated release.
+  Example — mark FALSE: an observation describes agitator malfunctions during mixing of \
+named topical cream products (e.g., "Mometasone Furoate Cream", "Nystatin Cream") across \
+multiple batches, with no named (a2) drug class and no statement that any batch was \
+released — even though several specific batches and lot numbers are listed by name.
+  DO NOT confuse severity with patient risk: severity_tier and patient_risk_flag_llm answer \
+DIFFERENT questions. severity_tier asks "how bad is the documented system failure" — \
+language like "near-certain risk of a defect," "significant systemic failure," or "without \
+immediate correction" belongs there and can justify Major/Critical severity on its own. \
+patient_risk_flag_llm asks a narrower question: "is a patient at risk RIGHT NOW from \
+something that has ALREADY happened" — repeated investigation failures, years of \
+uncorrected deviations, or missing audit-trail controls on an analytical instrument (e.g., \
+HPLC data review gaps) can be Critical/Major severity and STILL be patient_risk_flag_llm = \
+false, because none of them states that a specific batch reached a patient. Do not let a \
+severity assessment of "near-certain future risk" leak into the patient_risk_flag_llm \
+decision — only a stated release/distribution (b, c) or a confirmed defect in a text-named \
+high-risk class (a2) can do that.
+
+- patient_risk_rationale: 1 sentence. If patient_risk_flag_llm is true, name EXACTLY which \
+scenario applies — (a) sterile/injectable confirmed contamination, (a2) text-named high-risk \
+drug class with confirmed defect, (b) text-affirmed release/distribution, or (c) released \
+without QA disposition — and quote the specific words that satisfy it. If you cannot name \
+one of these four scenarios with a specific textual basis, patient_risk_flag_llm must be \
+false. If false, state briefly why none of the four scenarios apply.
 
 - data_integrity_flag_llm: mark true ONLY for explicit data trustworthiness failures: \
 falsification, backdating, deleted or altered records, missing raw data, audit-trail \
@@ -1205,13 +1362,17 @@ observed in product, a confirmed sterility test failure, or confirmed cross-cont
 detected in product (sterile OR non-sterile). Do NOT mark true for a contamination-control \
 gap where no contamination was confirmed — use contamination_risk_flag_llm for that.
 
-- contamination_risk_flag_llm: mark true for a contamination-CONTROL risk or gap where NO \
-contamination has been confirmed: sterility assurance failures, aseptic processing \
-deficiencies, environmental monitoring excursions without confirmed contamination, \
-inadequate cleaning/sanitization/sterilization procedures, or cross-contamination controls \
-(shared equipment, inadequate line clearance) — in ANY dosage form, sterile or non-sterile. \
+- contamination_risk_flag_llm: mark true ONLY when NO contamination is confirmed ANYWHERE \
+in this observation, and a contamination-CONTROL risk or gap is described instead: \
+sterility assurance failures, aseptic processing deficiencies, environmental monitoring \
+excursions without confirmed contamination, inadequate cleaning/sanitization/sterilization \
+procedures, or cross-contamination controls (shared equipment, inadequate line clearance) \
+— in ANY dosage form, sterile or non-sterile (list is illustrative, not exhaustive). \
 Non-sterile facilities can still have real cross-contamination risk from shared equipment \
-or inadequate cleaning.
+or inadequate cleaning. contamination_flag_llm and contamination_risk_flag_llm are \
+MUTUALLY EXCLUSIVE — false here whenever contamination_flag_llm is true, no exception. \
+Incomplete follow-up investigation on a confirmed event belongs to investigation_flag_llm, \
+not this flag.
 
 - investigation_flag_llm: mark true ONLY for an explicit failed, missing, delayed, \
 or inadequate investigation of a concrete event (deviation, OOS/OOT, contamination event, \
@@ -1263,8 +1424,12 @@ risk alone is NOT enough for this flag.
   (2) contamination_risk_flag_llm applies to control gaps without a confirmed event, and is \
 NOT limited to sterile/injectable products — inadequate cleaning between products on shared \
 non-sterile equipment is a cross-contamination risk and qualifies.
-  (3) A single observation can be true on BOTH flags if it documents a confirmed event AND \
-a broader unresolved control gap that goes beyond that one event.
+  (3) contamination_flag_llm and contamination_risk_flag_llm are MUTUALLY EXCLUSIVE — never \
+both true on the same observation. The moment a confirmed event is documented, \
+contamination_flag_llm is true and contamination_risk_flag_llm is false, full stop — even \
+if the observation also shows the follow-up investigation was incomplete (source not \
+traced, other batches not checked). That incompleteness is investigation_flag_llm's job, \
+not contamination_risk_flag_llm's — do not reuse the same evidence for both flags.
 
 Analyze the following observation:\
 """
@@ -1381,6 +1546,25 @@ def _validate(result: dict, obs_text_clean: str, version: str = "v1") -> dict:
         t_norm = " ".join(obs_text_clean.split())
         if q_norm not in t_norm:
             result["evidence_quote"] = ""   # failed guard — clear it
+
+    # Patient-risk self-contradiction guard (v2 only): if the model returns
+    # patient_risk_flag_llm=True but patient_risk_rationale itself argues the
+    # criteria are not met, trust the rationale over the inconsistent flag.
+    if version == "v2" and result.get("patient_risk_flag_llm") is True:
+        rationale = str(result.get("patient_risk_rationale", ""))
+        if _PATIENT_RISK_NEGATION_RE.search(rationale):
+            result["patient_risk_flag_llm"] = False
+        # Scenario-grounding guard: the cited scenario's keywords must
+        # actually appear in the source text, not just be asserted by the
+        # model. Checked independently per scenario so citing multiple
+        # scenarios requires each cited one to be grounded.
+        elif _SCENARIO_A2_CITED_RE.search(rationale) and not _HIGH_RISK_CLASS_RE.search(obs_text_clean):
+            result["patient_risk_flag_llm"] = False
+        elif (_SCENARIO_A_CITED_RE.search(rationale) and not _SCENARIO_A2_CITED_RE.search(rationale)
+              and not _STERILE_KEYWORDS_RE.search(obs_text_clean)):
+            result["patient_risk_flag_llm"] = False
+        elif _SCENARIO_BC_CITED_RE.search(rationale) and not _RELEASE_KEYWORDS_RE.search(obs_text_clean):
+            result["patient_risk_flag_llm"] = False
 
     return result
 
@@ -1596,15 +1780,17 @@ def _build_row(obs_row: pd.Series, llm: dict, status: str, error: str, version: 
     for src_col, dst_col in REGEX_FLAG_MAP.items():
         row[dst_col] = bool(obs_row.get(src_col, False))
 
-    # LLM fields (None when extraction failed). Flag field list is version-
-    # dependent so v1 output files never gain a stray contamination_risk_
-    # flag_llm column of NaNs — only v2 rows carry that field.
-    flag_fields = LLM_FLAG_FIELDS_V2 if version == "v2" else LLM_FLAG_FIELDS
+    # LLM fields (None when extraction failed). Flag/extra field lists are
+    # version-dependent so v1 output files never gain stray v2-only columns
+    # (contamination_risk_flag_llm, patient_risk_rationale) full of NaNs.
+    flag_fields  = LLM_FLAG_FIELDS_V2 if version == "v2" else LLM_FLAG_FIELDS
+    extra_fields = ["patient_risk_rationale"] if version == "v2" else []
     for field in [
         "violation_category", "severity_tier", "severity_rationale", "scope",
         "root_cause_type", "root_cause_rationale", "remediation_signal",
         "data_integrity_flag_llm",
         *flag_fields,
+        *extra_fields,
         "evidence_quote", "confidence",
     ]:
         row[field] = llm.get(field, None)
@@ -1671,6 +1857,13 @@ if _RUNNING_AS_SCRIPT:
     parser.add_argument("--provider", choices=["openai", "anthropic"], default="anthropic",
                         help="LLM provider: 'anthropic' (default, claude-haiku-4-5-20251001) or "
                              "'openai' (gpt-5-mini, legacy).")
+    parser.add_argument("--model",    type=str, default=None,
+                        help="Override the model ID for the selected --provider, for model "
+                             "comparison runs (default: claude-haiku-4-5-20251001 for "
+                             "anthropic, gpt-5-mini for openai). E.g. --provider anthropic "
+                             "--model claude-sonnet-5. Output files are automatically tagged "
+                             "with the model when it differs from the default, so different "
+                             "models' results never overwrite each other.")
     parser.add_argument("--output",   type=str, default=None,
                         help="Override output CSV path (default: source-dependent).")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1",
@@ -1687,6 +1880,11 @@ if _RUNNING_AS_SCRIPT:
     SOURCE         = args.source
     PROVIDER       = args.provider
     PROMPT_VERSION = args.prompt_version
+    if args.model:
+        if PROVIDER == "anthropic":
+            ANTHROPIC_MODEL = args.model
+        else:
+            MODEL_NAME = args.model
     _output_override = Path(args.output) if args.output else None
 else:
     _output_override = None
@@ -1700,6 +1898,14 @@ if SOURCE == "redica":
     )
 # pdf source keeps the defaults set above
 
+# Model-comparison tag: only added when --model overrides the provider's
+# default, so the standard (default-model) run keeps its existing filename.
+_active_model_id  = ANTHROPIC_MODEL if PROVIDER == "anthropic" else MODEL_NAME
+_default_model_id = _DEFAULT_ANTHROPIC_MODEL if PROVIDER == "anthropic" else _DEFAULT_OPENAI_MODEL
+_model_tag = "" if _active_model_id == _default_model_id else f"_{_model_slug(_active_model_id)}"
+if _model_tag:
+    SIGNALS_CSV = SIGNALS_CSV.with_name(SIGNALS_CSV.stem + _model_tag + SIGNALS_CSV.suffix)
+
 # v2 writes to a separate file — v1 filenames (and therefore v1 results)
 # are left completely untouched regardless of source/provider.
 if PROMPT_VERSION != "v1":
@@ -1708,8 +1914,14 @@ if PROMPT_VERSION != "v1":
     )
 
 if SAMPLE:
+    # Sample runs are explicitly for prompt/model validation and comparison —
+    # always tag with provider + model (not just when it differs from that
+    # provider's own default) so e.g. --provider anthropic (default: Haiku)
+    # and --provider openai (default: gpt-5-mini) never collide on the same
+    # sample filename and silently overwrite each other's results.
+    _sample_model_tag = _model_tag if _model_tag else f"_{_model_slug(_active_model_id)}"
     _sample_suffix = "" if PROMPT_VERSION == "v1" else f"_{PROMPT_VERSION}"
-    SIGNALS_CSV = HERE / f"483_observation_context_signals_sample{SAMPLE}{_sample_suffix}.csv"
+    SIGNALS_CSV = HERE / f"483_observation_context_signals_sample{SAMPLE}{_sample_model_tag}{_sample_suffix}.csv"
 
 # --output overrides everything above
 if _output_override:
@@ -1809,8 +2021,16 @@ print(f"Pending to process    : {len(to_process):,}")
 # %%
 # ── Dry run ────────────────────────────────────────────────────────────────
 _active_model = ANTHROPIC_MODEL if PROVIDER == "anthropic" else MODEL_NAME
-# Cost per 1M tokens (input+output blended rough estimate)
-_cost_per_m = 2.0 if PROVIDER == "anthropic" else 3.0  # Haiku ~$2/M blended
+# Cost per 1M tokens (input+output blended rough estimate). Blended rates are
+# rough — heavily prompt-caching workloads (like this one) run well under the
+# sticker input rate, so treat this as an upper bound, not a precise forecast.
+_BLENDED_COST_PER_M = {
+    "claude-haiku-4-5-20251001": 2.0,   # Haiku 4.5: $1/$5 per M in/out
+    "claude-sonnet-5":           6.0,   # Sonnet 5: $2/$10 intro per M in/out
+    "claude-opus-5":             10.0,  # Opus 5: $5/$25 per M in/out
+    "gpt-5-mini":                3.0,   # legacy OpenAI default
+}
+_cost_per_m = _BLENDED_COST_PER_M.get(_active_model, 2.0 if PROVIDER == "anthropic" else 3.0)
 
 if DRY_RUN:
     avg_tokens   = 850    # rough estimate per observation (prompt + response)

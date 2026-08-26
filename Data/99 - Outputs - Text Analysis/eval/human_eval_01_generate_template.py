@@ -15,7 +15,7 @@ anchoring bias and inflates agreement metrics in a way a reviewer could
 reasonably challenge. Predictions are joined back in only for scoring.
 
 Field definitions match Yelena Ionova's expert-review revision (v2 prompt) --
-see 483_Labeling_Manual_v2.docx, which is a plain-language rewrite of the same
+see 483_Labeling_Rules_v2.docx, which is a plain-language rewrite of the same
 rules given to the LLM (01_extract_observation_signals.py, --prompt-version v2),
 so RA labels and LLM output are directly comparable.
 
@@ -207,7 +207,7 @@ def _write_template(df: pd.DataFrame) -> None:
          "information.", False, 11),
         ("", False, 11),
         ("Full field definitions, valid values, and worked examples are in "
-         "483_Labeling_Manual_v2.docx. Read that first -- these are the exact same "
+         "483_Labeling_Rules_v2.docx. Read that first -- these are the exact same "
          "definitions our LLM pipeline uses, so your labels are directly comparable to "
          "its output.", False, 11),
         ("", False, 11),
