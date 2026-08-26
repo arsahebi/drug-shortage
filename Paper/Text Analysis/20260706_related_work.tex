@@ -1,0 +1,158 @@
+% ══════════════════════════════════════════════════════════════════════════
+% DROP-IN: Insert this section between \section{Introduction} and
+%          \section{Data} in draft_informs_2026.tex
+%
+% Also replace the \todo{2--3 sentences on prior literature...} in the
+% Introduction with the two sentences marked [INTRO CITE BRIDGE] below.
+%
+% INTRO CITE BRIDGE — paste these 2 sentences into the intro TODO slot:
+%   Prior research has established that FDA inspection outcomes predict
+%   downstream drug shortages \citep{Stomberg2018, Wang2025MSOM} and that
+%   machine learning can forecast shortages from pharmacy demand signals
+%   \citep{Liu2021, Pall2023}.
+%   However, the rich narrative text that inspectors generate in Form 483
+%   observations has not been used as a predictive input, and no study has
+%   directly linked inspection-text signals to facility-level patient harm
+%   measured through adverse event reporting.
+% ══════════════════════════════════════════════════════════════════════════
+
+\section{Related Work}
+\label{sec:lit}
+
+\subsection{NLP and LLMs for FDA Regulatory Text}
+
+Applying machine learning to FDA regulatory documents has concentrated on two
+corpora: drug labels and adverse-event reports.
+On drug labels, \citet{Bayer2021} evaluated 23 NLP systems for adverse drug
+event extraction and found that the best systems reach F1 $\approx 0.89$,
+suitable for human-assisted review but not fully autonomous processing.
+\citet{Tatonetti2025OnSIDES} fine-tuned PubMedBERT on 200 curated labels to
+produce 7.1 million drug--adverse-event pairs from 47,211 FDA and EMA labels
+(F1 $= 0.90$; AUROC $= 0.92$).
+\citet{Wu2021BERT} achieved Matthews Correlation Coefficients of 0.84--0.87
+on drug-induced liver injury classification from FDA labels, compared to 0.60
+for keyword rules.
+A common finding across these studies is that fine-tuned domain-adapted models
+(PubMedBERT, BioBERT) outperform general-purpose models on tasks requiring
+specific biomedical vocabulary---but this advantage has narrowed sharply as
+generative LLMs have grown in capability.
+\citet{Li2026LLMDevice} demonstrated that GPT-4-class models extract structured
+data from FDA medical device adverse-event reports (MDRs) and pre-market
+summaries at 93--97\% agreement with human annotators, \emph{without any
+fine-tuning on domain corpora}---a result that effectively subsumes the
+PubMedBERT fine-tuning advantage for well-specified extraction tasks.
+Similarly, \citet{Hassani2025} found GPT-4o achieves 89\% precision and 87\%
+recall classifying regulatory provisions in food-safety regulations without
+task-specific training.
+\citet{Atalay2026RecallRisk} applied multi-task BERT to 54,165 FDA device
+recall narratives (0.963 accuracy), confirming that FDA regulatory free text is
+amenable to automated classification at scale.
+
+On FDA inspection text specifically, \citet{Pazhayattil2020} conducted the
+only published quantitative study of Form 483 data using pre-structured citation
+frequency counts from a regulatory database (2014--2018, trend analysis of
+observation rates by domain).
+Warning-letter text has been analyzed descriptively for domain trends and data
+integrity patterns \citep{Rathore2022, Park2025, Kwiecinski2024}, but not used
+for feature extraction.
+No prior study has applied NLP or LLM methods to the raw narrative text of Form
+483 observations to extract structured quality-risk features.
+
+We address this gap.
+Consistent with \citet{Li2026LLMDevice}, we apply a modern generative LLM with
+structured JSON schema output rather than a fine-tuned BERT model; our semantic
+lift analysis (Section~\ref{sec:results}) shows that 27\% and 21\% of
+contamination and patient-risk signals, respectively, require contextual
+inference that any keyword-based classification approach cannot replicate.
+
+\subsection{Inspection Outcomes and Drug Quality Events}
+
+The empirical relationship between FDA inspection activity and drug supply
+disruptions is well-established.
+\citet{Stomberg2018} provided the first regression-based evidence that
+inspection and citation intensity are significantly associated with drug
+shortage rates at the drug level.
+\citet{Wang2025MSOM} extended this with instrumental variable analysis on US
+manufacturing facilities: OAI inspection outcomes predict a 96.4\% lower
+shortage likelihood in the subsequent 12 months, and VAI outcomes predict a
+77.2\% reduction.
+Interpreted alongside Stomberg, the pattern suggests that inspections trigger
+corrective action that ultimately stabilizes supply---but the severity of the
+underlying quality problem before inspection is not captured by binary OAI/VAI
+classifications.
+
+Machine learning models predict drug shortages from demand-side signals with
+substantial accuracy.
+\citet{Liu2021} achieved C-statistic $= 0.93$ on pharmacy observations using IV
+status, generic-only market structure, and number of manufacturers.
+\citet{Pall2023} achieved 69\% accuracy one month ahead using XGBoost on
+pharmacy sales records for 784 Canadian drugs.
+Both studies relied exclusively on market-structure and demand features; neither
+incorporated manufacturing inspection or quality signals.
+\citet{Kosmas2023} modeled FDA inspection timing as a POMDP to maximize
+expected value of inspecting high-risk facilities; their model assumes quality
+is revealed by inspection but cannot observe it from text.
+
+Our paper complements this body of work by providing the supply-side quality
+signal these models assume but cannot currently observe: structured features
+derived from the narrative content of Form 483 observations.
+
+\subsection{Adverse Events as a Manufacturing Quality Outcome}
+
+FAERS adverse event reports are widely used for pharmacovigilance
+disproportionality analysis at the drug level, but their potential as a
+facility-level manufacturing quality metric has received limited attention.
+\citet{Sardella2021} provided the conceptual foundation: pharmacovigilance is a
+primary mechanism for detecting manufacturing-origin safety failures
+post-approval, as demonstrated by the nitrosamine contamination crisis and the
+heparin adulteration scandal, both of which were first surfaced through adverse
+event signal clustering tracing to facility-level manufacturing decisions.
+\citet{Brown2020} went further, calling for systematic use of FDA's Sentinel
+and FAERS data to generate facility-level manufacturer quality signals, and
+noting that the FDA already folds FAERS ``hazard signals'' into its risk-based
+facility site-selection model for inspections---the agency itself treats
+adverse event patterns as a quality-surveillance signal.
+
+Using FAERS as a manufacturer-level quality comparator introduces potential
+confounds.
+\citet{Rahman2017FAERS} and \citet{Alatawi2018} demonstrated that FAERS
+reporting rates differ between branded and generic products partly due to
+perception bias (reporters over-attribute adverse events to generic products),
+and developed an authorized-generic comparison design to control for this.
+Our analysis largely sidesteps this confound because we compare facilities
+manufacturing the \emph{same} API---inter-facility differences within a drug
+control for drug-level perception bias.
+Consistent with \citet{Potter2025}, we treat FAERS counts as a
+\emph{predictive correlate} of manufacturing quality, not as a measure of
+adverse event incidence or a causal indicator.
+
+Critically, no prior study has used FEI-aggregated FAERS counts as the
+dependent variable in a model of inspection-text quality signals, or validated
+FAERS as a quality proxy against independent third-party chemical testing.
+We contribute both: a cross-lag analysis of 483-text features against
+facility-level FAERS counts at horizons of 0, 1, and 2 years post-inspection,
+and external validation of the FAERS quality signal against Valisure
+independent analytical testing results for the same 14 APIs.
+
+\subsection{Positioning}
+
+Table~\ref{tab:positioning} summarizes our contribution relative to the closest
+prior work.
+
+\begin{table}[h!]
+\centering
+\small
+\caption{Positioning relative to prior work}
+\label{tab:positioning}
+\begin{tabular}{p{3.5cm} p{2.2cm} p{2.2cm} p{2.2cm} p{2.5cm}}
+\toprule
+& \textbf{Pazhayattil 2020} & \textbf{Wang et al.\ 2025} & \textbf{Liu/Pall 2021/23} & \textbf{This paper} \\
+\midrule
+483 observation text  & Counts only   & No  & No  & LLM extraction \\
+Inspection outcome    & Citation freq & OAI/VAI  & No  & OAI/VAI + text \\
+Quality outcome       & None          & Shortage & Shortage & FAERS + Valisure \\
+Facility-level FEI    & Partial       & Yes      & No       & Yes \\
+External validation   & No            & IV       & CV       & Valisure testing \\
+\bottomrule
+\end{tabular}
+\end{table}
