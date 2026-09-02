@@ -115,6 +115,43 @@ noise. The higher-value, zero-additional-RA-time fix is repeated LLM runs (major
 averaging across 3 passes) on the existing 50 human-labeled rows, which directly targets the
 noise problem instead of the sample-size problem.
 
+## Stabilized numbers (majority vote across 3 runs of the final prompt)
+
+Per the recommendation above, I re-ran the final prompt 3 times on Abdul's same 50 observations
+and scored the majority (mode) prediction per row — this is the number to actually cite:
+
+| Field | Baseline (pre-fix, 1x) | **Stabilized (3x majority)** | 3/3 agree |
+|---|---|---|---|
+| contamination_flag | 0.840 | **0.980** | 90% |
+| contamination_risk_flag | 0.680 | **0.960** | 88% |
+| scope | 0.720 | **0.780–0.840** | 82–86% |
+| root_cause_type | 0.840 | 0.820–0.840 (parity) | 72% |
+| patient_risk_flag | 0.880 | 0.880–0.900 (flat) | 88–92% |
+| investigation_flag | 0.960 | 0.940–0.980 | 88–94% |
+| repeat_flag | 1.000 | 1.000 | 100% |
+| remediation_signal | 0.960 | 0.900–0.940 | 86–90% |
+| violation_category | 0.860 | 0.780–0.860 | 82% |
+| data_integrity_flag | 0.960 | 0.780–0.860 | 80–86% |
+| severity_tier | 0.820 | 0.660–0.680 | 74–78% |
+
+**Contamination and scope fixes are confirmed real** — stable across repeated runs, not noise.
+`root_cause_type` and `patient_risk_flag` are at parity or flat, i.e. the fixes didn't hurt.
+
+**Two open items, investigated and honestly reported rather than force-fixed:**
+
+- **`severity_tier`'s `moderate→major` bias (11/50 of the errors) is NOT caused by any of my
+  edits.** I checked: it's present at the same magnitude (10/50) in a rerun of the completely
+  **unedited original prompt**. This is a pre-existing tendency of Claude Sonnet 5 on this field
+  with this prompt, not a regression I introduced. I attempted one fix (narrowing the systemic-
+  failure exception clause); it made no measurable difference, so I reverted it rather than leave
+  unhelpful prompt bulk in place. This is a real, known limitation to flag to the group, not
+  something quick-fixable via prompt wording — likely needs a dedicated few-shot calibration pass
+  or acceptance as a documented bias.
+- **`data_integrity_flag` regresses consistently across every re-run (0.960→0.78–0.86) despite
+  zero edits to its rules.** Not yet diagnosed with the same rigor as `root_cause_type` was.
+  Flagged as the next thing to look at if it matters for the paper's data-integrity claims
+  specifically; otherwise can be left as a documented limitation alongside `severity_tier`.
+
 ## Recommended next steps
 
 1. **Stabilize the eval number** — re-run the final v2 prompt 2 more times (3 total) on Abdul's
