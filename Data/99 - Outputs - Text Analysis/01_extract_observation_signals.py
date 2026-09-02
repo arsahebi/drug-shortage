@@ -262,7 +262,9 @@ _PATIENT_RISK_RULE_ANTHROPIC = (
 # CONFIRMED defect qualifies even outside sterile/injectable products.
 _PATIENT_RISK_RULE_OPENAI_V2 = (
     "mark true when an EXPLICIT harm pathway to patients exists in the text: "
-    "(a) sterile or injectable product with a contamination or sterility assurance failure, "
+    "(a) sterile or injectable product with a contamination or sterility assurance failure — "
+    "this includes pre-commercial batches such as PPQ (process performance qualification) or "
+    "process-validation runs; (a) does NOT require a release/distribution statement, "
     "OR (a2) a non-sterile product where the text ITSELF uses one of these exact signals — "
     "do NOT infer drug class from your own pharmacology knowledge: 'narrow therapeutic index' "
     "or 'NTI', or names one of warfarin, digoxin, levothyroxine, phenytoin, lithium, "
@@ -272,7 +274,9 @@ _PATIENT_RISK_RULE_OPENAI_V2 = (
     "result in that product, OR (b) a confirmed quality defect (OOS, mix-up, wrong potency, "
     "mislabeling) in product the text AFFIRMATIVELY STATES was distributed, released, "
     "shipped, or reached the market (any dosage form) — a generic CFR phrase like 'whether or "
-    "not the batch has already been distributed' does NOT count as an affirmative statement, "
+    "not the batch has already been distributed' does NOT count as an affirmative statement — "
+    "a market complaint received about a specific named batch/lot DOES count as an "
+    "affirmative statement of distribution, "
     "OR (c) the text states product was released without required QA disposition or testing "
     "(any dosage form). If none of the (a2) signals appear verbatim in the text, ordinary "
     "oral solid dose, topical, and other dosage forms do NOT qualify on dosage form or your "
@@ -569,7 +573,10 @@ serious the system failure sounds. Most 483 observations are Moderate. \
 Assign the LOWEST tier that fits.
   * Critical: the text documents that affected product was RELEASED or DISTRIBUTED: \
 affected lots were distributed; confirmed OOS product was released; contamination was \
-found in released/finished product; sterility failure in released sterile product. \
+found in released/finished product; sterility failure in released sterile product. A \
+market complaint received about a specific named batch/lot also counts as evidence \
+that batch reached the market — do not require additional release language beyond the \
+complaint. \
 Anchor examples: "contaminated lots were distributed before the investigation was closed"; \
 "batch failing assay specification was released without an investigation".
   * Major: the text documents an ACTUAL defect, failure, or unreliable result found at \
@@ -1221,7 +1228,10 @@ ONE question: what level of ACTUAL product impact does the text DOCUMENT? \
 A deficiency that merely COULD affect product quality is Moderate, no matter how \
 serious the system failure sounds. Most 483 observations are Moderate. \
 Assign the LOWEST tier that fits.
-  * Critical: the text documents that affected product was RELEASED or DISTRIBUTED.
+  * Critical: the text documents that affected product was RELEASED or DISTRIBUTED. A \
+market complaint received about a specific named batch/lot counts as evidence that \
+batch reached the market — do not require additional release language beyond the \
+complaint.
   * Major: the text documents an ACTUAL defect, failure, or unreliable result found at \
 the facility (but no evidence of release); OR a significant systemic failure where the \
 risk of an actual product defect is near-certain without immediate correction. \
@@ -1282,7 +1292,9 @@ language. False if examples merely recur within the same current observation.
 
 - patient_risk_flag_llm: mark true for these scenarios — nothing else qualifies:
   (a) Sterile or injectable product with CONFIRMED contamination or sterility breach \
-documented in the observation.
+documented in the observation. This includes pre-commercial batches such as PPQ \
+(process performance qualification) or process-validation runs — (a) does NOT \
+require a release/distribution statement.
   (a2) A non-sterile product where the text EXPLICITLY uses one of these signals — do NOT \
 infer drug class from your own pharmacology knowledge if the text does not say so:
     - narrow therapeutic index: the text says "narrow therapeutic index" or "NTI", or \
@@ -1300,7 +1312,8 @@ independently consider clinically important; the class must be named IN THE TEXT
 product that the text AFFIRMATIVELY STATES was distributed, released, shipped, or reached \
 the market — any dosage form. A generic CFR-citation phrase like "whether or not the batch \
 has already been distributed" does NOT affirmatively state distribution — see the boilerplate \
-note below.
+note below. A market complaint received about a specific named batch/lot DOES affirmatively \
+state distribution — the complaint itself is evidence the batch reached the market.
   (c) The text explicitly states product was released without required QA testing or \
 disposition — any dosage form.
   ALWAYS mark false for: routine oral solid dose, topical, and other dosage forms where the \
@@ -1416,6 +1429,12 @@ lot, or product. A general procedural gap that could apply to any production lin
 specific batches named, is FacilityWide (if system-level) or SingleBatch/Unclear (if not) — \
 never MultipleProducts by default.
   (3) SingleBatch is correct even when multiple examples within the same batch are cited.
+  (4) If a change-control, deviation, CAPA, or document-approval TEMPLATE/PROCESS itself is \
+described as broken (e.g., a change-control form only routes to two departments when it should \
+route to more; a template omits a required review step) — this is FacilityWide, because every \
+future change/deviation processed through that broken template inherits the gap, even if the \
+same observation also names the specific batches or SOPs affected by past instances of it. The \
+system-level defect outranks the named instances.
 
 Contamination calibration:
   (1) contamination_flag_llm requires a CONFIRMED event: growth found, particulates found \
@@ -1532,6 +1551,16 @@ def _validate(result: dict, obs_text_clean: str, version: str = "v1") -> dict:
 
     for flag in flag_fields:
         result[flag] = _coerce_bool(result.get(flag, False))
+
+    # Contamination mutual-exclusivity guard (v2 only): the prompt states
+    # three times that contamination_flag_llm and contamination_risk_flag_llm
+    # are mutually exclusive, but round-1 human-eval (2026-09) showed the
+    # model does not reliably self-enforce this — every one of the 6 rows
+    # where it set contamination_flag_llm=True also set
+    # contamination_risk_flag_llm=True, a direct violation of its own
+    # instruction. Enforce it here instead of trusting the model.
+    if version == "v2" and result.get("contamination_flag_llm") is True:
+        result["contamination_risk_flag_llm"] = False
 
     try:
         result["confidence"] = max(0.0, min(1.0, float(result.get("confidence", 0.5))))
