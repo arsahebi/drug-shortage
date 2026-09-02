@@ -1268,12 +1268,20 @@ control; insufficient resources were allocated to build the system.
 a behavioral, management, or organizational failure. Examples: trained personnel did not \
 follow the SOP; management accepted non-compliance; data was altered or not recorded \
 contemporaneously; deviations were not reported; quality unit did not exercise oversight.
-  * Mixed = the text documents clear evidence of BOTH a design/resource gap AND a \
-behavioral/management failure contributing to the same observation.
+  * Mixed = the text documents clear evidence that BOTH a design/resource gap AND a \
+behavioral/management failure INDEPENDENTLY caused the SAME failure — not merely that both \
+a system and a person are mentioned somewhere in the observation. Most observations mention \
+both a procedure and the people who run it; that alone is not Mixed. Ask: if you fixed ONLY \
+the design gap, would the failure still have happened because of the behavioral lapse (or \
+vice versa)? If yes to both, it's Mixed. If fixing one gap would have prevented the failure, \
+it's that single category, even if the other is mentioned in passing.
   * Unclear = the text is insufficient to distinguish whether the root cause is a gap \
 in the system design or a gap in execution.
   Decision tip: if the SOP exists but was ignored → Cultural; if the SOP does not exist \
-or is inadequate → Capital; if both are stated → Mixed.
+or is inadequate → Capital; if both independently caused the failure → Mixed. Prefer the \
+single category that most directly explains the observation over Mixed when in doubt — \
+Mixed should be the minority outcome, not the default for any observation with more than \
+one detail in it.
 
 - root_cause_rationale: 1–2 sentence justification for root_cause_type. Cite the specific \
 text that drove the assignment. If Unclear, state what information is missing.
@@ -1429,12 +1437,10 @@ lot, or product. A general procedural gap that could apply to any production lin
 specific batches named, is FacilityWide (if system-level) or SingleBatch/Unclear (if not) — \
 never MultipleProducts by default.
   (3) SingleBatch is correct even when multiple examples within the same batch are cited.
-  (4) If a change-control, deviation, CAPA, or document-approval TEMPLATE/PROCESS itself is \
-described as broken (e.g., a change-control form only routes to two departments when it should \
-route to more; a template omits a required review step) — this is FacilityWide, because every \
-future change/deviation processed through that broken template inherits the gap, even if the \
-same observation also names the specific batches or SOPs affected by past instances of it. The \
-system-level defect outranks the named instances.
+  (4) A broken change-control, deviation, CAPA, or document-approval TEMPLATE/PROCESS (e.g., a \
+routing form that omits a required department, a template missing a required review step) is \
+FacilityWide on its own — this is a scope call only, independent of whether the same \
+observation also names specific batches or SOPs affected by past instances of it.
 
 Contamination calibration:
   (1) contamination_flag_llm requires a CONFIRMED event: growth found, particulates found \
