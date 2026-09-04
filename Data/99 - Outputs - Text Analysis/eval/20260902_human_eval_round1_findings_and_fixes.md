@@ -177,7 +177,15 @@ resolved. Both are now implemented in the v2 prompt (OpenAI + Anthropic) and in
 
 Both changes are in `01_extract_observation_signals.py` (prompt text + tool-schema field
 descriptions, both providers' v2 variants) and `eval/483_Labeling_Rules_v2.docx` §6.2/§6.6.
-Not yet re-run at scale — see next steps below.
+
+**Targeted verification (2026-09-04):** re-ran the fixed Anthropic v2 prompt directly on rows 7,
+29, 49, and 30 from the frozen sample. All 4 flipped as intended: rows 7/29/49
+`data_integrity_flag_llm` False→**True**; row 30 `patient_risk_flag_llm` **True**, with the
+model's own rationale explicitly citing "Grade B and Grade A manufacturing areas... per FDA
+aseptic processing guidance" — confirming it's applying the new rule, not coincidence. This is a
+single targeted run, not the 3x majority-vote protocol, but both rules are explicit-criterion
+decisions rather than judgment calls with meaningful noise. Not yet re-run at scale — see next
+steps below.
 
 ## Recommended next steps
 
