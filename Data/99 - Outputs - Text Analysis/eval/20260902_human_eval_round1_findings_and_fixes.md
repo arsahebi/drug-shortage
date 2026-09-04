@@ -148,9 +148,36 @@ and scored the majority (mode) prediction per row — this is the number to actu
   something quick-fixable via prompt wording — likely needs a dedicated few-shot calibration pass
   or acceptance as a documented bias.
 - **`data_integrity_flag` regresses consistently across every re-run (0.960→0.78–0.86) despite
-  zero edits to its rules.** Not yet diagnosed with the same rigor as `root_cause_type` was.
-  Flagged as the next thing to look at if it matters for the paper's data-integrity claims
-  specifically; otherwise can be left as a documented limitation alongside `severity_tier`.
+  zero edits to its rules.** Diagnosed: not a model bug. Abdul's own labeling notes independently
+  flagged the same gap on 3 rows (7, 29, 49) — retesting/resampling until a passing result, and
+  invalidating an OOS result without a documented justified investigation ("testing into
+  compliance") — and asked twice for a second opinion, since neither is on the rules doc's
+  explicit list. The model's disagreement with Abdul on these rows wasn't an error on either
+  side; it was a genuine rules gap. Resolved below.
+
+## Resolved after group/RA review (2026-09-04)
+
+Two items above were escalated to Abdul by email (with row IDs so he could find each one), and
+resolved. Both are now implemented in the v2 prompt (OpenAI + Anthropic) and in
+`483_Labeling_Rules_v2.docx`, effective for all extraction and labeling from this point forward:
+
+1. **`data_integrity_flag`: "testing into compliance" now counts.** Retesting, resampling, or
+   additional testing performed to obtain a passing result after an initial unfavorable/OOS
+   result, or invalidating/discarding an unfavorable result, *without* a documented,
+   scientifically justified investigation into why the original result was invalid — this is a
+   named FDA data-integrity violation (FDA's 2018 Data Integrity guidance) and should be flagged
+   even when no falsification is alleged. Rows 7, 29, 49 should be TRUE going forward.
+2. **`patient_risk_flag` scenario (a): a confirmed EM excursion inside a classified Grade A/B
+   aseptic area now counts on its own**, even without a separate statement that product itself
+   was contaminated — per FDA's *Sterile Drug Products Produced by Aseptic Processing* (2004)
+   guidance, environmental monitoring in the classified critical zone is the primary
+   sterility-assurance signal for aseptic processing, not a secondary control. An EM excursion
+   outside a classified Grade A/B area still does not qualify on its own. This confirms Abdul's
+   own row 30 call (patient_risk = TRUE, FEI 3002984011).
+
+Both changes are in `01_extract_observation_signals.py` (prompt text + tool-schema field
+descriptions, both providers' v2 variants) and `eval/483_Labeling_Rules_v2.docx` §6.2/§6.6.
+Not yet re-run at scale — see next steps below.
 
 ## Recommended next steps
 

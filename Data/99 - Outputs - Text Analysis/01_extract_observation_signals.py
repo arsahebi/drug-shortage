@@ -264,7 +264,13 @@ _PATIENT_RISK_RULE_OPENAI_V2 = (
     "mark true when an EXPLICIT harm pathway to patients exists in the text: "
     "(a) sterile or injectable product with a contamination or sterility assurance failure — "
     "this includes pre-commercial batches such as PPQ (process performance qualification) or "
-    "process-validation runs; (a) does NOT require a release/distribution statement, "
+    "process-validation runs; (a) does NOT require a release/distribution statement. A "
+    "confirmed environmental monitoring (EM) excursion — microbial or particulate — inside a "
+    "classified Grade A or Grade B aseptic processing area (the critical zone or its immediate "
+    "background) itself satisfies (a) as a sterility-assurance failure, per FDA's aseptic "
+    "processing guidance, even with no separate statement that product itself was found "
+    "contaminated. An EM excursion outside a classified Grade A/B area, or in an unclassified "
+    "support area, does NOT satisfy (a) on its own. "
     "OR (a2) a non-sterile product where the text ITSELF uses one of these exact signals — "
     "do NOT infer drug class from your own pharmacology knowledge: 'narrow therapeutic index' "
     "or 'NTI', or names one of warfarin, digoxin, levothyroxine, phenytoin, lithium, "
@@ -635,7 +641,12 @@ observation recur or affect multiple products/lines.
 - data_integrity_flag_llm: mark true ONLY for explicit data trustworthiness failures: \
 falsification, backdating, deleted or altered records, missing raw data, audit-trail \
 problems (disabled/bypassed audit trail, unauthorized system access), unreported OOS \
-results, or records reconstructed after the fact. \
+results, records reconstructed after the fact, or "testing into compliance" — retesting, \
+resampling, or additional testing performed to obtain a passing result after an initial \
+unfavorable/OOS result, OR invalidating/discarding an unfavorable result, WITHOUT a \
+documented, scientifically justified investigation into why the original result was \
+invalid. This is a recognized FDA data-integrity violation even when no falsification is \
+alleged. \
 Do NOT mark true for ordinary missing SOPs, incomplete documentation, weak \
 recordkeeping, or inventory/storage control unless data reliability is directly at issue.
 
@@ -851,7 +862,9 @@ OPENAI_JSON_SCHEMA_V2 = {
             "type": "boolean",
             "description": (
                 "True for: sterile/injectable product with contamination or sterility "
-                "assurance failure; a non-sterile product where the TEXT ITSELF names an "
+                "assurance failure — a confirmed EM excursion (microbial or particulate) "
+                "inside a classified Grade A/B aseptic area itself counts, even without a "
+                "separate contaminated-product statement; a non-sterile product where the TEXT ITSELF names an "
                 "NTI drug, oncology/chemo drug, or nitrosamine finding (never infer this "
                 "from general pharmacology knowledge) with a confirmed defect; confirmed "
                 "quality defect in product the text affirmatively states was distributed/"
@@ -878,9 +891,11 @@ OPENAI_JSON_SCHEMA_V2 = {
             "description": (
                 "True only for explicit data trustworthiness failures: falsification, "
                 "backdating, deleted/altered records, missing raw data, disabled/bypassed "
-                "audit trail, unauthorized system access, unreported OOS results, or "
-                "records reconstructed after the fact. False for missing SOPs, incomplete "
-                "documentation, or weak recordkeeping where data reliability is not directly at issue."
+                "audit trail, unauthorized system access, unreported OOS results, records "
+                "reconstructed after the fact, or 'testing into compliance' (retesting, "
+                "resampling, or invalidating/discarding an unfavorable result WITHOUT a "
+                "documented, scientifically justified investigation). False for missing SOPs, "
+                "incomplete documentation, or weak recordkeeping where data reliability is not directly at issue."
             ),
         },
         "contamination_flag_llm": {
@@ -1302,7 +1317,13 @@ language. False if examples merely recur within the same current observation.
   (a) Sterile or injectable product with CONFIRMED contamination or sterility breach \
 documented in the observation. This includes pre-commercial batches such as PPQ \
 (process performance qualification) or process-validation runs — (a) does NOT \
-require a release/distribution statement.
+require a release/distribution statement. A confirmed environmental monitoring (EM) \
+excursion — microbial or particulate — inside a classified Grade A or Grade B aseptic \
+processing area (the critical zone or its immediate background) itself satisfies (a) as \
+a sterility-assurance failure, per FDA's aseptic processing guidance, even with no \
+separate statement that product itself was found contaminated. An EM excursion outside a \
+classified Grade A/B area, or in an unclassified support area, does NOT satisfy (a) on \
+its own.
   (a2) A non-sterile product where the text EXPLICITLY uses one of these signals — do NOT \
 infer drug class from your own pharmacology knowledge if the text does not say so:
     - narrow therapeutic index: the text says "narrow therapeutic index" or "NTI", or \
@@ -1326,7 +1347,9 @@ state distribution — the complaint itself is evidence the batch reached the ma
 disposition — any dosage form.
   ALWAYS mark false for: routine oral solid dose, topical, and other dosage forms where the \
 text does not name one of the (a2) signals; missing SOPs or documentation gaps; environmental \
-monitoring gaps without confirmed contamination; equipment validation gaps without confirmed \
+monitoring gaps OUTSIDE a classified Grade A/B aseptic area, or unclassified-area EM gaps, \
+without confirmed contamination (a confirmed Grade A/B EM excursion itself satisfies (a) — \
+see above); equipment validation gaps without confirmed \
 product impact; data integrity issues without confirmed release of affected product; any \
 general quality system failures; training or personnel qualification deficiencies; stability \
 testing gaps; specification issues without a released OOS result; investigation-failure \
@@ -1373,7 +1396,12 @@ false. If false, state briefly why none of the four scenarios apply.
 - data_integrity_flag_llm: mark true ONLY for explicit data trustworthiness failures: \
 falsification, backdating, deleted or altered records, missing raw data, audit-trail \
 problems (disabled/bypassed audit trail, unauthorized system access), unreported OOS \
-results, or records reconstructed after the fact. \
+results, records reconstructed after the fact, or "testing into compliance" — retesting, \
+resampling, or additional testing performed to obtain a passing result after an initial \
+unfavorable/OOS result, OR invalidating/discarding an unfavorable result, WITHOUT a \
+documented, scientifically justified investigation into why the original result was \
+invalid. This is a recognized FDA data-integrity violation even when no falsification is \
+alleged. \
   Do NOT mark true for ordinary missing SOPs, incomplete documentation, weak \
 recordkeeping, or inventory/storage control unless data reliability is directly at issue.
 
