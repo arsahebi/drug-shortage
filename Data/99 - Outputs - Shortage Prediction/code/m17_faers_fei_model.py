@@ -23,7 +23,7 @@ Feature groups (identical to m14):
                            scope_multipleproducts_share, cultural_root_cause_share,
                            contamination_llm_share, data_integrity_llm_share,
                            investigation_llm_share, repeat_cross_insp_share,
-                           vc_labcontrols_share, vc_qualitysystem_share,
+                           vc_laboratorycontrolssystem_share, vc_qualitysystem_share,
                            remediation_none_share, remediation_weak_share
   Structural (Valisure + OB): parenteral_ever, n_feis_drug
 
@@ -107,7 +107,7 @@ TEXT_FEATURES = [
     "data_integrity_llm_share",
     "investigation_llm_share",
     "repeat_cross_insp_share",
-    "vc_labcontrols_share",
+    "vc_laboratorycontrolssystem_share",
     "vc_qualitysystem_share",
     "remediation_none_share",
     "remediation_weak_share",

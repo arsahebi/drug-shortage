@@ -101,11 +101,29 @@ REDICA_SIGNALS_CSV = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
 OUT_REDICA_CSV     = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
 
-def _versioned(path: Path, version: str) -> Path:
-    """Insert a _v2 (etc.) suffix before the extension for non-v1 prompt versions."""
-    if version == "v1":
-        return path
-    return path.with_name(path.stem + f"_{version}" + path.suffix)
+def _model_slug(model_id: str) -> str:
+    """Short filesystem-safe tag for a model ID, matching
+    01_extract_observation_signals.py's _model_slug (e.g. 'claude-sonnet-5' ->
+    'claudesonnet5'), so this script can find that script's tagged output."""
+    return re.sub(r"[^a-z0-9]+", "", model_id.lower())
+
+
+# The model actually validated in human-eval round 1 and used for the v2
+# full-scale extraction (see eval/20260902_human_eval_round1_findings_and_fixes.md).
+# v1 output was produced with the anthropic default (claude-haiku) and is untagged.
+DEFAULT_V2_MODEL = "claude-sonnet-5"
+
+
+def _versioned(path: Path, version: str, model: str | None = None) -> Path:
+    """Insert a model tag (e.g. '_claudesonnet5') and a version tag (e.g. '_v2')
+    before the extension, in the same order 01_extract_observation_signals.py
+    uses, so this script resolves to that script's actual output filename."""
+    name = path.stem
+    if model:
+        name += f"_{_model_slug(model)}"
+    if version != "v1":
+        name += f"_{version}"
+    return path.with_name(name + path.suffix)
 
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
@@ -564,12 +582,25 @@ def main() -> None:
             "step02_*_v2.csv — a separate file; v1 output is never touched."
         ),
     )
+    parser.add_argument(
+        "--model", type=str, default=None,
+        help=(
+            "Model tag to look for in the step01 filename, matching whatever "
+            "--model was passed to 01_extract_observation_signals.py (e.g. "
+            f"'claude-sonnet-5'). Default: '{DEFAULT_V2_MODEL}' when "
+            "--prompt-version v2 (the validated round-1 model), none for v1 "
+            "(anthropic default / claude-haiku). Pass --model '' to force no tag."
+        ),
+    )
     args = parser.parse_args()
     version = args.prompt_version
+    model = args.model
+    if model is None:
+        model = DEFAULT_V2_MODEL if version != "v1" else None
 
     if args.source == "redica":
-        signals_csv = _versioned(REDICA_SIGNALS_CSV, version)
-        out_csv     = _versioned(OUT_REDICA_CSV, version)
+        signals_csv = _versioned(REDICA_SIGNALS_CSV, version, model)
+        out_csv     = _versioned(OUT_REDICA_CSV, version, model)
         if not signals_csv.exists():
             sys.exit(f"\n[ERROR] Redica LLM signals not found:\n  {signals_csv}\n"
                      "Run 01_extract_observation_signals.py --source redica --provider anthropic "
@@ -577,13 +608,13 @@ def main() -> None:
         df = pd.read_csv(signals_csv)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
-        label = f"Redica pipeline (claude-haiku, 98 FEIs, prompt {version})"
+        label = f"Redica pipeline ({model or 'claude-haiku'}, 98 FEIs, prompt {version})"
         _run_aggregation(df, out_csv, label=label, version=version)
         return
 
     # Default: PDF-only pipeline
-    signals_csv = _versioned(SIGNALS_CSV, version)
-    out_csv     = _versioned(OUT_CSV, version)
+    signals_csv = _versioned(SIGNALS_CSV, version, model)
+    out_csv     = _versioned(OUT_CSV, version, model)
     if not signals_csv.exists():
         sys.exit(
             f"\n[ERROR] Observation signals file not found:\n  {signals_csv}\n"
@@ -591,7 +622,7 @@ def main() -> None:
         )
 
     df = pd.read_csv(signals_csv)
-    out_df = _run_aggregation(df, out_csv, label=f"PDF pipeline — 38 FEIs, prompt {version}", version=version)
+    out_df = _run_aggregation(df, out_csv, label=f"PDF pipeline ({model or 'claude-haiku'}) — 38 FEIs, prompt {version}", version=version)
 
     print("\n-- LLM lift at latest snapshot per FEI (mean across facilities) --")
     latest = out_df.sort_values("snapshot_date").groupby("fei").last().reset_index()
