@@ -324,10 +324,10 @@ p("What the reported p-values should have been:", bold=True)
 table(
     ["Contrast", "Reported before", "Corrected", "Mann-Whitney", "Verdict"],
     [
-        ["NDMA, India vs USA", "0.0005", "**0.175**", "0.119", "Not significant"],
-        ["NDMA, India vs China", "0.0245", "**0.121**", "0.101", "Not significant"],
-        ["NDMA, China vs USA", "0.0329", "**1.000**", "0.529", "Not significant"],
-        ["DMF, India vs USA", "0.0380", "**0.108**", "0.062", "Not significant"],
+        ["NDMA, India vs USA", "0.0005", "**0.175**", "0.119", "Was overstated"],
+        ["NDMA, India vs China", "0.0245", "**0.121**", "0.101", "Was overstated"],
+        ["NDMA, China vs USA", "0.0329", "**1.000**", "0.529", "Was a false positive"],
+        ["DMF, India vs USA", "0.0380", "**0.108**", "0.062", "Was overstated"],
         ["DMF, India vs China", "0.0810", "0.192", "0.089", "Unchanged, not significant"],
         ["DMF, China vs USA", "0.7080", "0.714", "0.702", "Unchanged, not significant"],
     ],
@@ -338,10 +338,63 @@ p("The China versus USA comparison is the clearest illustration. One of 13 Chine
   "observations and none of 7 US observations are above zero. Fisher's exact test on that "
   "table gives p = 1.0. The old code reported p = 0.033.")
 
-box([("Every significant country difference in Figure 4 was an artifact.",
-      "Figure 4 shows no statistically significant differences in measured impurity between "
-      "India, China and the United States. The descriptive gap in the means is real and "
-      "worth describing, but it does not reach significance in this sample.")])
+p("How badly it misbehaves was measured directly.", bold=True)
+p("Data were simulated under the null, with group labels assigned at random so that no real "
+  "difference exists, and the old test was run 400 times per scenario. A valid test rejects "
+  "at 5 percent. The old test rejects at:")
+table(
+    ["Data structure", "False-positive rate", "Verdict"],
+    [
+        ["Continuous values (Figure 1 volume)", "6 to 7 percent", "Acceptable"],
+        ["19 percent zeros (DMF by country)", "7.8 percent", "Mildly liberal"],
+        ["70 percent zeros, n=45 vs 12 (manual panel NDMA)", "**11 percent**", "Twice too liberal"],
+        ["80 percent zeros, n=35 vs 7 (current panel NDMA)", "**20 percent**", "Four times too liberal"],
+        ["80 percent zeros, n=13 vs 7 (China vs USA)", "**26 percent**", "Five times too liberal"],
+        ["90 percent zeros", "**49 percent**", "Unusable"],
+    ],
+    widths=[2.8, 1.5, 1.5],
+)
+p("The cluster permutation test and Mann-Whitney sit at 1 to 7 percent in every one of these "
+  "scenarios. The failure is specific to zero-inflated data and it worsens as the groups get "
+  "smaller, which is why it bites harder in the current sample than it did in the manual one.")
+
+box([("Scope: this affects the pairwise bootstrap only, not the regression models.",
+      "The starred Model B tables, which are what the team was shown for Figure 4, come from "
+      "a different code path and are unaffected. Figures 2 and 3 use the correlation path, "
+      "which was also measured and is properly calibrated at 4.5 to 7.8 percent even with 80 "
+      "percent zeros. Figure 1's comparisons involve volume, which has almost no ties, and "
+      "were null under every method.")])
+
+h("6b. The result previously shared with the team still stands", 1)
+
+p("Because the pairwise bootstrap was miscalibrated, the regression result was checked "
+  "independently rather than assumed. Country labels were permuted across NDCs and the "
+  "mixed model refitted 1,000 times, which tests the coefficient directly without relying "
+  "on any standard error formula.")
+
+table(
+    ["Panel", "NDMA India coefficient", "Reported p", "Permutation p", "Verdict"],
+    [
+        ["Manual map (shared with the team)", "+1.709", "0.014", "**0.007**", "Supported, in fact stronger"],
+        ["Rule-based map (current)", "+1.175", "0.014", "**0.076**", "Marginal, no longer significant"],
+    ],
+    widths=[2.0, 1.3, 0.8, 1.0, 1.6],
+)
+
+p("So the India versus USA NDMA finding that was circulated is not an artifact. A valid test "
+  "supports it more strongly than the number that was reported. Nothing needs to be "
+  "retracted.")
+
+p("What changed is the sample, not the truth of the earlier analysis. The same coefficient "
+  "falls to a permutation p of 0.076 in the current data because the sample is smaller: 55 "
+  "observations across 47 NDCs, against 71 across 62. NDMA is also more sparse now, 80 "
+  "percent zeros against 73 percent. The finding weakened through loss of power, not because "
+  "it was wrong before.")
+
+box([("Bottom line for the team.",
+      "The previously shared Figure 4 conclusion holds. In the tighter sample it becomes "
+      "marginal rather than significant, which is a sample-size argument for the broader "
+      "14-drug analysis rather than a correction to anything already sent.")])
 
 p("The fix.", bold=True)
 p("Group comparisons now use a cluster permutation test, which builds the null directly by "

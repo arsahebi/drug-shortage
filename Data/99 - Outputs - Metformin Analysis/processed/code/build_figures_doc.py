@@ -277,13 +277,14 @@ table(
 p("Kruskal-Wallis across all three countries: DMF p = 0.064, NDMA p = 0.086, "
   "Difference Factor p = 0.769. None significant.")
 
-box([("These p-values are corrected.",
+box([("These pairwise p-values are corrected.",
       "An earlier run reported NDMA India versus USA at p = 0.0005, India versus China at "
       "0.025 and China versus USA at 0.033, and DMF India versus USA at 0.038. Those came "
       "from a centred-bootstrap approximation that breaks down when the data are dominated "
-      "by ties, which NDMA is: 44 of 55 observations are exactly zero. Section 6 of the "
-      "pipeline changes document explains the bug. The figures themselves are unchanged; "
-      "only the significance testing was wrong.")])
+      "by ties, which NDMA is: 44 of 55 observations are exactly zero. Measured against "
+      "simulated null data, that test rejects at 20 to 26 percent rather than 5. Section 6 "
+      "of the pipeline changes document has the calibration table. The figures themselves "
+      "are unchanged; only the pairwise significance testing was wrong.")])
 
 p("Regression, log1p(metric) on country, reference United States:", bold=True)
 table(
@@ -297,9 +298,21 @@ table(
 )
 
 doc.add_heading("What it shows", 2)
-p("No statistically significant difference in measured impurity between India, China and "
-  "the United States. Every pairwise permutation test is above 0.10 and the omnibus "
+p("The pairwise rank tests show no significant difference in measured impurity between "
+  "India, China and the United States. Every permutation test is above 0.10 and the omnibus "
   "Kruskal-Wallis tests are not significant either.")
+
+p("The regression tells a slightly different story and is the more informative of the two. "
+  "The India coefficient on NDMA is +1.174 with p = 0.014. That model was validated "
+  "independently by permuting country labels across NDCs and refitting, which gives "
+  "p = 0.076. So the effect is real in direction and marginal in strength: suggestive, not "
+  "established, in this sample.")
+
+box([("This finding was stronger in the earlier sample, and that earlier result stands.",
+      "On the manual-map panel the same coefficient was +1.709 with a permutation p of 0.007. "
+      "The conclusion previously shared with the team is supported by a valid test and does "
+      "not need revisiting. It weakens here because the sample is smaller, 55 observations "
+      "across 47 NDCs against 71 across 62, not because the earlier analysis was wrong.")])
 
 p("The descriptive gap is nonetheless large and worth describing. Indian product has a mean "
   "DMF of 17,600 against 2,620 for US product, and a mean NDMA of 29.4 against 0. What the "
@@ -313,16 +326,15 @@ p("The NDMA comparison deserves particular care. All three country medians are z
   "clear descriptive contrast, but Fisher's exact test on 10 of 35 against 0 of 7 gives "
   "p = 0.168. Seven US observations cannot carry a claim about US manufacturing.")
 
-p("The two regression coefficients that do reach significance, India on NDMA and India on "
-  "Difference Factor, should be treated cautiously rather than as the headline. The NDMA "
-  "model fits a log1p transform to a variable that is zero in 80 percent of cases, and the "
-  "Difference Factor model rests on 19 observations of which 2 are American.")
+p("The Difference Factor coefficient, India at p = 0.036, should not be leaned on at all: "
+  "19 observations, of which 2 are American.")
 
 box([("Suggested framing.",
-      "Report the descriptive country differences and say plainly that they do not reach "
-      "significance in this sample. That is a defensible finding and it sets up the sample "
-      "size argument for the larger 14-drug analysis. Claiming a significant country effect "
-      "here would not survive a reviewer who asks for the two-by-two table.")])
+      "Report the descriptive country gap, note that the India NDMA effect is directionally "
+      "consistent and marginal here after being significant in the larger earlier sample, and "
+      "let that carry the sample-size argument for the 14-drug analysis. Do not claim a "
+      "significant country effect from the pairwise rank tests in this sample; a reviewer "
+      "asking for the two-by-two table would not be satisfied.")])
 
 doc.add_page_break()
 
@@ -369,7 +381,7 @@ table(
         ["Fig 2, DMF vs volume", "rho = +0.23, p = 0.034", "**No, p = 0.30**", "No, p = 0.080"],
         ["Fig 2, NDMA vs volume", "rho = -0.31, p = 0.009", "**No, p = 0.064**", "Yes, p = 0.028"],
         ["Fig 3, price vs quality", "Null, stable", "Yes, still null", "Yes, still null"],
-        ["Fig 4, NDMA by country", "Not significant, p = 0.175", "Same country either way", "Same country either way"],
+        ["Fig 4, NDMA by country", "Marginal, regression p = 0.076", "Same country either way", "Same country either way"],
         ["Fig 4, DMF by country", "Not significant, p = 0.108", "Same country either way", "Same country either way"],
     ],
     size=9, widths=[1.7, 1.6, 1.5, 1.5],
