@@ -3,68 +3,33 @@
 Build the September 2026 changelog document for the Metformin analysis.
 
 Explains the switch from the manual NDC-FEI map to the rule-based one, the two
-sample exclusions now enforced in step 2, and the Chartwell Congers data gap we
-may want to raise with Redica.
+sample exclusions now enforced in step 2, the Chartwell Congers data gap, and the
+Figure 4 statistics bug found while auditing the prior-inspection logic.
+
+Style comes from doc_style.py, shared with build_figures_doc.py.
 
 Output: outputs/20260910_metformin_pipeline_changes.docx
 """
 
 from pathlib import Path
 
-from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, RGBColor
+import doc_style as ds
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 OUT  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs/20260910_metformin_pipeline_changes.docx"
 
-doc = Document()
-st = doc.styles["Normal"]
-st.font.name = "Calibri"
-st.font.size = Pt(11)
+doc = ds.new_document()
 
-
-def h(text, level=1):
-    doc.add_heading(text, level=level)
-
-
-def p(text, bold=False, italic=False):
-    par = doc.add_paragraph()
-    run = par.add_run(text)
-    run.bold, run.italic = bold, italic
-    return par
-
-
-def bullet(text):
-    doc.add_paragraph(text, style="List Bullet")
-
-
-def table(headers, rows, widths=None):
-    t = doc.add_table(rows=1, cols=len(headers))
-    t.style = "Light Grid Accent 1"
-    for i, htxt in enumerate(headers):
-        cell = t.rows[0].cells[i]
-        cell.text = ""
-        run = cell.paragraphs[0].add_run(htxt)
-        run.bold = True
-        run.font.size = Pt(10)
-    for row in rows:
-        cells = t.add_row().cells
-        for i, val in enumerate(row):
-            cells[i].text = ""
-            run = cells[i].paragraphs[0].add_run(str(val))
-            run.font.size = Pt(10)
-    doc.add_paragraph()
-    return t
-
+def h(text, level=1): doc.add_heading(text, level=level)
+def p(text, bold=False, italic=False, size=11): return ds.p(doc, text, bold=bold, italic=italic, size=size)
+def bullet(text): return ds.bullet(doc, text)
+def table(headers, rows, **kw): return ds.table(doc, headers, rows, **kw)
+def box(lines): return ds.box(doc, lines)
 
 # ── title ─────────────────────────────────────────────────────────────────────
-title = doc.add_heading("Metformin Analysis: Pipeline Changes", level=0)
-sub = doc.add_paragraph()
-sub.alignment = WD_ALIGN_PARAGRAPH.LEFT
-r = sub.add_run("September 10, 2026")
-r.italic = True
-r.font.color.rgb = RGBColor(0x60, 0x60, 0x60)
+doc.add_heading("Metformin Analysis: Pipeline Changes", level=0)
+p("September 10, 2026", italic=True, size=10)
+ds.rule(doc)
 
 p("Three things changed in the Metformin pipeline. The NDC to FEI map is now built "
   "by a rule instead of by manual search. Canada and Bangladesh facilities are out of "
@@ -322,6 +287,90 @@ table(
 p("Verification note: running step 2 with the manual map and all exclusion flags off "
   "reproduces the previous panel exactly. The differences reported here come from the map "
   "change and the exclusions, not from incidental code drift.", italic=True)
+
+# ── 6. figure 4 statistics bug ────────────────────────────────────────────────
+h("6. A statistics bug found while auditing the prior-inspection logic", 1)
+
+p("The prior-inspection assignment was audited directly, because an earlier version of "
+  "this code had attributed the wrong inspection history to facilities. That logic is "
+  "correct. The audit did, however, turn up a separate bug in the significance testing "
+  "for Figure 4.")
+
+p("The prior-inspection logic checks out.", bold=True)
+p("Every (NDC, test year) row was re-derived independently from the step 2 panel and the "
+  "step 1 map, then compared against what step 5 produced. All 96 rows agree on facility, "
+  "outcome and inspection year, with no mismatches. Six further checks passed: the Redica "
+  "ID to FEI mapping is strictly one to one across all 29 facilities, no facility carries "
+  "more than one site name, no inspection event was dropped for an unmapped identifier, "
+  "every assigned facility is one the NDC actually maps to, no prior inspection falls on "
+  "or after the test year, and months since inspection recomputes to within 0.05 months.")
+
+p("The Figure 4 significance tests were wrong.", bold=True)
+p("Pairwise country comparisons used a centred bootstrap of the Spearman correlation "
+  "between the measured value and a group dummy. That approximation assumes the bootstrap "
+  "spread stands in for the null distribution. It does not when the data are dominated by "
+  "ties. For NDMA, 44 of 55 observations are exactly zero, every US observation is zero, "
+  "and 12 of 13 Chinese observations are zero. Two things then went wrong:")
+
+bullet("Resamples in which every value came out identical produced an undefined correlation "
+       "and were silently discarded. Those are precisely the no-difference resamples. For "
+       "China versus USA, 36 percent of the 2,000 resamples were thrown away, which narrowed "
+       "the null distribution and inflated significance.")
+bullet("Even where nothing was discarded, the centred-bootstrap p understates the null "
+       "spread under heavy ties, so marginal differences were reported as strongly "
+       "significant.")
+
+p("What the reported p-values should have been:", bold=True)
+table(
+    ["Contrast", "Reported before", "Corrected", "Mann-Whitney", "Verdict"],
+    [
+        ["NDMA, India vs USA", "0.0005", "**0.175**", "0.119", "Not significant"],
+        ["NDMA, India vs China", "0.0245", "**0.121**", "0.101", "Not significant"],
+        ["NDMA, China vs USA", "0.0329", "**1.000**", "0.529", "Not significant"],
+        ["DMF, India vs USA", "0.0380", "**0.108**", "0.062", "Not significant"],
+        ["DMF, India vs China", "0.0810", "0.192", "0.089", "Unchanged, not significant"],
+        ["DMF, China vs USA", "0.7080", "0.714", "0.702", "Unchanged, not significant"],
+    ],
+    widths=[1.6, 1.2, 1.0, 1.1, 1.6],
+)
+
+p("The China versus USA comparison is the clearest illustration. One of 13 Chinese "
+  "observations and none of 7 US observations are above zero. Fisher's exact test on that "
+  "table gives p = 1.0. The old code reported p = 0.033.")
+
+box([("Every significant country difference in Figure 4 was an artifact.",
+      "Figure 4 shows no statistically significant differences in measured impurity between "
+      "India, China and the United States. The descriptive gap in the means is real and "
+      "worth describing, but it does not reach significance in this sample.")])
+
+p("The fix.", bold=True)
+p("Group comparisons now use a cluster permutation test, which builds the null directly by "
+  "shuffling the group label across whole clusters and so handles ties correctly. Undefined "
+  "resamples in the bootstrap are counted as zero rather than discarded. The permutation "
+  "test requires clusters to sit entirely within one group, which holds for country (a "
+  "product is made in one country) but not for inspection outcome (a product can be NAI in "
+  "one test year and VAI in another). Where clusters straddle groups the function now "
+  "returns nothing and the Mann-Whitney p is reported instead, rather than producing a "
+  "number that looks authoritative but is not. The old bootstrap p is still printed in "
+  "brackets in the run log for continuity.")
+
+p("Figure 1 is unaffected. Its volume comparisons were null under every method before and "
+  "after, and the bootstrap and Mann-Whitney p-values agree closely there because volume "
+  "has few ties. Figures 2 and 3 use the correlation path rather than the group-comparison "
+  "path and are also unaffected.")
+
+box([("Scope note.",
+      "Changing the test is an analytical decision, not a mechanical fix. It is applied here "
+      "because the old test produced results that a reviewer could refute with a two-by-two "
+      "table, but the choice of replacement is worth confirming before publication.")])
+
+# ── 7. figure labels ──────────────────────────────────────────────────────────
+h("7. Figure axis labels", 1)
+p("The Figure 1 axis labels no longer show the numeric severity scores. The categories now "
+  "read NAI, VAI and OAI rather than NAI (0), VAI (1.5) and OAI (3.5), and the axis title is "
+  "Prior Inspection Outcome rather than Prior Inspection Outcome (prior_score). The scores "
+  "remain in the underlying data as prior_score; they are simply no longer displayed.")
+
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 doc.save(OUT)

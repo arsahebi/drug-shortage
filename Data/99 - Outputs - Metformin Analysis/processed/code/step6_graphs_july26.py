@@ -63,7 +63,7 @@ COUNTRY_COLORS = {"IND": "#ef4444", "CHN": "#f59e0b", "USA": "#3b82f6"}
 
 OUTCOME_ORDER  = ["NAI", "VAI", "OAI"]
 OUTCOME_COLORS = {"NAI": "#22c55e", "VAI": "#f59e0b", "OAI": "#ef4444"}
-OUTCOME_LABELS = {"NAI": "NAI (0)", "VAI": "VAI (1.5)", "OAI": "OAI (3.5)"}
+OUTCOME_LABELS = {"NAI": "NAI", "VAI": "VAI", "OAI": "OAI"}
 
 DMF_COL  = "DMF (ng/DAY) Valisure"
 NDMA_COL = "NDMA (ng/DAY) Valisure"
@@ -115,8 +115,11 @@ def _block_bootstrap_spearman(x: np.ndarray, y: np.ndarray,
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             r, _ = spearmanr(xm[idx], ym[idx])
-        if np.isfinite(r):
-            boot_rhos.append(r)
+        # A resample where every value (or every group label) is constant yields
+        # rho = NaN. Those are the "no difference" resamples: discarding them
+        # narrows the null distribution and makes p_boot far too small. Count
+        # them as rho = 0 instead.
+        boot_rhos.append(r if np.isfinite(r) else 0.0)
 
     if len(boot_rhos) < 10:
         return {"rho": rho_obs, "p_naive": p_obs, "p_boot": np.nan,
@@ -336,7 +339,7 @@ def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
 
     ax_price.set_xticks(list(x_pos_p.values()))
     ax_price.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
-    ax_price.set_xlabel("Prior Inspection Outcome (prior_score)")
+    ax_price.set_xlabel("Prior Inspection Outcome")
     ax_price.set_ylabel("Medicaid Price per Unit ($/unit, log scale)")
     ax_price.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
     ax_price.set_axisbelow(True)
@@ -371,7 +374,7 @@ def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
     ax_vol.set_yscale("log")
     ax_vol.set_xticks(list(x_pos.values()))
     ax_vol.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
-    ax_vol.set_xlabel("Prior Inspection Outcome (prior_score)")
+    ax_vol.set_xlabel("Prior Inspection Outcome")
     ax_vol.set_ylabel("IQVIA Extended Units (log scale)")
     ax_vol.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
     ax_vol.set_axisbelow(True)
@@ -402,9 +405,55 @@ def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
     print_fig1_stats(sub)
 
 
+def _cluster_permutation_p(x: np.ndarray, y: np.ndarray, clusters: np.ndarray,
+                            n_perm: int = 5000, seed: int = 42) -> float:
+    """
+    Cluster-level permutation test for a difference between two groups.
+
+    Shuffles the group label across whole clusters and recomputes the rank-sum
+    statistic. Unlike the centred-bootstrap approximation this builds the null
+    directly, so it stays valid when the values are dominated by ties (e.g. NDMA,
+    where 44 of 55 observations are exactly zero) and when one group sits entirely
+    at the measurement floor.
+    """
+    mask = np.isfinite(x) & np.isfinite(y)
+    xm, ym, cm = x[mask], y[mask], np.asarray(clusters, dtype=str)[mask]
+    ranks = stats.rankdata(xm)
+
+    uc = np.unique(cm)
+    cl_idx = [np.where(cm == c)[0] for c in uc]
+
+    # The cluster permutation null requires clusters to be nested within groups.
+    # Country clusters are (an NDC is made in one country), but outcome clusters
+    # are not: an NDC or FEI can be NAI in one test year and VAI in another.
+    # Permuting a whole straddling cluster to one label is not a valid null, so
+    # refuse rather than return a number that looks authoritative.
+    if any(len(np.unique(ym[idx])) > 1 for idx in cl_idx):
+        return float("nan")
+
+    cl_lab = np.array([ym[idx][0] for idx in cl_idx])
+
+    def stat(labels):
+        sel = np.concatenate([cl_idx[i] for i in range(len(uc)) if labels[i] == 1])
+        return abs(ranks[sel].mean() - ranks.mean())
+
+    obs = stat(cl_lab)
+    rng = np.random.default_rng(seed)
+    count = 0
+    for _ in range(n_perm):
+        if stat(rng.permutation(cl_lab)) >= obs - 1e-12:
+            count += 1
+    return (count + 1) / (n_perm + 1)
+
+
 def _bootstrap_pairwise(sub: pd.DataFrame, val_col: str, group_col: str,
                          cluster_col: str, groups: list, n_boot: int = 2000) -> None:
-    """Print cluster-bootstrap pairwise comparisons between group pairs."""
+    """Print cluster-bootstrap pairwise comparisons between group pairs.
+
+    Reports the cluster permutation p as PRIMARY. The centred-bootstrap p is kept
+    alongside it for continuity with earlier runs, but it is anti-conservative
+    under heavy ties and should not be the number quoted.
+    """
     sub = sub[[val_col, group_col, cluster_col]].dropna().copy()
     for g1, g2 in combinations(groups, 2):
         d1 = sub[sub[group_col] == g1]
@@ -417,9 +466,20 @@ def _bootstrap_pairwise(sub: pd.DataFrame, val_col: str, group_col: str,
         res = _block_bootstrap_spearman(
             combined[val_col].values.astype(float), dummy,
             combined[cluster_col].values, n_boot=n_boot)
-        sig = " **" if res["p_boot"] < 0.01 else (" *" if res["p_boot"] < 0.05 else "")
+        p_perm = _cluster_permutation_p(
+            combined[val_col].values.astype(float), dummy,
+            combined[cluster_col].values)
+        p_mw = stats.mannwhitneyu(d1[val_col].astype(float),
+                                  d2[val_col].astype(float),
+                                  alternative="two-sided").pvalue
+        if np.isfinite(p_perm):
+            p_primary, tag = p_perm, f"p_perm={p_perm:.4f}"
+        else:
+            p_primary, tag = p_mw, f"p_mw={p_mw:.4f} (clusters straddle groups; permutation N/A)"
+        sig = " **" if p_primary < 0.01 else (" *" if p_primary < 0.05 else "")
         print(f"    {g1} vs {g2}:  n_obs={res['n_obs']}  n_clusters={res['n_clusters']}  "
-              f"p_naive={res['p_naive']:.4f}  p_boot_clustered={res['p_boot']:.4f}{sig}")
+              f"{tag}{sig}  [p_mw={p_mw:.4f}  p_boot={res['p_boot']:.4f}"
+              f"  p_naive={res['p_naive']:.4f}]")
 
 
 def print_fig1_stats(sub: pd.DataFrame) -> None:

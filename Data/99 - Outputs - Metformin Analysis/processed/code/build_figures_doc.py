@@ -5,194 +5,35 @@ Build the September 2026 figures report for the Metformin analysis.
 Every figure regenerated on the rule-based NDC-FEI map and the two sample
 exclusions, each with its statistics and a short reading of what it shows.
 
-Style follows 483_Worked_Example_FEI3003342394_obs3.docx: Times New Roman,
-black and white, thin ruled tables, grey header rows, no accent colours.
+Figure 4 statistics use the corrected cluster permutation test; see section 6 of
+20260910_metformin_pipeline_changes.docx for why the earlier bootstrap p-values
+were wrong.
+
+Style comes from doc_style.py, shared with build_changelog_doc.py.
 
 Output: outputs/20260910_metformin_figures_rulebased.docx
 """
 
 from pathlib import Path
 
-from docx import Document
-from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+
+import doc_style as ds
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 FIG  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs"
 OUT  = FIG / "20260910_metformin_figures_rulebased.docx"
 
-BLACK   = RGBColor(0x00, 0x00, 0x00)
-HDR_FILL = "D9D9D9"
-BOX_FILL = "F2F2F2"
+doc = ds.new_document()
 
-doc = Document()
+def p(text="", bold=False, italic=False, size=11, align=None):
+    return ds.p(doc, text, bold=bold, italic=italic, size=size, align=align)
+def bullet(text, size=11): return ds.bullet(doc, text, size=size)
+def table(headers, rows, **kw): return ds.table(doc, headers, rows, **kw)
+def box(lines, size=10): return ds.box(doc, lines, size=size)
+def figure(png, caption, width=6.0): return ds.figure(doc, FIG / png, caption, width=width)
+def rule(): return ds.rule(doc)
 
-# ── base style: Times New Roman, black, 1in margins ──────────────────────────
-normal = doc.styles["Normal"]
-normal.font.name = "Times New Roman"
-normal.font.size = Pt(11)
-normal.font.color.rgb = BLACK
-normal.paragraph_format.space_after = Pt(8)
-normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
-
-for name, size in [("Title", 20), ("Heading 1", 15), ("Heading 2", 13), ("Heading 3", 11)]:
-    st = doc.styles[name]
-    st.font.name = "Times New Roman"
-    st.font.size = Pt(size)
-    st.font.bold = True
-    st.font.italic = False
-    st.font.color.rgb = BLACK
-    if st.element.rPr is not None and st.element.rPr.rFonts is not None:
-        st.element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
-
-for s in doc.sections:
-    s.left_margin = s.right_margin = s.top_margin = s.bottom_margin = Inches(1)
-
-
-# ── helpers ───────────────────────────────────────────────────────────────────
-def shade(cell, fill):
-    shd = OxmlElement("w:shd")
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), fill)
-    cell._tc.get_or_add_tcPr().append(shd)
-
-
-def set_borders(tbl, sz=4):
-    borders = OxmlElement("w:tblBorders")
-    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
-        el = OxmlElement(f"w:{edge}")
-        el.set(qn("w:val"), "single")
-        el.set(qn("w:sz"), str(sz))
-        el.set(qn("w:space"), "0")
-        el.set(qn("w:color"), "000000")
-        borders.append(el)
-    tbl._tbl.tblPr.append(borders)
-
-
-def p(text="", bold=False, italic=False, size=11, align=None, space_after=None):
-    par = doc.add_paragraph()
-    if align is not None:
-        par.alignment = align
-    if space_after is not None:
-        par.paragraph_format.space_after = Pt(space_after)
-    if text:
-        r = par.add_run(text)
-        r.bold, r.italic = bold, italic
-        r.font.size = Pt(size)
-        r.font.name = "Times New Roman"
-        r.font.color.rgb = BLACK
-    return par
-
-
-def bullet(text, size=11):
-    par = doc.add_paragraph(style="List Bullet")
-    r = par.add_run(text)
-    r.font.size = Pt(size)
-    r.font.name = "Times New Roman"
-    r.font.color.rgb = BLACK
-    return par
-
-
-def table(headers, rows, size=9.5, widths=None, align_right_from=None):
-    t = doc.add_table(rows=1, cols=len(headers))
-    t.alignment = WD_TABLE_ALIGNMENT.CENTER
-    set_borders(t)
-    for i, htxt in enumerate(headers):
-        c = t.rows[0].cells[i]
-        shade(c, HDR_FILL)
-        c.text = ""
-        par = c.paragraphs[0]
-        par.paragraph_format.space_after = Pt(2)
-        r = par.add_run(htxt)
-        r.bold = True
-        r.font.size = Pt(size)
-        r.font.name = "Times New Roman"
-    for row in rows:
-        cells = t.add_row().cells
-        for i, val in enumerate(row):
-            cells[i].text = ""
-            par = cells[i].paragraphs[0]
-            par.paragraph_format.space_after = Pt(2)
-            if align_right_from is not None and i >= align_right_from:
-                par.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            txt = str(val)
-            bold = txt.startswith("**") and txt.endswith("**")
-            if bold:
-                txt = txt[2:-2]
-            r = par.add_run(txt)
-            r.bold = bold
-            r.font.size = Pt(size)
-            r.font.name = "Times New Roman"
-    if widths:
-        for row in t.rows:
-            for i, w in enumerate(widths):
-                row.cells[i].width = Inches(w)
-    doc.add_paragraph()
-    return t
-
-
-def box(lines, size=10):
-    """Single-cell shaded callout, as used in the 483 worked example."""
-    t = doc.add_table(rows=1, cols=1)
-    t.alignment = WD_TABLE_ALIGNMENT.CENTER
-    set_borders(t, sz=6)
-    c = t.rows[0].cells[0]
-    shade(c, BOX_FILL)
-    c.text = ""
-    par = c.paragraphs[0]
-    for i, (label, txt) in enumerate(lines):
-        if i:
-            par = c.add_paragraph()
-        par.paragraph_format.space_after = Pt(3)
-        if label:
-            r = par.add_run(f"{label}  ")
-            r.bold = True
-            r.font.size = Pt(size)
-            r.font.name = "Times New Roman"
-        r = par.add_run(txt)
-        r.font.size = Pt(size)
-        r.font.name = "Times New Roman"
-    doc.add_paragraph()
-    return t
-
-
-def figure(png, caption, width=6.0):
-    par = doc.add_paragraph()
-    par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    par.paragraph_format.space_after = Pt(4)
-    path = FIG / png
-    if path.exists():
-        par.add_run().add_picture(str(path), width=Inches(width))
-    else:
-        par.add_run("(figure not found)").italic = True
-    cap = doc.add_paragraph()
-    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = cap.add_run(caption)
-    r.italic = True
-    r.font.size = Pt(9)
-    r.font.name = "Times New Roman"
-    r.font.color.rgb = BLACK
-
-
-def rule():
-    par = doc.add_paragraph()
-    par.paragraph_format.space_after = Pt(6)
-    pPr = par._p.get_or_add_pPr()
-    b = OxmlElement("w:pBdr")
-    bot = OxmlElement("w:bottom")
-    bot.set(qn("w:val"), "single")
-    bot.set(qn("w:sz"), "6")
-    bot.set(qn("w:space"), "1")
-    bot.set(qn("w:color"), "000000")
-    b.append(bot)
-    pPr.append(b)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 doc.add_heading("Metformin Analysis: Regenerated Figures and Statistics", 0)
 p("September 10, 2026", italic=True, size=10)
 rule()
@@ -237,10 +78,14 @@ box([("Note on reading these results.",
       "because anything was estimated differently. These should be read fresh rather than "
       "compared line by line against the earlier numbers.")])
 
+p("Group comparisons use a cluster permutation test on NDC. Correlations use a "
+  "Spearman coefficient with an NDC-cluster bootstrap. An earlier version of this document "
+  "reported Figure 4 p-values from a centred bootstrap that is invalid under heavy ties; "
+  "those numbers were wrong and are corrected here.", italic=True, size=9)
+
 p("Significance markers: * p < 0.05, ** p < 0.01, *** p < 0.001. "
-  "Primary specification throughout is the NDC-clustered bootstrap or, for the regression "
-  "models, a random NDC intercept with two-way clustered standard errors on NDC and facility.",
-  italic=True, size=9)
+  "Regression models use a random NDC intercept with two-way clustered standard errors on "
+  "NDC and facility.", italic=True, size=9)
 
 doc.add_page_break()
 
@@ -414,56 +259,70 @@ table(
     size=9, widths=[1.3, 1.4, 1.3, 1.1, 1.3], align_right_from=2,
 )
 
-doc.add_heading("Tests, bootstrap clustered on NDC", 2)
+doc.add_heading("Tests, cluster permutation on NDC", 2)
 table(
-    ["Metric", "Contrast", "n obs", "Clusters", "Kruskal-Wallis p", "Bootstrap p"],
+    ["Metric", "Contrast", "n obs", "Clusters", "Permutation p", "Mann-Whitney p"],
     [
-        ["DMF", "India vs China", "84", "61", "0.064", "0.081"],
-        ["DMF", "India vs USA", "79", "59", "0.064", "**0.038 ***"],
-        ["DMF", "China vs USA", "29", "20", "0.064", "0.708"],
-        ["NDMA", "India vs China", "48", "40", "0.086", "**0.025 ***"],
-        ["NDMA", "India vs USA", "42", "37", "0.086", "**0.0005 *****"],
-        ["NDMA", "China vs USA", "20", "17", "0.086", "**0.033 ***"],
-        ["Diff. Factor", "India vs China", "17", "17", "0.769", "0.736"],
+        ["DMF", "India vs China", "84", "61", "0.192", "0.089"],
+        ["DMF", "India vs USA", "79", "59", "0.108", "0.062"],
+        ["DMF", "China vs USA", "29", "20", "0.714", "0.702"],
+        ["NDMA", "India vs China", "48", "40", "0.121", "0.101"],
+        ["NDMA", "India vs USA", "42", "37", "0.175", "0.119"],
+        ["NDMA", "China vs USA", "20", "17", "1.000", "0.529"],
+        ["Diff. Factor", "India vs China", "17", "17", "0.760", "0.777"],
     ],
-    size=9, widths=[0.9, 1.4, 0.6, 0.7, 1.2, 0.9], align_right_from=2,
+    size=9, widths=[0.9, 1.4, 0.6, 0.7, 1.2, 1.1], align_right_from=2,
 )
+
+p("Kruskal-Wallis across all three countries: DMF p = 0.064, NDMA p = 0.086, "
+  "Difference Factor p = 0.769. None significant.")
+
+box([("These p-values are corrected.",
+      "An earlier run reported NDMA India versus USA at p = 0.0005, India versus China at "
+      "0.025 and China versus USA at 0.033, and DMF India versus USA at 0.038. Those came "
+      "from a centred-bootstrap approximation that breaks down when the data are dominated "
+      "by ties, which NDMA is: 44 of 55 observations are exactly zero. Section 6 of the "
+      "pipeline changes document explains the bug. The figures themselves are unchanged; "
+      "only the significance testing was wrong.")])
 
 p("Regression, log1p(metric) on country, reference United States:", bold=True)
 table(
     ["Metric", "n obs", "NDCs", "FEIs", "India beta (SE)", "p", "China beta (SE)", "p"],
     [
         ["DMF", "93", "67", "22", "+1.845 (1.818)", "0.313", "-0.152 (1.669)", "0.928"],
-        ["NDMA", "55", "47", "14", "**+1.174 (0.464)**", "**0.014 ***", "+0.309 (0.287)", "0.286"],
-        ["Diff. Factor", "19", "19", "n/a", "**+0.079 (0.034)**", "**0.036 ***", "+0.058 (0.059)", "0.341"],
+        ["NDMA", "55", "47", "14", "+1.174 (0.464)", "**0.014 ***", "+0.309 (0.287)", "0.286"],
+        ["Diff. Factor", "19", "19", "n/a", "+0.079 (0.034)", "**0.036 ***", "+0.058 (0.059)", "0.341"],
     ],
     size=9, widths=[0.95, 0.55, 0.5, 0.5, 1.25, 0.6, 1.25, 0.55], align_right_from=1,
 )
 
 doc.add_heading("What it shows", 2)
-p("This is where the new sample matters most. Indian-manufactured product carries higher "
-  "measured impurities than US-manufactured product, and for NDMA the result is strong: "
-  "India versus USA at p = 0.0005 in the clustered bootstrap, and a regression coefficient "
-  "of +1.17 on the log scale with p = 0.014. All three NDMA country contrasts are "
-  "significant. For DMF, India versus USA reaches p = 0.038 in the bootstrap, though the "
-  "regression coefficient is not significant once the NDC random effect absorbs "
-  "between-product variance.")
+p("No statistically significant difference in measured impurity between India, China and "
+  "the United States. Every pairwise permutation test is above 0.10 and the omnibus "
+  "Kruskal-Wallis tests are not significant either.")
 
-p("Two things temper this. The omnibus Kruskal-Wallis tests are not significant (p = 0.064 "
-  "for DMF, p = 0.086 for NDMA), so the pairwise bootstrap results are doing the work. And "
-  "the US and China cells are small: 12 and 17 observations for DMF, 7 and 13 for NDMA, "
-  "and only 2 US observations for Difference Factor, which is too few to interpret.")
+p("The descriptive gap is nonetheless large and worth describing. Indian product has a mean "
+  "DMF of 17,600 against 2,620 for US product, and a mean NDMA of 29.4 against 0. What the "
+  "tests say is that with 12 US and 17 Chinese DMF observations, and 7 US and 13 Chinese "
+  "NDMA observations, this sample cannot establish that the gap is more than sampling "
+  "variation.")
 
-p("The NDMA medians are all zero in every country. The country difference is in the upper "
-  "tail, not the typical product, and the mean of 29.4 for India against 0 for the US "
-  "reflects a subset of Indian products with detectable NDMA rather than a shift in the "
-  "whole distribution. That is a meaningful finding but it should be described as such "
-  "rather than as Indian product being generally more contaminated.")
+p("The NDMA comparison deserves particular care. All three country medians are zero. The "
+  "entire difference sits in how many products register any detectable NDMA at all: 10 of "
+  "35 Indian observations, 1 of 13 Chinese, 0 of 7 US. Framed as a detection rate that is a "
+  "clear descriptive contrast, but Fisher's exact test on 10 of 35 against 0 of 7 gives "
+  "p = 0.168. Seven US observations cannot carry a claim about US manufacturing.")
 
-box([("This result moved with the new sample.",
-      "Under the previous sample these country contrasts were weaker. The change comes from "
-      "the composition of the sample, not from any change in method, so the finding needs to "
-      "be presented on its own terms rather than as a strengthening of an earlier result.")])
+p("The two regression coefficients that do reach significance, India on NDMA and India on "
+  "Difference Factor, should be treated cautiously rather than as the headline. The NDMA "
+  "model fits a log1p transform to a variable that is zero in 80 percent of cases, and the "
+  "Difference Factor model rests on 19 observations of which 2 are American.")
+
+box([("Suggested framing.",
+      "Report the descriptive country differences and say plainly that they do not reach "
+      "significance in this sample. That is a defensible finding and it sets up the sample "
+      "size argument for the larger 14-drug analysis. Claiming a significant country effect "
+      "here would not survive a reviewer who asks for the two-by-two table.")])
 
 doc.add_page_break()
 
@@ -510,8 +369,8 @@ table(
         ["Fig 2, DMF vs volume", "rho = +0.23, p = 0.034", "**No, p = 0.30**", "No, p = 0.080"],
         ["Fig 2, NDMA vs volume", "rho = -0.31, p = 0.009", "**No, p = 0.064**", "Yes, p = 0.028"],
         ["Fig 3, price vs quality", "Null, stable", "Yes, still null", "Yes, still null"],
-        ["Fig 4, NDMA by country", "India > USA, p = 0.0005", "Not tested by subset", "Not tested by subset"],
-        ["Fig 4, DMF by country", "India > USA, p = 0.038", "Not tested by subset", "Not tested by subset"],
+        ["Fig 4, NDMA by country", "Not significant, p = 0.175", "Same country either way", "Same country either way"],
+        ["Fig 4, DMF by country", "Not significant, p = 0.108", "Same country either way", "Same country either way"],
     ],
     size=9, widths=[1.7, 1.6, 1.5, 1.5],
 )
@@ -520,16 +379,19 @@ p("Three things to decide before this goes in the paper:", bold=True)
 bullet("Whether Figure 2 leads with the full sample or the single-FEI sample. Both "
        "significant correlations lose significance under the single-FEI restriction, so the "
        "choice materially changes what the paper claims.")
-bullet("Whether the country results in Figure 4 warrant the robustness subsets too. Step 6 "
-       "does not currently produce single-FEI or Gap 36mo variants of Figure 4, and given "
-       "that these are the strongest results in the set, they probably should be checked "
-       "the same way.")
-bullet("How to frame the NDMA country difference given that all three country medians are "
-       "zero. The difference is in the tail and the text should say so.")
+bullet("How to present Figure 4 now that none of the country contrasts are significant. The "
+       "descriptive gap is large and the sample is small, which is an argument for the "
+       "larger 14-drug analysis rather than a null to bury. Single-FEI variants are not "
+       "needed here: every multi-plant NDC has both plants in the same country, so the "
+       "country label is unambiguous regardless of which plant is picked.")
+bullet("Whether the cluster permutation test is the right replacement for the group "
+       "comparisons. It is applied because the old bootstrap produced results refutable "
+       "with a two-by-two table, but the choice is worth confirming.")
 
 p("Files: all figures are in processed/outputs/ as both PNG and PDF, in four variants each "
   "for Figures 1 to 3. The complete statistical output, including tests not reproduced here, "
   "is in step6_run_log_rulebased.txt in the same folder.", italic=True, size=9)
+
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 doc.save(OUT)
