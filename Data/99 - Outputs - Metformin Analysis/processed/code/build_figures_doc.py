@@ -85,15 +85,11 @@ box([("Note on reading these results.",
       "because anything was estimated differently. These should be read fresh rather than "
       "compared line by line against the earlier numbers.")])
 
-p("Group comparisons use a cluster permutation test on NDC. Correlations use a Spearman "
-  "coefficient with an NDC-cluster bootstrap. The pairwise country comparisons previously "
-  "used a centred bootstrap that is invalid when the data are dominated by ties; that test "
-  "has been replaced and the affected numbers are corrected here. Regression models are "
-  "unchanged and unaffected.", italic=True, size=9)
-
-p("Significance markers: * p < 0.05, ** p < 0.01, *** p < 0.001. "
-  "Regression models use a random NDC intercept with two-way clustered standard errors on "
-  "NDC and facility.", italic=True, size=9)
+p("Methods. Group comparisons use a cluster permutation test on NDC, with Mann-Whitney "
+  "reported alongside. Correlations use a Spearman coefficient with an NDC-cluster "
+  "bootstrap, 2,000 resamples. Regression models use a random NDC intercept with two-way "
+  "clustered standard errors on NDC and facility. Significance markers: * p < 0.05, "
+  "** p < 0.01, *** p < 0.001.", italic=True, size=9)
 
 doc.add_page_break()
 
