@@ -36,8 +36,17 @@ p("Three things changed in the Metformin pipeline. The NDC to FEI map is now bui
   "the analysis. Facilities with no Redica inspection history are out of the analysis. "
   "All six steps have been re-run and every figure has been regenerated.")
 
-p("There is also one open item at the end: a facility the new method found that we "
-  "have no Redica data for, which we may want to request.")
+p("Two further items came out of the work. The prior-inspection logic was audited directly, "
+  "because an earlier version of this code had once attributed the wrong inspection history "
+  "to facilities. That logic is correct, but the audit turned up a separate bug in how "
+  "Figure 4's pairwise significance tests were computed. Section 4 covers both, and confirms "
+  "that the Figure 4 conclusion already circulated to the team still holds. Section 5 raises "
+  "a facility the new method found that we have no Redica data for.")
+
+box([("If you only read one section.",
+      "Section 4. It confirms the inspection-history assignment is correct, documents a "
+      "testing bug in the pairwise country comparisons, and shows that the result previously "
+      "shared with the team survives a properly calibrated test.")])
 
 # ── 1. rule-based map ─────────────────────────────────────────────────────────
 h("1. The NDC to FEI map is now rule-based", 1)
@@ -97,7 +106,7 @@ table(
         ["3002809586", "Sun Pharmaceutical Industries, Halol (India)",
          "62756-0142-01, 62756-0142-02, 62756-0143-01", "Yes"],
         ["3008897678", "Chartwell Pharmaceuticals Congers (USA)",
-         "62135-0680-18, 62135-0683-18", "No, see section 4"],
+         "62135-0680-18, 62135-0683-18", "No, see section 5"],
     ],
 )
 
@@ -225,76 +234,19 @@ p("All 18 figures were regenerated. The full step 6 run log, including every sta
   "test, is saved alongside them as step6_run_log_rulebased.txt.")
 
 p("The statistical results need a fresh read before they go in the paper.", bold=True)
-p("The Figure 1 volume-by-outcome results remain non-significant. The Figure 4 "
-  "country comparison shifts: India vs USA on DMF is now significant under the "
-  "NDC-clustered bootstrap (p=0.038), and all three NDMA country contrasts are now "
-  "significant (India vs China p=0.025, India vs USA p=0.0005, China vs USA p=0.033). "
-  "These moved because the sample changed, not because the method changed, so they "
-  "should be interpreted afresh rather than compared to the old numbers.")
-
-# ── 4. chartwell ──────────────────────────────────────────────────────────────
-h("4. Open item: Chartwell Congers, a facility we have no Redica data for", 1)
-
-p("The Redica pull covers 29 FEIs. All 28 facilities from the manual search are in it, "
-  "so nothing we asked for is missing. The gap runs the other way.")
-
-p("The rule-based map identified Chartwell Pharmaceuticals Congers, LLC, FEI 3008897678, "
-  "as the manufacturer for two NDCs. The manual search never found this facility, so it "
-  "was never included in the request we sent Redica, and we therefore have no inspection "
-  "history for it.")
-
-table(
-    ["Item", "Detail"],
-    [
-        ["FEI", "3008897678"],
-        ["Facility", "Chartwell Pharmaceuticals Congers, LLC"],
-        ["NDCs affected", "62135-0680-18 and 62135-0683-18 (2 NDCs)"],
-        ["Role", "Sole manufacturer for both, so both NDCs drop with the facility"],
-        ["Rows lost", "2 rows in the analysis panel, both TestYear 2024"],
-        ["Current status", "Excluded by REQUIRE_REDICA_HISTORY"],
-    ],
-)
-
-p("Practical impact right now is zero. These same 2 NDCs were already being dropped from "
-  "every figure under the old code, because they were among the 14 no-country rows the "
-  "COUNTRY_ORDER whitelist silently discarded. The difference is that the exclusion is "
-  "now explicit and logged rather than accidental.")
-
-p("If we want them back, we need a Redica top-up request for this single FEI. Whether it "
-  "is worth asking depends on whether two 2024 NDCs are worth a data request. Noting it "
-  "here so the decision is on the record either way.")
-
-p("Sun Pharmaceutical Halol, the other facility the manual search missed, happened to be "
-  "in the Redica pull already, which is why it contributes to the analysis and Chartwell "
-  "does not.")
-
-# ── 5. files ──────────────────────────────────────────────────────────────────
-h("5. Files", 1)
-table(
-    ["File", "Status"],
-    [
-        ["step1_build_ndc_fei_map_rulebased.py", "New. Builds the rule-based map."],
-        ["step1_ndc_fei_map_rulebased.csv", "New. The map now in use."],
-        ["step1_build_ndc_fei_map_manual.py", "Renamed from step1_build_ndc_fei_map.py. Kept for comparison, not in the pipeline."],
-        ["step1_ndc_fei_map_manual.csv", "Renamed from step1_ndc_fei_map.csv."],
-        ["step2_build_panel_july26.py", "Reads the rule-based map. Three exclusion flags and two guard assertions added."],
-        ["step3 / step4 / step5 / step6", "Unchanged code, re-run on the new panel."],
-        ["outputs/step6_run_log_rulebased.txt", "New. Full run log with all statistical output."],
-        ["DESIGN_NOTES.md", "Updated for the rule, the exclusions, and the new counts."],
-    ],
-)
-
-p("Verification note: running step 2 with the manual map and all exclusion flags off "
-  "reproduces the previous panel exactly. The differences reported here come from the map "
-  "change and the exclusions, not from incidental code drift.", italic=True)
+p("Figure 1 remains non-significant, Figure 3 remains a clean null, and Figure 2 keeps "
+  "both of its correlations. Figure 4 is the one that moves, and section 4 explains why: "
+  "part of the movement is a smaller sample and part of it is a testing bug that the audit "
+  "uncovered. The figure-by-figure results and readings are in the companion document, "
+  "20260910_metformin_figures_rulebased.docx.")
 
 # ── 6. figure 4 statistics bug ────────────────────────────────────────────────
-h("6. A statistics bug found while auditing the prior-inspection logic", 1)
+h("4. Audit of the prior-inspection logic, and a statistics bug it turned up", 1)
 
-p("The prior-inspection assignment was audited directly, because an earlier version of "
-  "this code had attributed the wrong inspection history to facilities. That logic is "
-  "correct. The audit did, however, turn up a separate bug in the significance testing "
-  "for Figure 4.")
+p("Two separate questions are answered here. First, is the right inspection history being "
+  "attached to each product? Yes. Second, are the significance tests behind Figure 4 sound? "
+  "The pairwise ones were not, and are now fixed. The regression results, which are what the "
+  "team was shown, are sound and are confirmed below.")
 
 p("The prior-inspection logic checks out.", bold=True)
 p("Every (NDC, test year) row was re-derived independently from the step 2 panel and the "
@@ -365,7 +317,28 @@ box([("Scope: this affects the pairwise bootstrap only, not the regression model
       "percent zeros. Figure 1's comparisons involve volume, which has almost no ties, and "
       "were null under every method.")])
 
-h("6b. The result previously shared with the team still stands", 1)
+p("The fix.", bold=True)
+p("Group comparisons now use a cluster permutation test, which builds the null directly by "
+  "shuffling the group label across whole clusters and so handles ties correctly. Undefined "
+  "resamples in the bootstrap are counted as zero rather than discarded. The permutation "
+  "test requires clusters to sit entirely within one group, which holds for country (a "
+  "product is made in one country) but not for inspection outcome (a product can be NAI in "
+  "one test year and VAI in another). Where clusters straddle groups the function now "
+  "returns nothing and the Mann-Whitney p is reported instead, rather than producing a "
+  "number that looks authoritative but is not. The old bootstrap p is still printed in "
+  "brackets in the run log for continuity.")
+
+p("Figure 1 is unaffected. Its volume comparisons were null under every method before and "
+  "after, and the bootstrap and Mann-Whitney p-values agree closely there because volume "
+  "has few ties. Figures 2 and 3 use the correlation path rather than the group-comparison "
+  "path and are also unaffected.")
+
+box([("Scope note.",
+      "Changing the test is an analytical decision, not a mechanical fix. It is applied here "
+      "because the old test produced results that a reviewer could refute with a two-by-two "
+      "table, but the choice of replacement is worth confirming before publication.")])
+
+doc.add_heading("The result previously shared with the team still stands", 2)
 
 p("Because the pairwise bootstrap was miscalibrated, the regression result was checked "
   "independently rather than assumed. Country labels were permuted across NDCs and the "
@@ -396,34 +369,72 @@ box([("Bottom line for the team.",
       "marginal rather than significant, which is a sample-size argument for the broader "
       "14-drug analysis rather than a correction to anything already sent.")])
 
-p("The fix.", bold=True)
-p("Group comparisons now use a cluster permutation test, which builds the null directly by "
-  "shuffling the group label across whole clusters and so handles ties correctly. Undefined "
-  "resamples in the bootstrap are counted as zero rather than discarded. The permutation "
-  "test requires clusters to sit entirely within one group, which holds for country (a "
-  "product is made in one country) but not for inspection outcome (a product can be NAI in "
-  "one test year and VAI in another). Where clusters straddle groups the function now "
-  "returns nothing and the Mann-Whitney p is reported instead, rather than producing a "
-  "number that looks authoritative but is not. The old bootstrap p is still printed in "
-  "brackets in the run log for continuity.")
 
-p("Figure 1 is unaffected. Its volume comparisons were null under every method before and "
-  "after, and the bootstrap and Mann-Whitney p-values agree closely there because volume "
-  "has few ties. Figures 2 and 3 use the correlation path rather than the group-comparison "
-  "path and are also unaffected.")
+# ── 4. chartwell ──────────────────────────────────────────────────────────────
+h("5. Open item: Chartwell Congers, a facility we have no Redica data for", 1)
 
-box([("Scope note.",
-      "Changing the test is an analytical decision, not a mechanical fix. It is applied here "
-      "because the old test produced results that a reviewer could refute with a two-by-two "
-      "table, but the choice of replacement is worth confirming before publication.")])
+p("The Redica pull covers 29 FEIs. All 28 facilities from the manual search are in it, "
+  "so nothing we asked for is missing. The gap runs the other way.")
+
+p("The rule-based map identified Chartwell Pharmaceuticals Congers, LLC, FEI 3008897678, "
+  "as the manufacturer for two NDCs. The manual search never found this facility, so it "
+  "was never included in the request we sent Redica, and we therefore have no inspection "
+  "history for it.")
+
+table(
+    ["Item", "Detail"],
+    [
+        ["FEI", "3008897678"],
+        ["Facility", "Chartwell Pharmaceuticals Congers, LLC"],
+        ["NDCs affected", "62135-0680-18 and 62135-0683-18 (2 NDCs)"],
+        ["Role", "Sole manufacturer for both, so both NDCs drop with the facility"],
+        ["Rows lost", "2 rows in the analysis panel, both TestYear 2024"],
+        ["Current status", "Excluded by REQUIRE_REDICA_HISTORY"],
+    ],
+)
+
+p("Practical impact right now is zero. These same 2 NDCs were already being dropped from "
+  "every figure under the old code, because they were among the 14 no-country rows the "
+  "COUNTRY_ORDER whitelist silently discarded. The difference is that the exclusion is "
+  "now explicit and logged rather than accidental.")
+
+p("If we want them back, we need a Redica top-up request for this single FEI. Whether it "
+  "is worth asking depends on whether two 2024 NDCs are worth a data request. Noting it "
+  "here so the decision is on the record either way.")
+
+p("Sun Pharmaceutical Halol, the other facility the manual search missed, happened to be "
+  "in the Redica pull already, which is why it contributes to the analysis and Chartwell "
+  "does not.")
 
 # ── 7. figure labels ──────────────────────────────────────────────────────────
-h("7. Figure axis labels", 1)
+h("6. Figure axis labels", 1)
 p("The Figure 1 axis labels no longer show the numeric severity scores. The categories now "
   "read NAI, VAI and OAI rather than NAI (0), VAI (1.5) and OAI (3.5), and the axis title is "
   "Prior Inspection Outcome rather than Prior Inspection Outcome (prior_score). The scores "
   "remain in the underlying data as prior_score; they are simply no longer displayed.")
 
+
+# %%
+
+# ── 5. files ──────────────────────────────────────────────────────────────────
+h("7. Files", 1)
+table(
+    ["File", "Status"],
+    [
+        ["step1_build_ndc_fei_map_rulebased.py", "New. Builds the rule-based map."],
+        ["step1_ndc_fei_map_rulebased.csv", "New. The map now in use."],
+        ["step1_build_ndc_fei_map_manual.py", "Renamed from step1_build_ndc_fei_map.py. Kept for comparison, not in the pipeline."],
+        ["step1_ndc_fei_map_manual.csv", "Renamed from step1_ndc_fei_map.csv."],
+        ["step2_build_panel_july26.py", "Reads the rule-based map. Three exclusion flags and two guard assertions added."],
+        ["step3 / step4 / step5 / step6", "Unchanged code, re-run on the new panel."],
+        ["outputs/step6_run_log_rulebased.txt", "New. Full run log with all statistical output."],
+        ["DESIGN_NOTES.md", "Updated for the rule, the exclusions, and the new counts."],
+    ],
+)
+
+p("Verification note: running step 2 with the manual map and all exclusion flags off "
+  "reproduces the previous panel exactly. The differences reported here come from the map "
+  "change and the exclusions, not from incidental code drift.", italic=True)
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 doc.save(OUT)

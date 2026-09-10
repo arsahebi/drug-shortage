@@ -38,12 +38,19 @@ doc.add_heading("Metformin Analysis: Regenerated Figures and Statistics", 0)
 p("September 10, 2026", italic=True, size=10)
 rule()
 
-p("Every figure in this document was regenerated after two changes to the pipeline: "
-  "the NDC to FEI map is now built by a rule rather than by manual search, and two "
-  "sample exclusions now apply to the whole analysis. The changes themselves are "
-  "documented separately in 20260910_metformin_pipeline_changes.docx. This document "
-  "shows what the figures look like now, the statistics behind each one, and a short "
-  "reading of what each shows.")
+p("Every figure here was regenerated after two changes to the pipeline: the NDC to FEI map "
+  "is now built by a rule rather than by manual search, and two sample exclusions now apply "
+  "to the whole analysis. The changes themselves, and an audit of the inspection-history "
+  "logic, are documented in the companion file 20260910_metformin_pipeline_changes.docx. "
+  "This document shows what the figures look like now, the statistics behind each one, and "
+  "a short reading of what each shows.")
+
+p("If your reference point is comparison_prerevision_vs_july2026.docx, the last version "
+  "circulated, the headline change is that the sample is smaller and more consistent: 96 "
+  "observations across 70 NDCs, against 148 across 112. The Figure 4 conclusion in that "
+  "document has been re-checked with a properly calibrated test and still holds; it is "
+  "weaker here only because this sample is smaller. Section 4 of the companion file has "
+  "the detail.")
 
 doc.add_heading("Analysis sample", 1)
 
@@ -78,10 +85,11 @@ box([("Note on reading these results.",
       "because anything was estimated differently. These should be read fresh rather than "
       "compared line by line against the earlier numbers.")])
 
-p("Group comparisons use a cluster permutation test on NDC. Correlations use a "
-  "Spearman coefficient with an NDC-cluster bootstrap. An earlier version of this document "
-  "reported Figure 4 p-values from a centred bootstrap that is invalid under heavy ties; "
-  "those numbers were wrong and are corrected here.", italic=True, size=9)
+p("Group comparisons use a cluster permutation test on NDC. Correlations use a Spearman "
+  "coefficient with an NDC-cluster bootstrap. The pairwise country comparisons previously "
+  "used a centred bootstrap that is invalid when the data are dominated by ties; that test "
+  "has been replaced and the affected numbers are corrected here. Regression models are "
+  "unchanged and unaffected.", italic=True, size=9)
 
 p("Significance markers: * p < 0.05, ** p < 0.01, *** p < 0.001. "
   "Regression models use a random NDC intercept with two-way clustered standard errors on "
@@ -248,15 +256,18 @@ figure("Figure4_Quality_by_Country.png",
 
 doc.add_heading("Group means", 2)
 table(
-    ["Metric", "Years", "India", "China", "United States"],
+    ["Metric", "Years", "Statistic", "India", "China", "United States"],
     [
-        ["DMF, mean", "2020, 2022, 2024", "17,600 (n=67)", "3,470 (n=17)", "2,620 (n=12)"],
-        ["DMF, median", "", "5,850", "1,910", "386"],
-        ["NDMA, mean", "2020, 2022", "29.4 (n=35)", "2.04 (n=13)", "0 (n=7)"],
-        ["NDMA, median", "", "0", "0", "0"],
-        ["Diff. Factor, mean", "2024", "0.251 (n=13)", "0.220 (n=4)", "0.150 (n=2)"],
+        ["DMF", "2020, 2022, 2024", "Mean", "17,600", "3,470", "2,620"],
+        ["DMF", "2020, 2022, 2024", "Median", "5,850", "1,910", "386"],
+        ["DMF", "2020, 2022, 2024", "n", "67", "17", "12"],
+        ["NDMA", "2020, 2022", "Mean", "29.4", "2.04", "0"],
+        ["NDMA", "2020, 2022", "Median", "0", "0", "0"],
+        ["NDMA", "2020, 2022", "n", "35", "13", "7"],
+        ["Difference Factor", "2024", "Mean", "0.251", "0.220", "0.150"],
+        ["Difference Factor", "2024", "n", "13", "4", "2"],
     ],
-    size=9, widths=[1.3, 1.4, 1.3, 1.1, 1.3], align_right_from=2,
+    size=9, widths=[1.2, 1.3, 0.8, 0.9, 0.8, 1.1], align_right_from=3,
 )
 
 doc.add_heading("Tests, cluster permutation on NDC", 2)
@@ -278,7 +289,7 @@ p("Kruskal-Wallis across all three countries: DMF p = 0.064, NDMA p = 0.086, "
   "Difference Factor p = 0.769. None significant.")
 
 box([("These pairwise p-values are corrected.",
-      "An earlier run reported NDMA India versus USA at p = 0.0005, India versus China at "
+      "The first run of this pipeline reported NDMA India versus USA at p = 0.0005, India versus China at "
       "0.025 and China versus USA at 0.033, and DMF India versus USA at 0.038. Those came "
       "from a centred-bootstrap approximation that breaks down when the data are dominated "
       "by ties, which NDMA is: 44 of 55 observations are exactly zero. Measured against "
@@ -375,14 +386,14 @@ doc.add_page_break()
 doc.add_heading("Summary across figures", 1)
 
 table(
-    ["Figure", "Finding", "Holds under single-FEI?", "Holds under Gap 36mo?"],
+    ["Figure", "Finding", "Under single-FEI", "Under Gap 36mo"],
     [
         ["Fig 1, volume by outcome", "Null, stable", "Yes, still null", "Yes, still null"],
         ["Fig 2, DMF vs volume", "rho = +0.23, p = 0.034", "**No, p = 0.30**", "No, p = 0.080"],
         ["Fig 2, NDMA vs volume", "rho = -0.31, p = 0.009", "**No, p = 0.064**", "Yes, p = 0.028"],
         ["Fig 3, price vs quality", "Null, stable", "Yes, still null", "Yes, still null"],
-        ["Fig 4, NDMA by country", "Marginal, regression p = 0.076", "Same country either way", "Same country either way"],
-        ["Fig 4, DMF by country", "Not significant, p = 0.108", "Same country either way", "Same country either way"],
+        ["Fig 4, NDMA by country", "Marginal, regression p = 0.076", "Not applicable", "Not applicable"],
+        ["Fig 4, DMF by country", "Not significant, p = 0.108", "Not applicable", "Not applicable"],
     ],
     size=9, widths=[1.7, 1.6, 1.5, 1.5],
 )
@@ -391,11 +402,12 @@ p("Three things to decide before this goes in the paper:", bold=True)
 bullet("Whether Figure 2 leads with the full sample or the single-FEI sample. Both "
        "significant correlations lose significance under the single-FEI restriction, so the "
        "choice materially changes what the paper claims.")
-bullet("How to present Figure 4 now that none of the country contrasts are significant. The "
-       "descriptive gap is large and the sample is small, which is an argument for the "
-       "larger 14-drug analysis rather than a null to bury. Single-FEI variants are not "
-       "needed here: every multi-plant NDC has both plants in the same country, so the "
-       "country label is unambiguous regardless of which plant is picked.")
+bullet("How to present Figure 4, where the pairwise rank tests are null but the India NDMA "
+       "regression coefficient is marginal at a permutation p of 0.076, having been "
+       "significant in the larger earlier sample. The descriptive gap is large and the "
+       "sample is small, which is an argument for the 14-drug analysis rather than a null "
+       "to bury. Single-FEI variants are not needed here: every multi-plant NDC has both "
+       "plants in the same country, so the country label is unambiguous either way.")
 bullet("Whether the cluster permutation test is the right replacement for the group "
        "comparisons. It is applied because the old bootstrap produced results refutable "
        "with a two-by-two table, but the choice is worth confirming.")
