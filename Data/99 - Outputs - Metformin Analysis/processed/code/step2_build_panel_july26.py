@@ -8,7 +8,7 @@ per (NDC × FEI × inspection event).
 
 Sources
 -------
-  step1_ndc_fei_map.csv                         — NDC→FEI map
+  step1_ndc_fei_map_rulebased.csv               — NDC→FEI map (manufacture-only rule)
   MetfrmoinValisure_FEI_RedicaID_Mapping_...    — Redica ID ↔ FEI
   MetfrmoinValisure_Red_Flag_Events_...         — inspection events
   Q&As1234_v8_v02.xlsx Sheet1                   — firm / strength / country fallback
@@ -33,7 +33,7 @@ import pandas as pd
 from pathlib import Path
 
 BASE     = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-STEP1    = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map.csv"
+STEP1    = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.csv"
 QA_FILE  = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
 RAW      = BASE / "Data/07 - Redica/raw"
 FEI_MAP  = RAW  / "MetfrmoinValisure_FEI_RedicaID_Mapping_RedicaJuly26.xlsx"

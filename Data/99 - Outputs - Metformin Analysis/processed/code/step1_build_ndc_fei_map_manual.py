@@ -12,7 +12,7 @@ Two-step algorithm using only col H and col I from the Q&A tab:
           Look up that key in the col H map to get FEI(s).
           Emit one row per unique (NDC11, FEI) pair.
 
-Output: step1_ndc_fei_map.csv
+Output: step1_ndc_fei_map_manual.csv (superseded by step1_build_ndc_fei_map_rulebased.py)
   NDC, NDC11, NDC8, FEI, fei_count, facility_distance_km
 """
 
@@ -25,7 +25,7 @@ from pathlib import Path
 
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 QA_FILE = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
-OUT     = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map.csv"
+OUT     = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_manual.csv"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 def clean_fei(x) -> Optional[str]:

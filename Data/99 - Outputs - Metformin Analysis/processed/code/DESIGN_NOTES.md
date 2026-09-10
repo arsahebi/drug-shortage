@@ -23,7 +23,7 @@ We build a panel linking every Metformin NDC ever independently tested by Valisu
 
 ---
 
-## Step 1 — NDC → FEI mapping (`step1_ndc_fei_map.csv`)
+## Step 1 — NDC → FEI mapping (`step1_ndc_fei_map_rulebased.csv`)
 
 **Goal:** For every Metformin NDC11, identify the manufacturing facility (FEI).
 
@@ -47,6 +47,31 @@ We build a panel linking every Metformin NDC ever independently tested by Valisu
 **Outputs:** 112 NDC11s → 28 unique FEIs; 23 NDC11s have null FEI (13 "Not Applicable", 10 multi-source with no resolution).
 
 `facility_distance_km`: Euclidean distance from facility to nearest US port of entry (for import analysis; not used in primary models).
+
+### Rule-based replacement (Sept 2026) — current map
+
+The manual map above is superseded by `step1_ndc_fei_map_rulebased.csv`, built by
+`step1_build_ndc_fei_map_rulebased.py` from `step1_ndc_fei_map_rulebased.xlsx`.
+The manual version is retained as `step1_ndc_fei_map_manual.csv`
+(`step1_build_ndc_fei_map_manual.py`) for comparison only; step 2 now reads the
+rule-based file.
+
+**Rule:** join the NDC universe (tab 1, keyed on `ndc_9` = 5-4 labeler-product) to the
+DailyMed establishment-operation table (tab 2), and keep an FEI **only when
+`opr_type == "manufacture"`**. Analysis, pack, label, repack and relabel sites are
+dropped — they are not the facility whose inspection history should be attributed to
+the product. Tab 1 col D `manufacture found` is a flag for exactly this condition and
+was verified to agree with the tab-2 filter for all 112 NDCs. Tab 3 "Manufacture Only"
+is tab 2 pre-filtered the same way and is not read.
+
+**fei_count categories** under the rule: `Single - Manufacture`, `Multi FEI - Manufacture`,
+`Not Applicable`. `facility_distance_km` has no rule-based equivalent and is empty; the
+column is kept so step 2's schema is unchanged.
+
+**Outputs:** 112 NDC11s (same universe) → 26 unique FEIs; 77 NDC11s with an FEI,
+35 with none (28 have no DailyMed establishment linkage at all, 7 have only
+non-manufacture operations). One FEI (3008897678, Chartwell Congers) is not in the
+Redica FEI mapping, so it carries no inspection history downstream.
 
 ---
 
