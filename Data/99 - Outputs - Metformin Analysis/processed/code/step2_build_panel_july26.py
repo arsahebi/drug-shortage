@@ -22,6 +22,14 @@ Output columns (matching Q&A layout)
   483, No 483, NAI, VAI, OAI                     (Q&A cols Y–AC)
   Inspections per Year                           (Q&A col AD)
 
+Sample exclusions (applied here, inherited by steps 3-6)
+--------------------------------------------------------
+  1. Canada and Bangladesh facilities are dropped from the entire analysis.
+  2. Facilities with no Redica inspection history are dropped from the entire
+     analysis, as are NDCs that have no FEI at all.
+Both apply to every downstream figure, including those not about country or
+inspection history, so that all reported results describe one constant sample.
+
 Output: step2_panel_july26.csv
 """
 
@@ -39,6 +47,13 @@ RAW      = BASE / "Data/07 - Redica/raw"
 FEI_MAP  = RAW  / "MetfrmoinValisure_FEI_RedicaID_Mapping_RedicaJuly26.xlsx"
 EVENTS   = RAW  / "MetfrmoinValisure_Red_Flag_Events_RedicaJuly26.xlsx"
 OUT      = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv"
+
+# ── Sample exclusions (apply to the ENTIRE analysis, every downstream figure) ──
+# Enforced here in step 2 so steps 3-6 inherit one filtered panel and every
+# reported result describes the same sample. Do not re-filter per figure.
+EXCLUDE_COUNTRIES     = {"Canada", "Bangladesh"}   # drop these facilities outright
+REQUIRE_REDICA_HISTORY = True   # drop FEIs with no Redica inspection events
+DROP_NDCS_WITHOUT_FEI  = True   # same logic: an NDC with no FEI has no history either
 
 COUNTRY_MAP = {
     "India": "IND", "China": "CHN", "United States": "USA",
@@ -169,6 +184,20 @@ for (fei, site_name, end_dt), grp in df_fda.groupby(
 df_insp = pd.DataFrame(insp_rows)
 print(f"  {len(df_insp)} inspection events across {df_insp['FEI'].nunique()} FEIs")
 
+# ── 2b. EXCLUSION 1 — drop Canada / Bangladesh facilities ────────────────────
+excluded_feis = {f for f, c in fei_to_country.items() if c in EXCLUDE_COUNTRIES}
+if excluded_feis:
+    print(f"\nEXCLUSION 1 — {sorted(EXCLUDE_COUNTRIES)} facilities dropped:")
+    for f in sorted(excluded_feis):
+        n = (df_insp["FEI"] == f).sum()
+        print(f"  {f}  {fei_to_country[f]:<12} {fei_to_site.get(f, '')}  ({n} events)")
+    df_insp = df_insp[~df_insp["FEI"].isin(excluded_feis)].reset_index(drop=True)
+    for f in excluded_feis:
+        fei_to_site.pop(f, None)
+        fei_to_country.pop(f, None)
+        fei_to_country_code.pop(f, None)
+    print(f"  -> {len(df_insp)} events across {df_insp['FEI'].nunique()} FEIs remain")
+
 # ── 3. Inspections per Year per FEI ──────────────────────────────────────────
 print("Computing Inspections per Year...")
 insp_stats = (
@@ -207,6 +236,22 @@ hist_feis = set(df_insp["FEI"].dropna())
 with_hist = meta[meta["FEI"].notna() & meta["FEI"].isin(hist_feis)]
 no_hist   = meta[meta["FEI"].notna() & ~meta["FEI"].isin(hist_feis)].copy()
 no_fei    = meta[meta["FEI"].isna()].copy()
+
+# ── EXCLUSION 2 — facilities with no Redica inspection history ───────────────
+# Includes FEIs dropped by EXCLUSION 1, since they are no longer in df_insp.
+if REQUIRE_REDICA_HISTORY and len(no_hist):
+    dropped = sorted(no_hist["FEI"].dropna().unique())
+    print(f"\nEXCLUSION 2 — {len(dropped)} FEI(s) with no Redica history dropped "
+          f"({no_hist['NDC11'].nunique()} NDC11s affected):")
+    for f in dropped:
+        why = "excluded country" if f in excluded_feis else "no Redica events"
+        print(f"  {f}  ({why})  NDCs: {sorted(no_hist[no_hist['FEI'] == f]['NDC11'].unique())}")
+    no_hist = no_hist.iloc[0:0]
+
+# Same logic applied to NDCs that never had an FEI: no facility, no history.
+if DROP_NDCS_WITHOUT_FEI and len(no_fei):
+    print(f"\nEXCLUSION 2b — {no_fei['NDC11'].nunique()} NDC11(s) with no FEI dropped")
+    no_fei = no_fei.iloc[0:0]
 
 panel_with = with_hist.merge(df_insp, on="FEI", how="left")
 
@@ -271,9 +316,13 @@ panel_out.to_csv(OUT, index=False)
 print(f"\nSaved: {OUT}  ({len(panel_out):,} rows)")
 
 # ── summary ───────────────────────────────────────────────────────────────────
-print(f"\nFEIs in scope : {all_feis.__len__()}")
-print(f"FEIs with inspections : {panel_out[panel_out['EventYear'].notna()]['FEI'].nunique()}")
+print(f"\nFEIs in Redica scope (pre-exclusion) : {len(all_feis)}")
+print(f"FEIs in analysis sample (post-exclusion) : {panel_out['FEI'].nunique()}")
+print(f"NDC11s in analysis sample : {panel_out['NDC11'].nunique()}")
 print(f"Inspection rows : {panel_out['EventYear'].notna().sum()}")
+print(f"Countries in sample : {sorted(panel_out['CountryName'].dropna().unique())}")
+assert not (set(panel_out['CountryName'].dropna()) & EXCLUDE_COUNTRIES), "excluded country leaked into panel"
+assert panel_out['EventYear'].notna().all(), "row without inspection history leaked into panel"
 
 print(f"\nInspection outcome breakdown (NAI/VAI/OAI):")
 insp_rows_dedup = panel_out.dropna(subset=["EventYear"]).drop_duplicates(["FEI","Event End Date"])

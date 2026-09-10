@@ -90,13 +90,33 @@ Redica FEI mapping, so it carries no inspection history downstream.
 - `Inspections per Year`: Redica's annual inspection frequency metric for the facility (constant for all rows of the same FEI)
 - `Site Display Name`: facility name and location as reported by Redica
 
-**NDC11s with null FEI:** kept in the panel with all inspection columns null. They appear in Valisure quality analysis but are excluded from inspection-outcome analysis.
+**Sample exclusions (applied here, inherited by steps 3-6).** Set by the three flags
+at the top of `step2_build_panel_july26.py`. They define one constant analysis sample
+so that every reported figure describes the same set of products and facilities —
+including figures that are not about country or inspection history:
+
+1. `EXCLUDE_COUNTRIES = {"Canada", "Bangladesh"}` — these facilities are dropped
+   outright. Removes Bausch Health Steinbach (3002806613) and Beximco Kaliakair
+   (3008763868).
+2. `REQUIRE_REDICA_HISTORY = True` — an FEI with no Redica inspection event is
+   dropped. Also removes Chartwell Congers (3008897678), which the rule-based step 1
+   added but which has no Redica coverage.
+3. `DROP_NDCS_WITHOUT_FEI = True` — an NDC with no FEI has no facility and therefore
+   no inspection history either, so it is dropped on the same logic. Removes 35 NDC11s.
+
+Two asserts at the end of the script fail the build if an excluded country or a row
+without inspection history reaches the output. Every dropped FEI and NDC is printed
+at run time so the exclusion is auditable.
+
+**NDC11s with null FEI:** dropped, see exclusion 3 above. (Previously kept in the
+panel with null inspection columns; that made the quality/volume figures describe a
+larger sample than the inspection figures.)
 
 **NDC11s with multiple FEIs (25 NDC11s):** one row per FEI × InspectionEvent, so these NDCs have more rows than single-FEI NDCs. Handled in step 5 (see below).
 
 **Recent/unclassified inspections:** Some rows have EventYear > 2024 or have NAI=VAI=OAI=0 (inspection event recorded but outcome not yet classified by Redica). These are retained in the panel but filtered in analysis.
 
-**Output:** 1,131 rows; 112 NDC11s; 28 FEIs.
+**Output:** 554 rows; 70 NDC11s; 23 FEIs; 148 unique inspection events (58 NAI / 75 VAI / 15 OAI). Countries in sample: India, China, USA.
 
 ---
 
