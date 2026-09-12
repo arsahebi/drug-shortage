@@ -126,8 +126,31 @@ doc.add_page_break()
 doc.add_heading("Figure 1. Market outcomes by prior inspection outcome", 1)
 
 figure("Figure1_Market_by_Outcome.png",
-       "Figure 1. Market volume and Medicaid price by the FDA classification of the most "
-       "recent inspection preceding the Valisure test. Full sample, n = 93.")
+       "Figure 1. Medicaid price per unit (left) and market volume (right) by the FDA "
+       "classification of the most recent inspection preceding the Valisure test. Full sample.")
+
+p("The two panels rest on different samples, so n is quoted per panel.", bold=True)
+table(
+    ["Panel", "n", "NAI", "VAI", "OAI", "Dropped from the 96-row panel"],
+    [
+        ["Volume (right)", "93", "15", "62", "16",
+         "3 rows with no prior inspection outcome"],
+        ["Price (left)", "90", "15", "59", "16",
+         "the same 3, plus 3 more with no computable price"],
+    ],
+    size=9, widths=[1.2, 0.4, 0.4, 0.4, 0.4, 2.6], align_right_from=1,
+)
+bullet("Volume, 96 to 93. The 3 dropped are Harman Finochem's 23155-0841-05, 23155-0842-05 "
+       "and 23155-0843-05, all test year 2024. That facility does have Redica history, but its "
+       "only inspection falls in 2024 itself, and a prior inspection must precede the test "
+       "year, so there is no outcome to place them under. Those 3 rows are the only "
+       "observations for those 3 NDCs, so the NDC count falls from 70 to 67.", size=10)
+bullet("Price, 93 to 90. All 3 further losses are in the VAI group, which is why VAI reads 62 "
+       "on the right and 59 on the left. They are 11788-0037-60, 11788-0038-60 and "
+       "42806-0405-60, all test year 2020. The cause is not the outlier rule: price is "
+       "Medicaid amount reimbursed divided by units reimbursed, and all three have zero units "
+       "reimbursed in 2020, so no price can be computed. They have IQVIA volume, which is why "
+       "they survive on the right.", size=10)
 
 doc.add_heading("Descriptive volume, IQVIA extended units", 2)
 table(
@@ -140,30 +163,62 @@ table(
     widths=[1.1, 0.5, 1.3, 1.2, 1.1, 1.2], align_right_from=1,
 )
 
-doc.add_heading("Tests", 2)
+doc.add_heading("Tests, volume (right panel)", 2)
 table(
     ["Test", "Contrast", "n obs", "Clusters", "p"],
     [
         ["Kruskal-Wallis", "All three groups", "93", "n/a", "0.169"],
-        ["Bootstrap, NDC-clustered", "NAI vs VAI", "77", "60", "0.124"],
-        ["Bootstrap, NDC-clustered", "NAI vs OAI", "31", "23", "0.966"],
-        ["Bootstrap, NDC-clustered", "VAI vs OAI", "78", "60", "0.217"],
-        ["Bootstrap, FEI-clustered", "NAI vs VAI", "77", "20", "0.363"],
-        ["Bootstrap, FEI-clustered", "VAI vs OAI", "78", "20", "0.540"],
+        ["Pairwise, NDC-clustered", "NAI vs VAI", "77", "60", "0.101"],
+        ["Pairwise, NDC-clustered", "NAI vs OAI", "31", "23", "0.972"],
+        ["Pairwise, NDC-clustered", "VAI vs OAI", "78", "60", "0.209"],
+        ["Pairwise, FEI-clustered", "NAI vs VAI", "77", "20", "0.101"],
+        ["Pairwise, FEI-clustered", "VAI vs OAI", "78", "20", "0.209"],
     ],
     widths=[1.9, 1.5, 0.7, 0.8, 0.7], align_right_from=2,
 )
 
-p("Regression, log volume on prior outcome, reference NAI:", bold=True)
+doc.add_heading("Descriptive price, Medicaid dollars per unit", 2)
+p("Outliers above $50 per unit are excluded.", italic=True, size=9)
+table(
+    ["Prior outcome", "n", "Mean", "Median", "P25", "P75"],
+    [
+        ["NAI", "15", "0.5973", "0.0935", "0.0777", "0.1513"],
+        ["VAI", "59", "0.3187", "0.1120", "0.0965", "0.2053"],
+        ["OAI", "16", "0.2847", "0.0884", "0.0716", "0.1480"],
+    ],
+    widths=[1.1, 0.5, 1.0, 1.0, 1.0, 1.0], align_right_from=1,
+)
+
+doc.add_heading("Tests, price (left panel)", 2)
+p("These are new. The left panel previously carried descriptive statistics only, with no "
+  "test of any kind, so the figure reported significance on one axis and not the other.",
+  italic=True, size=9)
+table(
+    ["Test", "Contrast", "n obs", "Clusters", "p"],
+    [
+        ["Kruskal-Wallis", "All three groups", "90", "n/a", "0.153"],
+        ["Dunn, Bonferroni", "VAI vs OAI", "75", "n/a", "0.218"],
+        ["Pairwise, NDC-clustered", "NAI vs VAI", "74", "57", "0.307"],
+        ["Pairwise, NDC-clustered", "NAI vs OAI", "31", "23", "0.762"],
+        ["Pairwise, NDC-clustered", "VAI vs OAI", "75", "57", "0.065"],
+        ["Pairwise, FEI-clustered", "NAI vs OAI", "31", "8", "0.843"],
+    ],
+    widths=[1.9, 1.5, 0.7, 0.8, 0.7], align_right_from=2,
+)
+
+p("Regression, log volume and log price on prior outcome, reference NAI:", bold=True)
 table(
     ["Specification", "n obs", "NDCs", "FEIs", "VAI beta (SE)", "p", "OAI beta (SE)", "p"],
     [
-        ["Full sample", "93", "67", "22", "-0.506 (1.100)", "0.647", "+0.177 (1.471)", "0.905"],
-        ["Single-FEI", "76", "56", "18", "-0.447 (1.096)", "0.685", "+0.028 (1.266)", "0.982"],
-        ["Gap 36mo", "67", "53", "18", "-0.491 (0.972)", "0.615", "+0.103 (1.339)", "0.939"],
-        ["Single-FEI + Gap", "50", "42", "14", "-0.489 (1.051)", "0.644", "-0.343 (1.233)", "0.782"],
+        ["Volume, full sample", "93", "67", "22", "-0.506 (1.100)", "0.647", "+0.177 (1.471)", "0.905"],
+        ["Volume, single-FEI", "76", "56", "18", "-0.447 (1.096)", "0.685", "+0.028 (1.266)", "0.982"],
+        ["Volume, Gap 36mo", "67", "53", "18", "-0.491 (0.972)", "0.615", "+0.103 (1.339)", "0.939"],
+        ["Volume, single-FEI + Gap", "50", "42", "14", "-0.489 (1.051)", "0.644", "-0.343 (1.233)", "0.782"],
+        ["Price, full sample", "90", "64", "21", "-0.151 (0.734)", "0.838", "-0.491 (0.817)", "0.550"],
+        ["Price, single-FEI", "73", "53", "17", "-0.159 (0.712)", "0.823", "+0.266 (0.909)", "0.771"],
+        ["Price, Gap 36mo", "64", "50", "17", "-0.294 (0.879)", "0.739", "-0.586 (0.987)", "0.555"],
     ],
-    size=9, widths=[1.3, 0.55, 0.5, 0.5, 1.15, 0.55, 1.15, 0.55], align_right_from=1,
+    size=9, widths=[1.5, 0.5, 0.45, 0.45, 1.1, 0.5, 1.1, 0.5], align_right_from=1,
 )
 
 doc.add_heading("What it shows", 2)
@@ -179,10 +234,21 @@ p("The descriptive means look odd at first glance, with OAI products having the 
   "throughout (0.70 to 0.85), meaning most of the variance in volume is between products "
   "rather than within them, which is what limits the power of this test.")
 
+p("Price behaves the same way. The Kruskal-Wallis test across the three groups gives "
+  "p = 0.153, no pairwise comparison clears 0.05, and the regression coefficients are small "
+  "against their standard errors in all three specifications. So neither what a drug sells "
+  "for nor how much of it sells tracks the inspection outcome of the plant that made it.")
+
+p("One contrast is worth naming rather than leaving buried: VAI versus OAI on price reaches "
+  "p = 0.065, the closest anything in this figure comes to significance. The direction is that "
+  "OAI product is cheaper than VAI product, median $0.088 against $0.112. With 16 OAI "
+  "observations it is not something to build on, but it is the one signal here that would be "
+  "worth revisiting in the larger 14-drug sample.")
+
 box([("Read this as a null result, not a weak one.",
-      "With 16 OAI observations the test is underpowered for small effects, but the "
+      "With 16 OAI observations the tests are underpowered for small effects, but the "
       "estimates are near zero rather than large and imprecise. There is no evidence here "
-      "that inspection outcomes track market size.")])
+      "that inspection outcomes track either market size or price.")])
 
 doc.add_page_break()
 
@@ -414,6 +480,7 @@ table(
     ["Figure", "Finding", "Under single-FEI", "Under Gap 36mo"],
     [
         ["Fig 1, volume by outcome", "Null, stable", "Yes, still null", "Yes, still null"],
+        ["Fig 1, price by outcome", "Null, VAI vs OAI p = 0.065", "Yes, still null", "Yes, still null"],
         ["Fig 2, DMF vs volume", "rho = +0.23, p = 0.034", "**No, p = 0.30**", "No, p = 0.080"],
         ["Fig 2, NDMA vs volume", "rho = -0.31, p = 0.009", "**No, p = 0.064**", "Yes, p = 0.028"],
         ["Fig 3, price vs quality", "Null, stable", "Yes, still null", "Yes, still null"],

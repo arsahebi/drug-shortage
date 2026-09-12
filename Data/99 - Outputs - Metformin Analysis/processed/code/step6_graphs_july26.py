@@ -530,6 +530,27 @@ def print_fig1_stats(sub: pd.DataFrame) -> None:
             print(f"  {out:>8s}  {len(vals):>5d}  {np.mean(vals):>10.4f}  "
                   f"{np.median(vals):>10.4f}  "
                   f"{np.percentile(vals,25):>10.4f}  {np.percentile(vals,75):>10.4f}")
+
+    # Price gets the same three approaches as volume. Previously only the
+    # descriptive rows above were printed, which left the left panel of Figure 1
+    # with no inferential statistics at all.
+    p_price = _kruskal_p(p_grps)
+    print(f"\n  [Approach 1: Independent – Kruskal-Wallis + Dunn (Bonferroni)]")
+    print(f"    Kruskal-Wallis: p={p_price:.5f}" if p_price is not None else "    KW n/a")
+    if p_price is not None and len([k for k, v in p_grps.items() if len(v) >= 2]) >= 2:
+        dunn_p = _dunn_posthoc({k: v for k, v in p_grps.items() if len(v) >= 2})
+        if not dunn_p.empty:
+            print(dunn_p[["group1","group2","z","p_raw","p_adj","sig"]].to_string(index=False, col_space=10))
+
+    print(f"\n  [Approach 2: Cluster-robust Bootstrap by NDC11]")
+    _bootstrap_pairwise(sub_pr.copy(), PRICE_COL, "prior_outcome", "NDC11", OUTCOME_ORDER)
+
+    print(f"\n  [Approach 3: Cluster-robust Bootstrap by FEI (prior_fei)]")
+    if "prior_fei" in sub_pr.columns:
+        sub_pr_fei = sub_pr[sub_pr["prior_fei"].notna()].copy()
+        _bootstrap_pairwise(sub_pr_fei, PRICE_COL, "prior_outcome", "prior_fei", OUTCOME_ORDER)
+    else:
+        print("    prior_fei column not available")
     print("=" * 80)
 
 
@@ -1116,6 +1137,44 @@ def run_statistical_models() -> None:
     print(f"\n  [log(IQVIA Extended Units) — Single-FEI only]")
     _modelB_re_twoway(d_vol_sfei, "_y", ["VAI", "OAI"],
                       ndc_col="NDC11", fei_col="prior_fei", tag="log(Volume) Single-FEI")
+
+    # ── Price ~ inspection outcome (Figure 1 LEFT panel) ─────────────────────
+    # Added 2026-09-12 so both panels of Figure 1 carry the same model. Price is
+    # Medicaid amount reimbursed / units reimbursed, so rows with zero reimbursed
+    # units have no price and drop out; that is the 93 vs 90 difference.
+    print("\n" + "─" * 80)
+    print("  FIGURE 1 (left panel) — Medicaid Price by Inspection Outcome  (reference = NAI)")
+    print("  model: log(price) ~ VAI + OAI + (1|NDC11)")
+    print("─" * 80)
+
+    def _price_base(src):
+        d = src[
+            src["CountryCode"].isin(COUNTRY_ORDER) &
+            src["prior_outcome"].notna() &
+            src["prior_fei"].notna() &
+            src[PRICE_COL].notna() &
+            (src[PRICE_COL] > 0) &
+            (src["price_outlier"] == 0)
+        ].copy()
+        d["VAI"] = (d["prior_outcome"] == "VAI").astype(float)
+        d["OAI"] = (d["prior_outcome"] == "OAI").astype(float)
+        d["_y"]  = np.log(d[PRICE_COL].astype(float))
+        return d
+
+    d_pr = _price_base(df)
+    print(f"\n  [log(Medicaid price per unit) — All NDCs]")
+    _modelB_re_twoway(d_pr, "_y", ["VAI", "OAI"],
+                      ndc_col="NDC11", fei_col="prior_fei", tag="log(Price)")
+
+    d_pr_sfei = _price_base(df_single)
+    print(f"\n  [log(Medicaid price per unit) — Single-FEI only]")
+    _modelB_re_twoway(d_pr_sfei, "_y", ["VAI", "OAI"],
+                      ndc_col="NDC11", fei_col="prior_fei", tag="log(Price) Single-FEI")
+
+    d_pr_gap = _price_base(df_gap36)
+    print(f"\n  [log(Medicaid price per unit) — All NDCs ≤36mo gap]")
+    _modelB_re_twoway(d_pr_gap, "_y", ["VAI", "OAI"],
+                      ndc_col="NDC11", fei_col="prior_fei", tag="log(Price) ≤36mo gap")
 
     # ── Gap ≤ 36 months: volume ~ inspection outcome ─────────────────────────
     print("\n" + "─" * 80)
