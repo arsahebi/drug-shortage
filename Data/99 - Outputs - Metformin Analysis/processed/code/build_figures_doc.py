@@ -46,11 +46,33 @@ p("Every figure here was regenerated after two changes to the pipeline: the NDC 
   "a short reading of what each shows.")
 
 p("If your reference point is comparison_prerevision_vs_july2026.docx, the last version "
-  "circulated, the headline change is that the sample is smaller and more consistent. The "
-  "panel behind that document held 148 rows across 112 NDCs; this one holds 96 across 70. "
-  "The Figure 4 conclusion in that document has been re-checked with a properly calibrated "
-  "test and still holds; it is weaker here only because this sample is smaller. Section 4 of "
-  "the companion file has the detail.")
+  "circulated, here is how the NDC count reconciles. Valisure tested 112 NDCs, and that total "
+  "is the same in both versions. Neither method matched all of them to a manufacturing "
+  "facility.")
+
+table(
+    ["", "Manual search", "Rule-based"],
+    [
+        ["NDCs tested by Valisure", "112", "112"],
+        ["Matched to a facility", "89", "77"],
+        ["Not matched to any facility", "23", "35"],
+        ["Of those matched, in Canada or Bangladesh", "5", "5"],
+        ["Of those matched, facility has no Redica history", "0", "2"],
+        ["**NDCs in the analysis**", "**84 if the exclusions had been applied**", "**70**"],
+    ],
+    widths=[2.9, 1.7, 1.4],
+)
+
+p("So the drop from 89 to 77 matched NDCs is the rule-based method being stricter, mostly "
+  "because 28 NDCs have no DailyMed establishment record at all and the manual search had "
+  "filled several of those from ProPublica. The further drop to 70 is the two exclusions: 5 "
+  "NDCs made in Canada or Bangladesh, and 2 made by Chartwell Congers, which has no Redica "
+  "inspection history. The same 5 Canada and Bangladesh NDCs were present in the manual map "
+  "too; they were simply never excluded.")
+
+p("The Figure 4 conclusion in that earlier document has been re-checked with a properly "
+  "calibrated test and still holds. It is weaker here only because this sample is smaller. "
+  "Section 4 of the companion file has the detail.")
 
 p("One correction to that earlier document while we are here. Notes under its Figures 1 and 2 "
   "quote 145 rows in total and 110 rows across 85 NDCs for the single-FEI panel. Those three "
