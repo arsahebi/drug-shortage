@@ -87,6 +87,25 @@ p("At the pair level: 83 pairs are shared, 31 were in the manual map only, 5 are
   "Per NDC, 81 are identical, 17 lost their facility, 9 dropped one of two facilities, "
   "and 5 gained a facility they did not have before.")
 
+p("Note that neither method matched all 112 NDCs. The manual search matched 89 and the rule "
+  "keeps 77, so 23 and 35 respectively were never linked to a manufacturing facility at all. "
+  "Where the remaining 77 go, once the section 2 exclusions are applied:")
+table(
+    ["Step", "NDCs"],
+    [
+        ["Tested by Valisure", "112"],
+        ["Matched to a facility by the rule", "77"],
+        ["Less those made in Canada or Bangladesh", "-5"],
+        ["Less Chartwell Congers, no Redica history", "-2"],
+        ["**In the analysis**", "**70**"],
+    ],
+    widths=[3.4, 0.9], align_right_from=1,
+)
+p("For an equal comparison: the same 5 Canada and Bangladesh NDCs were in the manual map too "
+  "and were simply never excluded, and all 28 manual-map facilities had Redica history. So "
+  "under identical exclusion rules the manual map would have given 84 NDCs against the rule's "
+  "70. The 14-NDC difference is the stricter matching rule, not the exclusions.")
+
 p("Why NDCs lost a facility:", bold=True)
 bullet("28 NDCs have no DailyMed establishment linkage at all. The label exists but "
        "carries no establishment records. The manual search had filled several of these "
@@ -190,6 +209,11 @@ table(
         ["step5 analysis panel", "148 rows, 112 NDC11s", "96 rows, 70 NDC11s"],
     ],
 )
+
+p("The 112 to 70 change in those two rows is not 42 NDCs being excluded. Of the 112, 23 were "
+  "never matched to a facility under the manual map and 35 are not matched under the rule; "
+  "unmatched NDCs used to be carried in the panel with empty inspection columns and are now "
+  "dropped. See the reconciliation in section 1.", italic=True, size=9)
 
 p("Inspection outcomes, unique events:", bold=True)
 table(

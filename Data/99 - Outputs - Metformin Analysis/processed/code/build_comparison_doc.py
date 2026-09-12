@@ -1,9 +1,33 @@
 # %%
 """
 Build comparison Word document: Pre-revision vs July 2026
-Clean academic style — no colored headers.
+Clean academic style, no colored headers.
+
+DO NOT REBUILD WITHOUT READING THIS (noted 2026-09-12)
+------------------------------------------------------
+Every statistic in this script is a hardcoded literal from the July 2026 run on
+the MANUAL NDC-FEI map. The figures it embeds are read live from
+processed/outputs/ by filename (Figure1_Market_by_Outcome.png and so on), and
+those files have since been overwritten by the September 2026 rule-based run.
+
+So rebuilding now would produce a document pairing rule-based figures with
+manual-run numbers. The .docx already on disk is internally consistent because
+its images were embedded in July; leave it alone.
+
+If this comparison genuinely needs regenerating, either restore the July figures
+first or repoint OLD_FIG/NEW_FIG at archived copies. The current analysis is
+documented instead in:
+  20260910_metformin_pipeline_changes.docx
+  20260910_metformin_figures_rulebased.docx
+
+The three panel counts in the figure notes below were hardcoded and wrong. They
+are now computed from the archived manual-map panel,
+processed/step5_analysis_panel_manualmap_july26.csv, which is the panel this
+document actually describes.
 """
 from pathlib import Path
+
+import pandas as pd
 from pdf2image import convert_from_path
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor, Cm
@@ -17,6 +41,17 @@ BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu
 OLD_FIG = BASE / "Paper/Metformin"
 NEW_FIG = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs"
 OUT_DOC = NEW_FIG / "comparison_prerevision_vs_july2026.docx"
+
+# ── panel counts, computed from the panel this document describes ────────────
+_MANUAL_PANEL = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step5_analysis_panel_manualmap_july26.csv"
+_p         = pd.read_csv(_MANUAL_PANEL)
+N_ROWS     = len(_p)                                          # 148
+N_NDCS     = _p["NDC11"].nunique()                            # 112
+_single    = _p[_p["n_feis"] <= 1]
+N_SF_ROWS  = len(_single)                                     # 113
+N_SF_NDCS  = _single["NDC11"].nunique()                       # 87
+N_MULTI    = int((_p.drop_duplicates("NDC11")["n_feis"] > 1).sum())   # 25
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 def pdf_to_png(pdf_path, tmp_dir, dpi=200):
@@ -175,7 +210,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_page_break()
     doc.add_heading('Figure 1 — Market Outcomes by Prior FDA Inspection Outcome', 1)
     add_note(doc, 'Left panel: NADAC price per unit (blank in July 2026 — not yet in pipeline). Right panel: Annual IQVIA extended units by inspection outcome (IND/CHN/USA, log scale).')
-    add_note(doc, 'All NDCs = full July 2026 panel including 25 multi-FEI NDC11s.  Single-FEI = those 25 excluded (85 NDC11s, 110 rows).  Both panels restricted to Valisure-tested rows only (145 rows total).')
+    add_note(doc, f'All NDCs = full July 2026 panel including {N_MULTI} multi-FEI NDC11s.  '
+                  f'Single-FEI = those {N_MULTI} excluded ({N_SF_NDCS} NDC11s, {N_SF_ROWS} rows).  '
+                  f'Both panels restricted to Valisure-tested rows only ({N_ROWS} rows total, {N_NDCS} NDC11s).')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[1],
         'July 2026 — All NDCs (strict rule: EventYear < TestYear)', new[1],
@@ -279,7 +316,8 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_page_break()
     doc.add_heading('Figure 2 — Market Volume vs Tested Drug Quality', 1)
     add_note(doc, 'Each panel pools all available years for that metric. Spearman ρ with NDC-cluster block bootstrap (2,000 resamples).')
-    add_note(doc, 'All NDCs = full July 2026 panel (Valisure-tested rows only, 145 rows).  Single-FEI = 25 multi-FEI NDC11s excluded (110 rows).')
+    add_note(doc, f'All NDCs = full July 2026 panel (Valisure-tested rows only, {N_ROWS} rows).  '
+                  f'Single-FEI = {N_MULTI} multi-FEI NDC11s excluded ({N_SF_ROWS} rows).')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[2],
         'July 2026 — All NDCs', new[2],
@@ -364,7 +402,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     doc.add_page_break()
     doc.add_heading('Figure 3 — Price vs Tested Drug Quality', 1)
     add_note(doc, 'July 2026: Medicaid price per unit = Medicaid Amount Reimbursed / Units Reimbursed (from SDUD). Outliers > $50/unit excluded. Pre-revision used NADAC; 3 NDCs have no SDUD coverage.')
-    add_note(doc, 'All NDCs = full July 2026 panel (Valisure-tested rows only).  Single-FEI = 25 multi-FEI NDC11s excluded.')
+    add_note(doc, f'All NDCs = full July 2026 panel (Valisure-tested rows only).  Single-FEI = {N_MULTI} multi-FEI NDC11s excluded.')
     add_fig_triple(doc,
         'Pre-revision (Health Affairs Scholars)', old[3],
         'July 2026 — All NDCs (Medicaid price)', new[3],
