@@ -46,11 +46,18 @@ p("Every figure here was regenerated after two changes to the pipeline: the NDC 
   "a short reading of what each shows.")
 
 p("If your reference point is comparison_prerevision_vs_july2026.docx, the last version "
-  "circulated, the headline change is that the sample is smaller and more consistent: 96 "
-  "observations across 70 NDCs, against 148 across 112. The Figure 4 conclusion in that "
-  "document has been re-checked with a properly calibrated test and still holds; it is "
-  "weaker here only because this sample is smaller. Section 4 of the companion file has "
-  "the detail.")
+  "circulated, the headline change is that the sample is smaller and more consistent. The "
+  "panel behind that document held 148 rows across 112 NDCs; this one holds 96 across 70. "
+  "The Figure 4 conclusion in that document has been re-checked with a properly calibrated "
+  "test and still holds; it is weaker here only because this sample is smaller. Section 4 of "
+  "the companion file has the detail.")
+
+p("One correction to that earlier document while we are here. Notes under its Figures 1 and 2 "
+  "quote 145 rows in total and 110 rows across 85 NDCs for the single-FEI panel. Those three "
+  "figures were hardcoded rather than computed, and the panel they describe actually held 148 "
+  "rows, and 113 rows across 87 NDCs for single-FEI. The multi-FEI count of 25 is correct. "
+  "Nothing downstream used the quoted numbers, so no result in that document is affected, but "
+  "the counts themselves should not be carried forward.", italic=True, size=9)
 
 doc.add_heading("Analysis sample", 1)
 
