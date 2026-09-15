@@ -82,7 +82,9 @@ import pandas as pd
 HERE       = Path(__file__).parent
 DATA       = HERE.parent                             # .../Data/
 OBS_CSV    = DATA / "12 - FDA - 483" / "processed" / "483_observations.csv"
-SIGNALS_CSV = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
+_PDF_SIGNALS_CSV_ANTHROPIC = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
+_PDF_SIGNALS_CSV_OPENAI    = HERE / "step01_fdapdf_483_obs_llm_signals_openai.csv"
+SIGNALS_CSV = _PDF_SIGNALS_CSV_ANTHROPIC
 
 # ── Source mode — set via --source argument (overrides below after argparse) ──
 # "pdf"    : read from 483_observations.csv, text col = obs_text_clean (default)
@@ -1959,7 +1961,11 @@ if SOURCE == "redica":
         _REDICA_SIGNALS_CSV_ANTHROPIC if PROVIDER == "anthropic"
         else _REDICA_SIGNALS_CSV_OPENAI
     )
-# pdf source keeps the defaults set above
+else:
+    SIGNALS_CSV = (
+        _PDF_SIGNALS_CSV_ANTHROPIC if PROVIDER == "anthropic"
+        else _PDF_SIGNALS_CSV_OPENAI
+    )
 
 # Model-comparison tag: only added when --model overrides the provider's
 # default, so the standard (default-model) run keeps its existing filename.
