@@ -28,10 +28,11 @@ from pathlib import Path
 
 import pandas as pd
 
-HERE = Path(__file__).parent
-DEFAULT_LABELS_XLSX = HERE / "labeling_template_v2.xlsx"
-ANSWER_KEY_CSV       = HERE / "DO_NOT_SHARE_answer_key_v2.csv"
-METRICS_MD           = HERE / "human_eval_metrics_v2.md"
+HERE      = Path(__file__).parent
+EVAL_ROOT = HERE.parent
+DEFAULT_LABELS_XLSX = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
+ANSWER_KEY_CSV       = EVAL_ROOT / "validation_data" / "DO_NOT_SHARE_answer_key_v2.csv"
+METRICS_MD           = EVAL_ROOT / "results_and_notes" / "human_eval_metrics_v2.md"
 
 # (metric name, model column in answer key, human column in labels, kind)
 # kind: "categorical" -> accuracy + macro-F1 + per-class P/R/F1

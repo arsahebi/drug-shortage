@@ -34,17 +34,18 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-HERE = Path(__file__).parent
-DATA = HERE.parent
+HERE      = Path(__file__).parent
+EVAL_ROOT = HERE.parent
+DATA      = EVAL_ROOT.parent
 
 # Default source: the Sonnet 5 v2 model-comparison sample (n=50, round-robin
 # across FEIs). Real, already-scored data -- costs nothing further to reuse
 # as the RA's first batch. Not severity-stratified; pass --stratify-severity
 # with a larger --sample against a bigger v2 signals file for tier balance.
-DEFAULT_SOURCE = DATA / "483_observation_context_signals_sample50_claudesonnet5_v2.csv"
+DEFAULT_SOURCE = EVAL_ROOT / "validation_data" / "483_observation_context_signals_sample50_claudesonnet5_v2.csv"
 
-TEMPLATE_XLSX  = HERE / "labeling_template_v2.xlsx"
-ANSWER_KEY_CSV = HERE / "DO_NOT_SHARE_answer_key_v2.csv"
+TEMPLATE_XLSX  = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
+ANSWER_KEY_CSV = EVAL_ROOT / "validation_data" / "DO_NOT_SHARE_answer_key_v2.csv"
 
 VIOLATION_CATEGORIES = ["QualitySystem", "ProductionSystem", "MaterialsSystem",
                          "FacilitiesEquipmentSystem", "LaboratoryControlsSystem",
