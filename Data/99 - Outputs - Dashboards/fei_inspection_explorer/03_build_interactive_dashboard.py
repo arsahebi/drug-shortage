@@ -311,6 +311,57 @@ for _, r in edges_df.iterrows():
         "font":   {"size": 9, "color": ec["color"]},
     })
 
+# ── Drug (API) nodes ─────────────────────────────────────────────────────
+# Bipartite layer: one node per API, edges to every FEI that manufactures it
+# (from the same Valisure mapping already used for the per-facility "APIs:"
+# line). Shown by default; toggleable in the header since ~130+ manufactures
+# edges on top of the existing 28 is a real increase in edge density.
+DRUG_COLOR = "#00C8D4"
+drug_to_feis: dict[str, list] = {}
+for fei_val, apis in api_map.items():
+    for api in apis:
+        drug_to_feis.setdefault(api, []).append(int(fei_val))
+
+_counts = [len(v) for v in drug_to_feis.values()] or [1]
+_d_min, _d_max = min(_counts), max(_counts)
+
+def scale_drug_size(n, lo=20, hi=46):
+    if _d_max == _d_min:
+        return (lo + hi) / 2
+    return round(lo + (n - _d_min) / (_d_max - _d_min) * (hi - lo), 1)
+
+drug_nodes_list = []
+drug_edges_list = []
+for drug, feis in sorted(drug_to_feis.items()):
+    drug_id = "drug:" + drug
+    drug_nodes_list.append({
+        "id":    drug_id,
+        "label": drug,
+        "title": f"{drug}\n{len(feis)} facilities",
+        "shape": "diamond",
+        "size":  scale_drug_size(len(feis)),
+        "color": {
+            "background": DRUG_COLOR,
+            "border":     "#ffffff",
+            "highlight":  {"background": DRUG_COLOR, "border": "#FFD700"},
+            "hover":      {"background": DRUG_COLOR, "border": "#FFD700"},
+        },
+        "font":  {"color": "#1F3564", "size": 11, "face": "Arial",
+                  "strokeWidth": 2, "strokeColor": "#ffffff"},
+    })
+    for fei in feis:
+        drug_edges_list.append({
+            "id":     f"de:{drug}:{fei}",
+            "from":   drug_id,
+            "to":     fei,
+            "color":  {"color": DRUG_COLOR, "opacity": 0.25},
+            "width":  1,
+            "dashes": True,
+            "smooth": {"type": "continuous"},
+        })
+
+print(f"  Drug nodes: {len(drug_nodes_list)}  ·  manufactures edges: {len(drug_edges_list)}")
+
 # Events: ALL records, descending date, with enriched inspection fields
 def sv(row, col):
     """Safe string value from row."""
@@ -345,8 +396,11 @@ for fei_val, grp in events_df.groupby("fei"):
     events_dict[str(fei_val)] = recs
 
 # JSON for embedding
-nodes_json   = json.dumps(nodes_list)
-edges_json   = json.dumps(edges_list)
+nodes_json      = json.dumps(nodes_list)
+edges_json      = json.dumps(edges_list)
+drug_nodes_json = json.dumps(drug_nodes_list)
+drug_edges_json = json.dumps(drug_edges_list)
+drug_feis_json  = json.dumps(drug_to_feis)
 events_json  = json.dumps(events_dict)
 info_json    = json.dumps(fei_info)
 sig483_json  = json.dumps(sig483)
@@ -441,6 +495,17 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
 
 /* ── OVERVIEW TAB ── */
 #tab-overview { overflow-y: auto; }
+
+/* ── DRUG VIEW ── */
+.drug-fei-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border-bottom: 1px solid #f0f0f0; cursor: pointer; font-size: 12px;
+}
+.drug-fei-row:hover { background: #F4F7FC; }
+.drug-fei-dot   { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.drug-fei-firm  { flex: 1; color: #333; font-weight: 500; }
+.drug-fei-country { color: #888; font-size: 10px; }
+.drug-fei-outcome { font-size: 10px; font-weight: bold; min-width: 90px; text-align: right; }
 
 /* Timeline */
 #tl-header-row {
@@ -598,9 +663,15 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
     <span class="leg-item"><span class="leg-dot" style="background:#27AE60"></span>NAI</span>
     <span class="leg-item"><span class="leg-dot" style="background:#1A5276"></span>Refusal</span>
     <span class="leg-item"><span class="leg-dot" style="background:#AEB6BF"></span>No Data</span>
+    <span class="leg-item"><span style="display:inline-block;width:10px;height:10px;background:#00C8D4;transform:rotate(45deg)"></span>Drug (API)</span>
     <span style="color:rgba(255,255,255,0.6);font-size:10px;margin-left:6px">EDGES:</span>
     <span class="leg-item"><span style="display:inline-block;width:22px;height:3px;background:#C0392B;border-radius:2px"></span>WL Cross-Site</span>
     <span class="leg-item"><span style="display:inline-block;width:22px;height:2px;background:#AAB7B8;border-radius:2px;border-top:1px dashed #AAB7B8"></span>Same Company</span>
+    <span class="leg-item"><span style="display:inline-block;width:22px;height:2px;background:#00C8D4;border-radius:2px;border-top:1px dashed #00C8D4;opacity:0.6"></span>Manufactures</span>
+    <label class="leg-item" style="cursor:pointer;margin-left:6px">
+      <input type="checkbox" id="drug-toggle-cb" checked onchange="toggleDrugNodes(this.checked)">
+      Show Drug Nodes
+    </label>
   </div>
 </div>
 
@@ -702,6 +773,9 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
       </div>
     </div>
 
+    <!-- ── DRUG VIEW (shown instead of the tabs above when a drug node is clicked) ── -->
+    <div id="drug-facility-list" class="tab-content" style="overflow-y:auto"></div>
+
   </div><!-- end detail-panel -->
 </div><!-- end main -->
 
@@ -711,8 +785,11 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
 <script>
 // ── Embedded data ─────────────────────────────────────────────────────────
 """ + f"""
-const NODES_DATA  = {nodes_json};
-const EDGES_DATA  = {edges_json};
+const NODES_DATA      = {nodes_json};
+const EDGES_DATA      = {edges_json};
+const DRUG_NODES_DATA = {drug_nodes_json};
+const DRUG_EDGES_DATA = {drug_edges_json};
+const DRUG_FEIS       = {drug_feis_json};
 const EVENTS_DATA = {events_json};
 const FEI_INFO    = {info_json};
 const SIG_483     = {sig483_json};
@@ -755,8 +832,18 @@ function domainColor(d) { return DOMAIN_COLORS[d] || '#95A5A6'; }
 
 // ── vis.js Network ────────────────────────────────────────────────────────
 const container = document.getElementById('network-container');
-const visNodes  = new vis.DataSet(NODES_DATA);
-const visEdges  = new vis.DataSet(EDGES_DATA);
+const visNodes  = new vis.DataSet(NODES_DATA.concat(DRUG_NODES_DATA));
+const visEdges  = new vis.DataSet(EDGES_DATA.concat(DRUG_EDGES_DATA));
+
+function toggleDrugNodes(show) {
+  if (show) {
+    visNodes.update(DRUG_NODES_DATA);
+    visEdges.update(DRUG_EDGES_DATA);
+  } else {
+    visNodes.remove(DRUG_NODES_DATA.map(n => n.id));
+    visEdges.remove(DRUG_EDGES_DATA.map(e => e.id));
+  }
+}
 const network   = new vis.Network(container, {nodes: visNodes, edges: visEdges}, {
   nodes: {
     shape: 'dot',
@@ -792,7 +879,13 @@ const network   = new vis.Network(container, {nodes: visNodes, edges: visEdges},
 
 let currentFei = null;
 network.on('click', function(params) {
-  if (params.nodes.length > 0) openPanel(String(params.nodes[0]));
+  if (params.nodes.length === 0) return;
+  const id = params.nodes[0];
+  if (typeof id === 'string' && id.startsWith('drug:')) {
+    openDrugPanel(id);
+  } else {
+    openPanel(String(id));
+  }
 });
 
 // ── Panel open / close ────────────────────────────────────────────────────
@@ -802,6 +895,8 @@ function openPanel(fei) {
   const events = EVENTS_DATA[fei] || [];
   const s483   = SIG_483[fei]     || null;
   const sWL    = SIG_WL[fei]      || null;
+
+  document.getElementById('tab-nav').style.display = '';
 
   // Header
   document.getElementById('d-fei').textContent     = 'FEI ' + fei;
@@ -837,8 +932,62 @@ function openPanel(fei) {
   setTimeout(() => renderTimeline(events), wasOpen ? 40 : 360);
 }
 
+const OUTCOME_COLORS_JS = {
+  'Warning Letter':'#8B0000', 'OAI':'#C0392B', 'Class I Recall':'#7D3C98',
+  'VAI':'#E67E22', 'NAI':'#27AE60', 'Import Refusal Only':'#1A5276',
+  'No Regulatory Events':'#AEB6BF',
+};
+
+function openDrugPanel(drugId) {
+  currentFei = null;
+  const drugName = drugId.slice('drug:'.length);
+  const feis = DRUG_FEIS[drugName] || [];
+
+  document.getElementById('d-fei').textContent     = 'DRUG (API)';
+  document.getElementById('d-firm').textContent    = drugName;
+  document.getElementById('d-country').textContent =
+    `${feis.length} facilit${feis.length === 1 ? 'y' : 'ies'} manufacturing this API`;
+  document.getElementById('d-apis').textContent    = '';
+
+  const outcomeCounts = {};
+  feis.forEach(fei => {
+    const w = (FEI_INFO[String(fei)] || {}).worst || 'No Regulatory Events';
+    outcomeCounts[w] = (outcomeCounts[w] || 0) + 1;
+  });
+  document.getElementById('d-badges').innerHTML = Object.entries(outcomeCounts)
+    .map(([t, n]) => `<span class="badge" style="background:${OUTCOME_COLORS_JS[t] || '#AEB6BF'}">${t} × ${n}</span>`)
+    .join('');
+
+  document.getElementById('tab-nav').style.display = 'none';
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  const list = document.getElementById('drug-facility-list');
+  list.classList.add('active');
+  list.innerHTML = feis.slice().sort((a, b) => {
+    const fa = FEI_INFO[String(a)] || {}, fb = FEI_INFO[String(b)] || {};
+    return (fa.firm || '').localeCompare(fb.firm || '');
+  }).map(fei => {
+    const info = FEI_INFO[String(fei)] || {};
+    const c = OUTCOME_COLORS_JS[info.worst] || '#AEB6BF';
+    return `<div class="drug-fei-row" onclick="openPanel('${fei}')">
+      <span class="drug-fei-dot" style="background:${c}"></span>
+      <span class="drug-fei-firm">${info.firm || fei}</span>
+      <span class="drug-fei-country">${info.country || ''}</span>
+      <span class="drug-fei-outcome" style="color:${c}">${info.worst || ''}</span>
+    </div>`;
+  }).join('');
+
+  // Highlight this drug's facilities in the network
+  if (visNodes.get(drugId)) {
+    network.selectNodes([drugId, ...feis.filter(f => visNodes.get(f))]);
+  }
+
+  document.getElementById('detail-panel').classList.add('open');
+}
+
 function closePanel() {
   document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('tab-nav').style.display = '';
+  document.getElementById('drug-facility-list').classList.remove('active');
   currentFei = null;
 }
 
