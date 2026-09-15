@@ -30,24 +30,24 @@ the dashboards from the model output.
 
 ### Current results
 
-**See `RESULTS.md` for the full explanation.** Short version: as of 2026-09-15,
+**See `RESULTS.docx` for the full explanation.** Short version: as of 2026-09-15,
 `m14`/`m17` restrict modeling to facilities with actual Redica 483-text coverage and
 no longer zero-fill missing text features (previously they ran on the full 125-FEI
 universe and zero-filled the 27 FEIs without text coverage, which diluted the real
-signal — see `RESULTS.md` for how that was found and fixed). Under the honest
+signal — see `RESULTS.docx` for how that was found and fixed). Under the honest
 restriction: the recall model (`m14`) no longer has enough events to model at all
 (2, down from 20 once non-snapshot rows are dropped); the AE model (`m17`) runs on
 148 rows / 46 FEIs and shows no measurable AUC lift from text features in this cut
 (0.550–0.582 with text vs. 0.568 without, L2/RF) — smaller and more honest numbers
 than what was reported before this fix, not a reason to distrust the underlying text
-signals generally. `RESULTS.md` has the full tables and the reasoning for why.
+signals generally. `RESULTS.docx` has the full tables and the reasoning for why.
 
 ## Folder structure
 
 ```
 99 - Outputs - Shortage Prediction/
-├── README.md        ← pipeline / folder structure (you are here)
-├── RESULTS.md        ← what the models found, in plain language
+├── README.md     ← pipeline / folder structure (you are here)
+├── RESULTS.docx  ← what the models found, in plain language
 ├── code/
 │   ├── config.py, utils.py, m14, m15, m17, m18   ← current
 │   └── old_not_current_pipeline/
@@ -58,7 +58,7 @@ signals generally. `RESULTS.md` has the full tables and the reasoning for why.
 ├── outputs/
 │   ├── figures/     ← current: recall_fei_dashboard.html, faers_fei_dashboard.html,
 │   │                    roc/feature-importance/lift PNGs (AE model only — recall's
-│   │                    aren't produced, see RESULTS.md); + old_not_current_pipeline/
+│   │                    aren't produced, see RESULTS.docx); + old_not_current_pipeline/
 │   ├── models/      ← current: metrics/rf_importance/text_ablation *_faers_fei.csv
 │   │                    (AE model only); + old_not_current_pipeline/
 │   └── tables/      ← current: *_fei_panel_summary.md; + old_not_current_pipeline/
@@ -87,6 +87,6 @@ PNGs, `text_signal_grid.csv`, etc.) are archived alongside it in the matching
 ## Limitations
 
 1. **Both models are sample-size constrained** now that zero-filling is gone — see
-   `RESULTS.md`. Revisit as Redica's scored-inspection history extends further back
+   `RESULTS.docx`. Revisit as Redica's scored-inspection history extends further back
    or accumulates more calendar time.
 2. **SDUD volume weighting not incorporated** — see the TODO block in `config.py`.
