@@ -383,8 +383,18 @@ def build_panel() -> pd.DataFrame:
     text_ts   = _load_text_features()
     struct    = _load_structural_features()
 
-    # Universe: all FEIs present in Redica data, crossed with all panel years
-    all_feis = redica_fy["fei"].dropna().unique()
+    # Universe: FEIs with Redica 483 TEXT coverage only (not just Redica inspection
+    # events, which cover a broader set). Modeling on the broader set and zero-
+    # filling missing text features dilutes the text signal materially — see
+    # README.md's "Known methodology gap" note. No zero-filling for text features
+    # below either; rows with no as-of-year text snapshot are dropped, not zeroed.
+    text_feis = set(text_ts["fei"].dropna().unique())
+    redica_feis = set(redica_fy["fei"].dropna().unique())
+    all_feis = np.array(sorted(redica_feis & text_feis))
+    log.info(
+        "Restricting to %d FEIs with Redica 483 text coverage (of %d in Redica "
+        "inspection data)", len(all_feis), len(redica_feis),
+    )
     years    = range(PANEL_START_YEAR, PANEL_END_YEAR + 1)
     panel = pd.DataFrame(
         index=pd.MultiIndex.from_product([all_feis, years], names=["fei", "year"])
@@ -437,6 +447,20 @@ def _prep(panel: pd.DataFrame, features: list[str]):
     missing  = set(features) - set(feats_in)
     if missing:
         log.warning("Features missing (dropped): %s", sorted(missing))
+    # Text features: no zero-fill. A FEI-year with no as-of-year text snapshot
+    # yet (e.g. before that facility's first Redica-scored inspection) has no
+    # real signal to report — zero-filling would misrepresent "unknown" as
+    # "confirmed clean," which is what diluted the model before this fix.
+    # Non-text features keep their legitimate zero-fill (no inspection that
+    # year genuinely means zero inspections).
+    text_in_features = [f for f in feats_in if f in TEXT_FEATURES]
+    if text_in_features:
+        before = len(df)
+        df = df.dropna(subset=text_in_features)
+        dropped = before - len(df)
+        if dropped:
+            log.info("Dropped %d FEI-year rows with no as-of-year text snapshot "
+                      "yet (%d remain)", dropped, len(df))
     X      = df[feats_in].fillna(0).astype(float)
     y      = df["y_ae_next"].astype(int)
     groups = df["fei"].astype(str)
@@ -537,6 +561,7 @@ def _fig_text_lift(ablation_rows: list[dict]):
 
 def _write_panel_summary(panel: pd.DataFrame) -> None:
     modeled = panel.dropna(subset=["y_ae_next"])
+    with_snapshot = modeled.dropna(subset=TEXT_FEATURES)
     n_events = int(modeled["y_ae_next"].sum())
     lines = [
         "# FAERS FEI Adverse Event Panel Summary",
@@ -544,8 +569,10 @@ def _write_panel_summary(panel: pd.DataFrame) -> None:
         f"- **FEI × year rows (full panel):** {len(panel):,}",
         f"- **Unique FEIs:** {panel['fei'].nunique()}",
         f"- **Years:** {int(panel['year'].min())}–{int(panel['year'].max())}",
-        f"- **Rows used in modeling:** {len(modeled):,}",
-        f"- **AE-high events (y=1):** {n_events} "
+        f"- **Rows with a valid outcome:** {len(modeled):,}",
+        f"- **Rows actually modeled (have an as-of-year text snapshot, no zero-fill):** "
+          f"{len(with_snapshot):,} ({with_snapshot['fei'].nunique()} FEIs)",
+        f"- **AE-high events (y=1), full outcome set:** {n_events} "
           f"({100 * modeled['y_ae_next'].mean():.1f}%)",
         f"- **FEIs with ≥1 AE-high event in panel:** "
           f"{int((modeled.groupby('fei')['y_ae_next'].max() == 1).sum())}",
@@ -618,8 +645,8 @@ def main():
     log.info("Without text — L2 AUC=%.3f  RF AUC=%.3f", met_no_text["auc"], met_no_rf["auc"])
 
     ablation_rows = [
-        {"label": "Without text",       "auc": met_no_text["auc"], "model": "L2"},
-        {"label": "With text\n(all FEIs)", "auc": met_l2["auc"],   "model": "L2"},
+        {"label": "Without text",             "auc": met_no_text["auc"], "model": "L2"},
+        {"label": "With text\n(Redica FEIs)", "auc": met_l2["auc"],      "model": "L2"},
     ]
     pd.DataFrame(ablation_rows).to_csv(OUT_MODELS / "text_ablation_faers_fei.csv", index=False)
     _fig_text_lift(ablation_rows)

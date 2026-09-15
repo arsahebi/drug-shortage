@@ -378,12 +378,19 @@ def _load_sdud_manufacturers(
     return agg[agg["mfr_name"].isin(top_mfrs)].sort_values(["mfr_name", "date"]).reset_index(drop=True)
 
 
-def _load_model_outputs() -> tuple[pd.DataFrame, pd.DataFrame]:
-    fi  = pd.read_csv(OUT_MODELS / "rf_importance_recall_fei.csv")
-    abl = pd.read_csv(OUT_MODELS / "text_ablation_recall_fei.csv")
+def _load_model_outputs() -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    """Recall modeling (m14) can legitimately produce no output: restricting to
+    Redica-text-covered FEIs with an actual as-of-year snapshot (no zero-fill)
+    currently leaves too few recall events to model at all. Return (None, None)
+    rather than crash; the caller shows a placeholder instead of stale numbers."""
+    fi_path, abl_path = OUT_MODELS / "rf_importance_recall_fei.csv", OUT_MODELS / "text_ablation_recall_fei.csv"
+    if not fi_path.exists() or not abl_path.exists():
+        return None, None
+    fi  = pd.read_csv(fi_path)
+    abl = pd.read_csv(abl_path)
     abl["label"] = abl["label"].str.replace(r"\n.*", "", regex=True).map(
         lambda s: "Inspection only" if "without" in s.lower()
-                  else "Inspection + LLM text (98 FEIs)"
+                  else "Inspection + LLM text (Redica FEIs)"
     )
     return fi, abl
 
@@ -599,8 +606,21 @@ def _fig_path_breakdown(shortages: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _fig_model_evidence(fi: pd.DataFrame, ablation: pd.DataFrame) -> go.Figure:
+def _fig_model_evidence(fi: pd.DataFrame | None, ablation: pd.DataFrame | None) -> go.Figure:
     """Left: L2 text feature lift (ablation bar). Right: feature importance (top 12)."""
+    if fi is None or ablation is None:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Recall model not currently viable: restricting to Redica-text-covered<br>"
+                 "FEIs with an actual as-of-year snapshot (no zero-fill) leaves too few<br>"
+                 "recall events to model. See README.md — \"Known methodology gap.\"",
+            xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False,
+            font=dict(size=13, color=C["gray"]), align="center",
+        )
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        fig.update_layout(height=320, margin=dict(t=30, b=20))
+        return fig
     fi_top = fi.sort_values("importance", ascending=False).head(12).copy()
     fi_top["label"] = fi_top["feature"].map(lambda f: _FEAT_LABEL.get(f, f))
     fi_top["color"] = fi_top["feature"].map(lambda f: _GROUP_COLOR.get(f, C["gray"]))
@@ -1125,18 +1145,32 @@ def build_html(
     supply: pd.DataFrame,
     recalls_by_drug: pd.DataFrame,
     shortages: pd.DataFrame,
-    fi: pd.DataFrame,
-    ablation: pd.DataFrame,
+    fi: pd.DataFrame | None,
+    ablation: pd.DataFrame | None,
     cs_quality: pd.DataFrame | None = None,
     cs_recalls: pd.DataFrame | None = None,
     cs_shortages: pd.DataFrame | None = None,
     cs_sdud: pd.DataFrame | None = None,
     cs_rfei: pd.DataFrame | None = None,
 ) -> str:
-    auc_no   = ablation.iloc[0]["auc"]
-    auc_yes  = ablation.iloc[1]["auc"]
-    lift_abs = auc_yes - auc_no
-    lift_rel = lift_abs / max(auc_no, 0.001) * 100
+    if ablation is not None:
+        auc_no   = ablation.iloc[0]["auc"]
+        auc_yes  = ablation.iloc[1]["auc"]
+        lift_abs = auc_yes - auc_no
+        lift_rel = lift_abs / max(auc_no, 0.001) * 100
+        lift_kpi_html = f"+{lift_rel:.0f}%"
+        model_caption = (
+            f"L2 logistic regression, GroupKFold CV by FEI. Adding LLM-extracted 483 text "
+            f"features improves AUC from {auc_no:.3f} to {auc_yes:.3f} "
+            f"(+{lift_abs:.3f}, +{lift_rel:.0f}% relative lift). Right panel: RF feature "
+            f"importance (top 12)."
+        )
+    else:
+        lift_kpi_html = "n/a"
+        model_caption = (
+            "Recall model not currently viable at this restriction — see README.md's "
+            '"Known methodology gap" note.'
+        )
 
     total_recalls   = int(recalls_by_drug["n_recalls"].sum())
     total_shortages = int(shortages["n"].sum())
@@ -1308,7 +1342,7 @@ def build_html(
     <div class="kpi"><div class="val">{cov['n_feis_llm']}</div><div class="lbl">FEIs with<br>LLM text features</div></div>
     <div class="kpi"><div class="val">{total_recalls}</div><div class="lbl">Recall events<br>linked to FEIs</div></div>
     <div class="kpi"><div class="val">{total_shortages}</div><div class="lbl">Shortage events<br>(UUtah, 2015–2024)</div></div>
-    <div class="kpi"><div class="val">+{lift_rel:.0f}%</div><div class="lbl">AUC lift from<br>483 text features</div></div>
+    <div class="kpi"><div class="val">{lift_kpi_html}</div><div class="lbl">AUC lift from<br>483 text features</div></div>
   </div>
 </div>
 
@@ -1415,9 +1449,7 @@ def build_html(
       random chance, 1.0 means perfect. Think of it as: "out of all pairs of
       (recall facility, non-recall facility), what share does the model rank correctly?"
       <br>
-      L2 logistic regression, GroupKFold CV by FEI. Adding LLM-extracted 483 text features
-      improves AUC from {auc_no:.3f} to {auc_yes:.3f}
-      (+{lift_abs:.3f}, +{lift_rel:.0f}% relative lift). Right panel: RF feature importance (top 12).
+      {model_caption}
     </div>
   </div>
   <div class="card">{divs['model']}</div>

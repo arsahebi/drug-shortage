@@ -28,36 +28,26 @@ Run: `cd code && python3 m14_recall_fei_model.py && python3 m17_faers_fei_model.
 then `python3 m15_recall_dashboard.py && python3 m18_faers_dashboard.py` to refresh
 the dashboards from the model output.
 
-### Current results (as currently coded — see caveat below)
+### Current results
 
-| Target | Model | AUC | n (modeled) | Events |
-|---|---|---|---|---|
-| Recall next-year | L2 Logit | 0.465 | 1,250 | 20 |
-| Recall next-year | RandomForest | 0.351 | 1,250 | 20 |
-| AE-high next-year | L2 Logit | 0.647 | 1,113 | 684 |
-| AE-high next-year | RandomForest | 0.650 | 1,113 | 684 |
-
-(Rerun 2026-09-15 to confirm reproducibility. Recall's AUC swings noticeably run to
-run — expected with only 20 positive events across `GroupKFold` splits, not a code
-issue; it's exactly the sparsity problem noted below.)
-
-**⚠️ Known methodology gap, not yet fixed in code:** these numbers run the model
-across the full 125-FEI universe, zero-filling text/LLM features for the 27 FEIs
-that Redica doesn't cover. The Text Analysis validation session
-(`../99 - Outputs - Text Analysis/eval/results_and_notes/20260909_session_handoff.md`)
-found this dilutes the real signal — restricting to the 96 Redica-covered FEIs only
-gave a materially different result for the AE model (AUC 0.564→0.677 L2,
-0.547→0.681 RF). That restriction was done as an ad-hoc analysis in that session and
-was **never implemented back into `m14`/`m17`'s code** — the numbers above are what
-the code on disk actually produces today, not the corrected ones. Recall's n=20
-events is also too sparse to trust either way (flagged, not presented as a result, in
-the same handoff).
+**See `RESULTS.md` for the full explanation.** Short version: as of 2026-09-15,
+`m14`/`m17` restrict modeling to facilities with actual Redica 483-text coverage and
+no longer zero-fill missing text features (previously they ran on the full 125-FEI
+universe and zero-filled the 27 FEIs without text coverage, which diluted the real
+signal — see `RESULTS.md` for how that was found and fixed). Under the honest
+restriction: the recall model (`m14`) no longer has enough events to model at all
+(2, down from 20 once non-snapshot rows are dropped); the AE model (`m17`) runs on
+148 rows / 46 FEIs and shows no measurable AUC lift from text features in this cut
+(0.550–0.582 with text vs. 0.568 without, L2/RF) — smaller and more honest numbers
+than what was reported before this fix, not a reason to distrust the underlying text
+signals generally. `RESULTS.md` has the full tables and the reasoning for why.
 
 ## Folder structure
 
 ```
 99 - Outputs - Shortage Prediction/
-├── README.md
+├── README.md        ← pipeline / folder structure (you are here)
+├── RESULTS.md        ← what the models found, in plain language
 ├── code/
 │   ├── config.py, utils.py, m14, m15, m17, m18   ← current
 │   └── old_not_current_pipeline/
@@ -67,11 +57,11 @@ the same handoff).
 │                        redica_fei_year.{csv,parquet}; + old_not_current_pipeline/
 ├── outputs/
 │   ├── figures/     ← current: recall_fei_dashboard.html, faers_fei_dashboard.html,
-│   │                    roc/feature-importance/lift PNGs; + old_not_current_pipeline/
-│   ├── models/      ← current: metrics/rf_importance/text_ablation *_fei.csv;
-│   │                    + old_not_current_pipeline/
-│   └── tables/      ← current: *_fei_panel_summary.md, fei_risk_ranking.csv;
-│                        + old_not_current_pipeline/
+│   │                    roc/feature-importance/lift PNGs (AE model only — recall's
+│   │                    aren't produced, see RESULTS.md); + old_not_current_pipeline/
+│   ├── models/      ← current: metrics/rf_importance/text_ablation *_faers_fei.csv
+│   │                    (AE model only); + old_not_current_pipeline/
+│   └── tables/      ← current: *_fei_panel_summary.md; + old_not_current_pipeline/
 └── logs/            ← current: m14/m15/m17/m18 logs; + old_not_current_pipeline/
 ```
 
@@ -96,7 +86,7 @@ PNGs, `text_signal_grid.csv`, etc.) are archived alongside it in the matching
 
 ## Limitations
 
-1. **See the methodology gap above** — highest-priority fix.
-2. **Recall events are sparse** (20 across 1,250 FEI-years) — not presented as a
-   reliable result regardless of the zero-fill issue.
-3. **SDUD volume weighting not incorporated** — see the TODO block in `config.py`.
+1. **Both models are sample-size constrained** now that zero-filling is gone — see
+   `RESULTS.md`. Revisit as Redica's scored-inspection history extends further back
+   or accumulates more calendar time.
+2. **SDUD volume weighting not incorporated** — see the TODO block in `config.py`.
