@@ -91,7 +91,7 @@ SIGNALS_CSV = _PDF_SIGNALS_CSV_ANTHROPIC
 # "redica" : read from redica_483_observations.csv, text col = obs_text
 SOURCE = "pdf"
 _REDICA_OBS_CSV     = HERE / "step00_redica_483_observations.csv"
-_REDICA_SIGNALS_CSV_OPENAI    = HERE / "redica_483_obs_llm_signals.csv"
+_REDICA_SIGNALS_CSV_OPENAI    = HERE / "step01_redica_483_obs_llm_signals_openai.csv"
 _REDICA_SIGNALS_CSV_ANTHROPIC = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
 _REDICA_SIGNALS_CSV = _REDICA_SIGNALS_CSV_OPENAI  # resolved after argparse
 

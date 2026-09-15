@@ -97,8 +97,9 @@ SIGNALS_CSV = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
 OUT_CSV     = HERE / "step02_483_fei_text_features_timeseries_fdapdf.csv"
 
 # Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
-REDICA_SIGNALS_CSV = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
-OUT_REDICA_CSV     = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
+REDICA_SIGNALS_CSV_ANTHROPIC = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
+REDICA_SIGNALS_CSV_OPENAI    = HERE / "step01_redica_483_obs_llm_signals_openai.csv"
+OUT_REDICA_CSV      = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
 
 def _model_slug(model_id: str) -> str:
@@ -109,9 +110,12 @@ def _model_slug(model_id: str) -> str:
 
 
 # The model actually validated in human-eval round 1 and used for the v2
-# full-scale extraction (see eval/20260902_human_eval_round1_findings_and_fixes.md).
+# full-scale extraction (see eval/results_and_notes/20260902_human_eval_round1_findings_and_fixes.md).
 # v1 output was produced with the anthropic default (claude-haiku) and is untagged.
-DEFAULT_V2_MODEL = "claude-sonnet-5"
+# Anthropic always runs with an explicit --model override (see
+# 01_extract_observation_signals.py), so its v2 output is always tagged.
+# OpenAI runs with its own default (gpt-5-mini) and is never tagged.
+DEFAULT_V2_MODEL = {"anthropic": "claude-sonnet-5", "openai": None}
 
 
 def _versioned(path: Path, version: str, model: str | None = None) -> Path:
@@ -574,6 +578,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--provider", choices=["anthropic", "openai"], default="anthropic",
+        help=(
+            "Which --provider's step01 output to read (--source redica only; "
+            "the pdf branch is anthropic-only). 'anthropic' reads "
+            "step01_redica_483_obs_llm_signals_anthropic*.csv, 'openai' reads "
+            "step01_redica_483_obs_llm_signals_openai*.csv."
+        ),
+    )
+    parser.add_argument(
         "--prompt-version", choices=["v1", "v2"], default="v1",
         help=(
             "'v1' (default, unchanged) reads/writes the usual step01/step02 "
@@ -587,28 +600,34 @@ def main() -> None:
         help=(
             "Model tag to look for in the step01 filename, matching whatever "
             "--model was passed to 01_extract_observation_signals.py (e.g. "
-            f"'claude-sonnet-5'). Default: '{DEFAULT_V2_MODEL}' when "
-            "--prompt-version v2 (the validated round-1 model), none for v1 "
-            "(anthropic default / claude-haiku). Pass --model '' to force no tag."
+            "'claude-sonnet-5'). Default: DEFAULT_V2_MODEL[--provider] when "
+            "--prompt-version v2 (claude-sonnet-5 for anthropic, none for "
+            "openai — gpt-5-mini is openai's own default and is never "
+            "tagged), none for v1. Pass --model '' to force no tag."
         ),
     )
     args = parser.parse_args()
     version = args.prompt_version
+    provider = args.provider
     model = args.model
     if model is None:
-        model = DEFAULT_V2_MODEL if version != "v1" else None
+        model = DEFAULT_V2_MODEL[provider] if version != "v1" else None
 
     if args.source == "redica":
-        signals_csv = _versioned(REDICA_SIGNALS_CSV, version, model)
-        out_csv     = _versioned(OUT_REDICA_CSV, version, model)
+        base = REDICA_SIGNALS_CSV_ANTHROPIC if provider == "anthropic" else REDICA_SIGNALS_CSV_OPENAI
+        signals_csv = _versioned(base, version, model)
+        out_base = OUT_REDICA_CSV if provider == "anthropic" else OUT_REDICA_CSV.with_name(
+            OUT_REDICA_CSV.stem + "_openai" + OUT_REDICA_CSV.suffix)
+        out_csv = _versioned(out_base, version, model)
         if not signals_csv.exists():
             sys.exit(f"\n[ERROR] Redica LLM signals not found:\n  {signals_csv}\n"
-                     "Run 01_extract_observation_signals.py --source redica --provider anthropic "
+                     f"Run 01_extract_observation_signals.py --source redica --provider {provider} "
                      f"--prompt-version {version} first.\n")
         df = pd.read_csv(signals_csv)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
-        label = f"Redica pipeline ({model or 'claude-haiku'}, 98 FEIs, prompt {version})"
+        default_model_desc = "claude-haiku" if provider == "anthropic" else "gpt-5-mini"
+        label = f"Redica pipeline ({provider}, {model or default_model_desc}, 98 FEIs, prompt {version})"
         _run_aggregation(df, out_csv, label=label, version=version)
         return
 
