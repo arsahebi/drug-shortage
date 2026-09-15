@@ -10,6 +10,12 @@ Extracts structured risk signals from FDA Form 483 observation text using an LLM
 aggregates them to FEI-level features, and merges them with the structured regulatory
 event summary for use in MQRI and shortage prediction models.
 
+**This folder is scoped solely to that extraction/aggregation work.** The facility-
+history dashboard that *consumes* these signals alongside structured regulatory data
+(inspections, warning letters, recalls, import refusals) lives in
+`../99 - Outputs - Dashboards/fei_inspection_explorer/` — moved there 2026-09-15 since
+it's a downstream consumer, not part of text extraction itself.
+
 **Redica is the primary and only actively maintained text source.** The pipeline can
 also run against raw 483 PDF text (`--source pdf`), but that only covers 38/129 FEIs
 (the ones with a scanned PDF on file) vs. Redica's 98/129, so pdf-source output is not
@@ -59,7 +65,6 @@ planned cross-model agreement check (see `eval/results_and_notes/20260909_sessio
 | Folder | Purpose |
 |---|---|
 | `eval/` | Human-eval harness — `code/` (scripts), `sent_to_abdul/` (the RA labeling package), `validation_data/` (sample-50 seed data + private answer key), `prompt_debug_reruns/` (re-runs used to separate real prompt fixes from model noise), `results_and_notes/` (scored metrics, findings writeup, handoff docs). |
-| `fei_inspection_explorer/` | Structured-data (non-LLM) CFR co-occurrence network + interactive dashboard, independent of the pdf/redica text-extraction question above. |
 | `old_not_current_pipeline/` | Archived scripts/outputs, including `pdf_source_and_superseded/` (pdf-source runs, pre-v2 redica files, the old `ae_validation/` and `signal_verification/` pipelines — both superseded by `eval/` and the Shortage Prediction `m14`/`m17` models). |
 
 ## Output file naming

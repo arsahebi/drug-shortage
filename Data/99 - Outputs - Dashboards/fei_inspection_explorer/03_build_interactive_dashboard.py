@@ -12,12 +12,14 @@ PURPOSE
     Tab 2 — Events     : full scrollable event table with inspection detail columns
     Tab 3 — CFR        : per-FEI CFR frequency bars, domain breakdown, co-occurrence
 
-  If scripts 04-07 (LLM pipeline) have been run, a 4th "Risk Signals" tab appears
-  automatically showing the Text Risk Index and per-observation LLM signal cards.
+  If the Text Analysis pipeline's step01/step02 redica outputs are present, a 4th
+  "Risk Signals" tab appears automatically showing FEI-level LLM signal summaries
+  and per-observation LLM signal cards (latest snapshot per FEI).
 
 WHEN TO RUN
   Run after 01_build_combined_dataset.py (required).
-  Also re-run after 06_aggregate_score.py if you want the LLM Risk Signals tab.
+  Also re-run after ../../99 - Outputs - Text Analysis/02_aggregate_fei_features.py
+  if you want the Risk Signals tab to reflect a new extraction run.
 
 REQUIRED FOR COMBINED DATASET?  YES — primary research visualization.
 
@@ -30,8 +32,10 @@ INPUTS (required — produced by 01)
 INPUTS (optional — enriches the dashboard if present)
   Data/12 - FDA - 483/processed/483_fei_features.csv   → regex signal badges (Overview tab)
   Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv
-  483_fei_context_features.csv          → LLM Text Risk Index (produced by 05)
-  483_observation_context_signals.csv   → per-observation LLM cards (produced by 04)
+  Data/99 - Outputs - Text Analysis/step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv
+    → FEI-level LLM signal summary (Risk Signals tab), latest snapshot per FEI used
+  Data/99 - Outputs - Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
+    → per-observation LLM signal cards (Risk Signals tab), top 25 by confidence per FEI
 
 OUTPUTS
   fei_dashboard.html  — open in Chrome / Firefox / Safari (no server needed)
@@ -48,6 +52,7 @@ from pathlib import Path
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE    = Path(__file__).parents[3]
 OUT     = Path(__file__).parent
+TEXT_ANALYSIS = BASE / "Data" / "99 - Outputs - Text Analysis"
 
 EVENTS_CSV   = OUT / "fei_events_timeline.csv"
 NODES_CSV    = OUT / "fei_node_summary.csv"
@@ -56,8 +61,11 @@ CFR_JSON     = OUT / "fei_cfr_data.json"
 SIGNALS_483  = BASE / "Data/12 - FDA - 483/processed/483_fei_features.csv"
 WL_REC_CSV   = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv"
 VALISURE     = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
-RISK_CSV     = OUT.parent / "483_fei_context_features.csv"          # produced by 05
-OBS_SIGNALS  = OUT.parent / "483_observation_context_signals.csv"   # produced by 04
+# Current validated redica v2 extraction (Claude Sonnet 5) — step02 is a
+# time-series of snapshots per FEI per inspection date; we use the latest
+# snapshot per FEI for the summary. See ../../99 - Outputs - Text Analysis/README.md.
+RISK_CSV     = TEXT_ANALYSIS / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
+OBS_SIGNALS  = TEXT_ANALYSIS / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
 HTML_OUT     = OUT / "fei_dashboard.html"
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -135,36 +143,48 @@ else:
 print(f"  483 text signals: {len(sig483)} FEIs")
 print(f"  WL  text signals: {len(sigWL)}  FEIs")
 
-# LLM risk signals (Phase 3 output — optional, graceful if missing)
+# LLM risk signals — from the Text Analysis redica v2 pipeline (optional,
+# graceful if missing). step02 is a time-series (multiple snapshots per FEI,
+# one per inspection date); we use each FEI's latest snapshot as the summary,
+# matching how 02_aggregate_fei_features.py itself reports "latest snapshot"
+# stats. There is no single composite risk index in the current schema (the
+# old Text Risk Index was dropped along with the v1 aggregation code) — the
+# KPI tiles below show the underlying shares directly instead.
 sigRisk = {}
 obs_by_fei: dict[str, list] = {}
 if RISK_CSV.exists() and OBS_SIGNALS.exists():
     risk_df = pd.read_csv(RISK_CSV)
     risk_df["fei"] = pd.to_numeric(risk_df["fei"], errors="coerce").astype("Int64")
-    for _, r in risk_df.iterrows():
+    latest = (risk_df.sort_values("snapshot_date")
+                      .groupby("fei", as_index=False).last())
+    for _, r in latest.iterrows():
         fei = str(int(r["fei"]))
         sigRisk[fei] = {
             "n_obs_scored":              int(r.get("n_obs_scored",  0)),
-            "n_483_obs":                 int(r.get("n_483_obs",     0)),
-            "n_wl_obs":                  int(r.get("n_wl_obs",      0)),
-            "severity_high_share":       float(r.get("severity_high_share",    0)),
-            "severity_mod_share":        float(r.get("severity_mod_share",     0)),
-            "severity_low_share":        float(r.get("severity_low_share",     0)),
+            "snapshot_date":             str(r.get("snapshot_date", "")),
+            # v2 has no single "high/mod/low" tier — critmajor share is the
+            # closest equivalent to the old "High" tier (critical + major).
+            "severity_high_share":       float(r.get("severity_critmajor_share", 0)),
+            "severity_mod_share":        float(r.get("severity_moderate_share",  0)),
+            "severity_low_share":        float(r.get("severity_minor_share",     0)),
             "dominant_root_cause":       str(r.get("dominant_root_cause",      "Unclear")),
-            "capital_share":             float(r.get("capital_share",           0)),
-            "cultural_share":            float(r.get("cultural_share",          0)),
-            "mixed_share":               float(r.get("mixed_share",             0)),
-            "unclear_share":             float(r.get("unclear_share",           0)),
+            "capital_share":             float(r.get("capital_root_cause_share",  0)),
+            "cultural_share":            float(r.get("cultural_root_cause_share", 0)),
+            "mixed_share":               float(r.get("mixed_root_cause_share",    0)),
+            "unclear_share":             float(r.get("unclear_root_cause_share",  0)),
             "remediation_strong_share":  float(r.get("remediation_strong_share",0)),
             "remediation_partial_share": float(r.get("remediation_partial_share",0)),
             "remediation_weak_share":    float(r.get("remediation_weak_share",  0)),
             "remediation_none_share":    float(r.get("remediation_none_share",  0)),
             "repeat_flag_share":         float(r.get("repeat_llm_share",        0)),
-            "systemic_flag_share":       float(r.get("systemic_llm_share",      0)),
+            # No standalone "systemic" LLM flag in v2 — scope=FacilityWide is
+            # the closest equivalent (v1's binary systemic flag was replaced
+            # by the 4-way scope field: SingleBatch/MultipleProducts/
+            # FacilityWide/Unclear).
+            "systemic_flag_share":       float(r.get("scope_facilitywide_share", 0)),
             "patient_risk_share":        float(r.get("patient_risk_llm_share",  0)),
             "dominant_violation_category": str(r.get("dominant_violation_category","Other")),
             "mean_confidence":           float(r.get("mean_confidence",          0)),
-            "text_risk_index":           float(r.get("text_risk_index",          0)),
         }
 
     obs_df = pd.read_csv(OBS_SIGNALS)
@@ -173,26 +193,29 @@ if RISK_CSV.exists() and OBS_SIGNALS.exists():
         fei = str(int(fei_val))
         obs_list = []
         for _, o in grp.sort_values("confidence", ascending=False).head(25).iterrows():
+            def _s(val, default=""):
+                return default if pd.isna(val) else str(val)
             obs_list.append({
-                "obs_id":    str(o.get("obs_num", ""))[-40:],
-                "src":       "483",
-                "cat":       str(o.get("violation_category", "Other")),
-                "sev":       str(o.get("severity_tier", "Low")),
-                "rc":        str(o.get("root_cause_type", "Unclear")),
-                "rem":       str(o.get("remediation_signal", "None")),
-                "repeat":    bool(str(o.get("repeat_flag_llm", "false")).lower() == "true"),
-                "systemic":  bool(str(o.get("systemic_flag_llm", "false")).lower() == "true"),
-                "patient":   bool(str(o.get("patient_risk_flag_llm", "false")).lower() == "true"),
-                "quote":     str(o.get("evidence_quote", ""))[:250],
+                "obs_id":    _s(o.get("obs_num"), "")[-40:],
+                "src":       "redica",
+                "cat":       _s(o.get("violation_category"), "Other"),
+                "sev":       _s(o.get("severity_tier"), "Minor"),
+                "rc":        _s(o.get("root_cause_type"), "Unclear"),
+                "rem":       _s(o.get("remediation_signal"), "None"),
+                "repeat":    _s(o.get("repeat_flag_llm")).lower() == "true",
+                "systemic":  _s(o.get("scope")) == "FacilityWide",
+                "patient":   _s(o.get("patient_risk_flag_llm")).lower() == "true",
+                "quote":     _s(o.get("evidence_quote"), "")[:250],
                 "conf":      float(o.get("confidence", 0)),
             })
         obs_by_fei[fei] = obs_list
 
     print(f"  LLM risk signals: {len(sigRisk)} FEIs  |  obs cards: {sum(len(v) for v in obs_by_fei.values())}")
 elif RISK_CSV.exists():
-    print("  [INFO] 483_fei_context_features.csv found but 483_observation_context_signals.csv missing — no obs cards")
+    print("  [INFO] step02 redica file found but step01 redica file missing — no obs cards")
 else:
-    print("  LLM risk signals: not found (run 04→05 pipeline to generate)")
+    print("  LLM risk signals: not found — run 01_extract_observation_signals.py and "
+          "02_aggregate_fei_features.py in ../../99 - Outputs - Text Analysis/ to generate")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -519,10 +542,6 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
 .risk-kpi-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.4px; }
 .risk-kpi-value { font-size: 18px; font-weight: bold; color: #1F3564; line-height: 1.1; }
 .risk-kpi-sub   { font-size: 9px; color: #aaa; margin-top: 1px; }
-.risk-tri-badge {
-  display: inline-block; border-radius: 8px; padding: 3px 10px;
-  font-size: 13px; font-weight: bold; color: white; margin-bottom: 12px;
-}
 .risk-bar-row { margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
 .risk-bar-label { font-size: 10px; min-width: 90px; color: #555; flex-shrink: 0; }
 .risk-bar-track { flex: 1; background: #f0f0f0; border-radius: 3px; height: 11px; }
@@ -1294,7 +1313,7 @@ function renderCfrTab(fei) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// RISK SIGNALS TAB  (LLM-extracted, Phase 3 pipeline)
+// RISK SIGNALS TAB  (LLM-extracted, Text Analysis pipeline)
 // ══════════════════════════════════════════════════════════════════════════
 function renderRiskTab(fei) {
   const body = document.getElementById('risk-body');
@@ -1305,15 +1324,12 @@ function renderRiskTab(fei) {
     body.innerHTML = `<div style="padding:20px">
       <div class="no-text-data">No LLM-extracted risk signals for this facility.</div>
       <div style="font-size:10px;color:#888;margin-top:8px">
-        Run the text analysis pipeline (scripts 04 → 05 → 06) to generate signals.
+        Run 01_extract_observation_signals.py and 02_aggregate_fei_features.py
+        (Data/99 - Outputs - Text Analysis/) to generate signals.
       </div>
     </div>`;
     return;
   }
-
-  // TRI badge colour
-  const tri = data.text_risk_index;
-  const triColor = tri >= 60 ? '#C0392B' : tri >= 35 ? '#E67E22' : '#27AE60';
 
   function pct(v) { return Math.round((v || 0) * 100); }
   function bar(label, val, color, maxVal) {
@@ -1325,32 +1341,28 @@ function renderRiskTab(fei) {
     </div>`;
   }
 
-  // Severity colours
-  const SEV_C  = { High: '#C0392B', Moderate: '#E67E22', Low: '#27AE60' };
+  // Severity colours (v2's 4-tier severity_tier scheme)
+  const SEV_C  = { Critical: '#C0392B', Major: '#E67E22', Moderate: '#F1C40F', Minor: '#27AE60' };
   // Root cause colours
   const RC_C   = { Capital: '#3498DB', Cultural: '#E67E22', Mixed: '#7D3C98', Unclear: '#95A5A6' };
   // Remediation colours
   const REM_C  = { Strong: '#27AE60', Partial: '#F1C40F', Weak: '#E67E22', None: '#C0392B' };
-  // Violation category colours (reuse domain palette)
+  // Violation category colours (v2's FDA six-system / QSIT scheme)
   const CAT_C  = {
-    LabControls: '#E74C3C', ProductionControls: '#27AE60',
-    BuildingsEquipment: '#E67E22', OrgPersonnel: '#3498DB',
-    PackagingLabeling: '#9B59B6', RecordsReports: '#1A5276',
-    QualitySystem: '#C0392B', Other: '#95A5A6',
+    QualitySystem: '#C0392B', ProductionSystem: '#27AE60',
+    MaterialsSystem: '#9B59B6', FacilitiesEquipmentSystem: '#E67E22',
+    LaboratoryControlsSystem: '#E74C3C', PackagingLabelingSystem: '#1A5276',
+    Other: '#95A5A6',
   };
 
   let html = `
-  <!-- TRI summary row -->
+  <!-- Summary row -->
   <div style="padding:10px 14px 8px;border-bottom:1px solid #f0f0f0">
     <div style="font-size:10px;color:#888;margin-bottom:4px">
-      <b>${data.n_obs_scored}</b> observations scored
-      (${data.n_483_obs} from 483s · ${data.n_wl_obs} from WLs)
-      · avg confidence ${Math.round((data.mean_confidence||0)*100)}%
+      <b>${data.n_obs_scored}</b> observations scored as of latest snapshot
+      (${data.snapshot_date}) · avg confidence ${Math.round((data.mean_confidence||0)*100)}%
     </div>
-    <span class="risk-tri-badge" style="background:${triColor}">
-      Text Risk Index: ${tri.toFixed(1)} / 100
-    </span>
-    <span style="font-size:9px;color:#aaa;margin-left:8px">
+    <span style="font-size:9px;color:#aaa">
       Dominant root cause: <b style="color:#555">${data.dominant_root_cause}</b>
       · Dominant violation: <b style="color:#555">${data.dominant_violation_category}</b>
     </span>
@@ -1406,12 +1418,6 @@ function renderRiskTab(fei) {
   ${bar('Weak',    data.remediation_weak_share,    '#E67E22', 1)}
   ${bar('None',    data.remediation_none_share,    '#C0392B', 1)}
 
-  <!-- TRI formula note -->
-  <div style="font-size:9px;color:#aaa;background:#f8f9fa;border-radius:4px;padding:6px 8px;margin-top:12px;line-height:1.6">
-    <b style="color:#555">TRI formula:</b>
-    0.35×High + 0.20×Mod + 0.20×(1−Strong rem) + 0.15×Repeat + 0.10×Systemic
-  </div>
-
   </div><!-- end padding -->`;
 
   // Per-observation cards
@@ -1447,7 +1453,8 @@ function renderRiskTab(fei) {
   }
 
   html += `<div style="padding:6px 14px 14px;font-size:9px;color:#aaa;border-top:1px solid #f0f0f0;margin-top:8px">
-    Source: LLM extraction pipeline (Claude) · scripts 04–06
+    Source: Text Analysis pipeline (Claude Sonnet 5, redica v2) ·
+    01_extract_observation_signals.py → 02_aggregate_fei_features.py
   </div>`;
 
   body.innerHTML = html;
@@ -1471,7 +1478,7 @@ print(f"  {len(sig483)} FEIs with 483 text signals")
 print(f"  {len(sigWL)} FEIs with WL text signals")
 print(f"  {len(cfr_data)} FEIs with CFR citation data")
 print(f"  {len(sigRisk)} FEIs with LLM risk signals  "
-      f"(run 04→05→06 pipeline to populate)"
+      f"(run the Text Analysis pipeline to populate)"
       if not sigRisk else
       f"  {len(sigRisk)} FEIs with LLM risk signals  ·  "
       f"{sum(len(v) for v in obs_by_fei.values())} observation cards")
