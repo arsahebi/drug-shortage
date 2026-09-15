@@ -439,6 +439,40 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
 /* ── Main layout ── */
 #main { display: flex; height: 100vh; padding-top: 52px; }
 
+/* ── List panel ── */
+#list-panel {
+  width: 280px; flex-shrink: 0; background: white;
+  border-right: 2px solid #e0e0e0;
+  display: flex; flex-direction: column; min-height: 0;
+}
+#list-search-wrap { padding: 10px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+#list-search {
+  width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px;
+  font-size: 12px; outline: none;
+}
+#list-search:focus { border-color: #1F3564; }
+#list-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+.list-section-title {
+  position: sticky; top: 0; background: #F4F7FC; z-index: 1;
+  padding: 7px 10px; font-size: 10px; font-weight: bold; color: #1F3564;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  border-bottom: 1px solid #e6e9f0; border-top: 1px solid #e6e9f0;
+}
+.count-badge { color: #888; font-weight: normal; text-transform: none; letter-spacing: 0; }
+.list-row {
+  display: flex; align-items: center; gap: 7px; padding: 6px 10px;
+  font-size: 11.5px; cursor: pointer; border-bottom: 1px solid #f5f5f5;
+}
+.list-row:hover { background: #F4F7FC; }
+.list-row.active { background: #E8ECF8; font-weight: bold; }
+.list-row-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.list-row-diamond {
+  width: 7px; height: 7px; background: #00C8D4; flex-shrink: 0; transform: rotate(45deg);
+}
+.list-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333; }
+.list-row-sub { color: #999; font-size: 9.5px; flex-shrink: 0; }
+.list-empty { padding: 12px 10px; font-size: 11px; color: #aaa; font-style: italic; }
+
 /* ── Network panel ── */
 #network-panel { flex: 1; position: relative; transition: flex 0.3s ease; }
 #network-container { width: 100%; height: 100%; }
@@ -677,6 +711,23 @@ body { font-family: Arial, sans-serif; background: #f0f2f6; overflow: hidden; }
 
 <!-- Main -->
 <div id="main">
+
+  <!-- List panel — browse by name instead of hunting in the network -->
+  <div id="list-panel">
+    <div id="list-search-wrap">
+      <input type="text" id="list-search" placeholder="🔍 Search facility or drug…" oninput="renderLists()">
+    </div>
+    <div id="list-scroll">
+      <div class="list-section">
+        <div class="list-section-title">💊 Drugs (APIs) <span id="drug-count-badge" class="count-badge"></span></div>
+        <div id="drug-list"></div>
+      </div>
+      <div class="list-section">
+        <div class="list-section-title">🏭 Facilities <span id="fei-count-badge" class="count-badge"></span></div>
+        <div id="fei-list"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Network -->
   <div id="network-panel">
@@ -990,6 +1041,69 @@ function closePanel() {
   document.getElementById('drug-facility-list').classList.remove('active');
   currentFei = null;
 }
+
+// ── Sidebar lists (browse by name instead of only via the network) ─────────
+let selectedListId = null;
+
+function selectFromList(id, isDrug) {
+  selectedListId = id;
+  // Facility node ids are embedded as JSON numbers, not strings — coerce so
+  // visNodes.get()/network.focus() actually match the dataset's stored id type.
+  const networkId = isDrug ? id : Number(id);
+  if (isDrug) {
+    openDrugPanel(id);
+  } else {
+    openPanel(String(id));
+    if (visNodes.get(networkId)) network.selectNodes([networkId]);
+  }
+  if (visNodes.get(networkId)) {
+    network.focus(networkId, { scale: 1.1, animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+  }
+  renderLists();
+}
+
+function renderLists() {
+  const q = (document.getElementById('list-search').value || '').trim().toLowerCase();
+
+  // Drugs
+  const drugNames = Object.keys(DRUG_FEIS).sort();
+  const drugMatches = q ? drugNames.filter(d => d.toLowerCase().includes(q)) : drugNames;
+  document.getElementById('drug-count-badge').textContent =
+    q ? `(${drugMatches.length}/${drugNames.length})` : `(${drugNames.length})`;
+  const drugListEl = document.getElementById('drug-list');
+  drugListEl.innerHTML = drugMatches.length ? drugMatches.map(d => {
+    const id = 'drug:' + d;
+    const active = id === selectedListId ? ' active' : '';
+    return `<div class="list-row${active}" onclick="selectFromList('${id.replace(/'/g, "\\'")}', true)">
+      <span class="list-row-diamond"></span>
+      <span class="list-row-name">${d}</span>
+      <span class="list-row-sub">${DRUG_FEIS[d].length}</span>
+    </div>`;
+  }).join('') : '<div class="list-empty">No drugs match.</div>';
+
+  // Facilities
+  const feiIds = Object.keys(FEI_INFO).sort((a, b) =>
+    (FEI_INFO[a].firm || '').localeCompare(FEI_INFO[b].firm || '')
+  );
+  const feiMatches = q ? feiIds.filter(f => {
+    const info = FEI_INFO[f] || {};
+    return (info.firm || '').toLowerCase().includes(q) || f.includes(q);
+  }) : feiIds;
+  document.getElementById('fei-count-badge').textContent =
+    q ? `(${feiMatches.length}/${feiIds.length})` : `(${feiIds.length})`;
+  const feiListEl = document.getElementById('fei-list');
+  feiListEl.innerHTML = feiMatches.length ? feiMatches.map(f => {
+    const info = FEI_INFO[f] || {};
+    const c = OUTCOME_COLORS_JS[info.worst] || '#AEB6BF';
+    const active = f === selectedListId ? ' active' : '';
+    return `<div class="list-row${active}" onclick="selectFromList('${f}', false)">
+      <span class="list-row-dot" style="background:${c}"></span>
+      <span class="list-row-name">${info.firm || ('FEI ' + f)}</span>
+      <span class="list-row-sub">${info.country || ''}</span>
+    </div>`;
+  }).join('') : '<div class="list-empty">No facilities match.</div>';
+}
+renderLists();
 
 function showTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b =>
