@@ -30,12 +30,12 @@ INPUTS (required — produced by 01)
   fei_cfr_data.json
 
 INPUTS (optional — enriches the dashboard if present)
-  Data/12 - FDA - 483/processed/483_fei_features.csv   → regex signal badges (Overview tab)
   Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv
   Data/99 - Outputs - Text Analysis/step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv
     → FEI-level LLM signal summary (Risk Signals tab), latest snapshot per FEI used
   Data/99 - Outputs - Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
-    → per-observation LLM signal cards (Risk Signals tab), top 25 by confidence per FEI
+    → regex signal badges (Overview tab, FEI-lifetime "ever" flags) AND
+      per-observation LLM signal cards (Risk Signals tab, top 25 by confidence per FEI)
 
 OUTPUTS
   fei_dashboard.html  — open in Chrome / Firefox / Safari (no server needed)
@@ -58,7 +58,8 @@ EVENTS_CSV   = OUT / "fei_events_timeline.csv"
 NODES_CSV    = OUT / "fei_node_summary.csv"
 EDGES_CSV    = OUT / "fei_edge_list.csv"
 CFR_JSON     = OUT / "fei_cfr_data.json"
-SIGNALS_483  = BASE / "Data/12 - FDA - 483/processed/483_fei_features.csv"
+# Overview-tab regex signal badges — same Redica file as OBS_SIGNALS below
+# (defined after TEXT_ANALYSIS); 98/129 FEIs, not the old PDF-only file (38/129).
 WL_REC_CSV   = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv"
 VALISURE     = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
 # Current validated redica v2 extraction (Claude Sonnet 5) — step02 is a
@@ -66,6 +67,7 @@ VALISURE     = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
 # snapshot per FEI for the summary. See ../../99 - Outputs - Text Analysis/README.md.
 RISK_CSV     = TEXT_ANALYSIS / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
 OBS_SIGNALS  = TEXT_ANALYSIS / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
+SIGNALS_483  = OBS_SIGNALS  # Overview-tab regex badges read the same file
 HTML_OUT     = OUT / "fei_dashboard.html"
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -85,24 +87,27 @@ api_map  = valisure.groupby("FEI_NUMBER")["API"].apply(
     lambda x: list(set(x.dropna()))
 ).to_dict()
 
-# 483 text signals
+# 483 text signals — Redica (98/129 FEIs), not the old PDF-only regex file
+# (38/129 FEIs). "ever_*" flags are regex hits anywhere across the FEI's
+# Redica observation history, matching the old file's FEI-lifetime semantics.
 sig483 = {}
 if SIGNALS_483.exists():
     df483 = pd.read_csv(SIGNALS_483)
     df483["fei"] = pd.to_numeric(df483["fei"], errors="coerce").astype("Int64")
-    for _, r in df483.iterrows():
-        fei = str(int(r["fei"]))
+    for fei_val, grp in df483.groupby("fei"):
+        fei = str(int(fei_val))
+        lens = grp["obs_text_clean"].dropna().str.len()
         sig483[fei] = {
-            "n_483s":              int(r.get("n_483s_total", 0)),
-            "n_obs":               int(r.get("n_observations_total", 0)),
-            "avg_chars":           int(r.get("avg_obs_body_chars", 0)),
-            "ever_repeat":         bool(r.get("ever_repeat", False)),
-            "ever_data_integrity": bool(r.get("ever_data_integrity", False)),
-            "ever_contamination":  bool(r.get("ever_contamination", False)),
-            "ever_systemic":       bool(r.get("ever_systemic", False)),
-            "ever_oos_oot":        bool(r.get("ever_oos_oot", False)),
-            "ever_patient_risk":   bool(r.get("ever_patient_risk", False)),
-            "ever_wl_ref":         bool(r.get("ever_wl_ref", False)),
+            "n_483s":              int(grp["insp_date"].nunique()),
+            "n_obs":               int(len(grp)),
+            "avg_chars":           int(lens.mean()) if len(lens) else 0,
+            "ever_repeat":         bool(grp["has_repeat_regex"].any()),
+            "ever_data_integrity": bool(grp["has_data_integrity_regex"].any()),
+            "ever_contamination":  bool(grp["has_contamination_regex"].any()),
+            "ever_systemic":       bool(grp["has_systemic_regex"].any()),
+            "ever_oos_oot":        bool(grp["has_oos_oot_regex"].any()),
+            "ever_patient_risk":   bool(grp["has_patient_risk_regex"].any()),
+            "ever_wl_ref":         bool(grp["has_wl_ref_regex"].any()),
         }
 
 # WL text signals
@@ -1085,7 +1090,7 @@ function renderSignals(s483, sWL) {
       ['Ref. to prior Warning Letter',   s483.ever_wl_ref],
     ];
     html += `<div class="signal-source">
-      <div class="signal-source-label">📋 From Form 483 PDF Text (${s483.n_483s} PDF${s483.n_483s!==1?'s':''}, ${s483.n_obs} observations)</div>
+      <div class="signal-source-label">📋 From Redica 483 Text (${s483.n_483s} inspection${s483.n_483s!==1?'s':''}, ${s483.n_obs} observations)</div>
       <div class="signals-grid">`;
     items.forEach(([label, val]) => {
       html += `<div class="sig-item">
@@ -1100,7 +1105,7 @@ function renderSignals(s483, sWL) {
     }
     html += '</div>';
   } else {
-    html += '<div class="signal-source"><div class="no-text-data">No 483 PDF extracted for this facility.</div></div>';
+    html += '<div class="signal-source"><div class="no-text-data">No Redica 483 data for this facility.</div></div>';
   }
 
   if (sWL) {

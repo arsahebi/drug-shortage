@@ -19,10 +19,9 @@ INPUTS (all read-only — this script does not modify source files)
   Data/08 - Valisure/raw/FEIs_March 2026.xlsx   → 129 reference FEIs
   Data/14 - FDA - Inspection/raw/Inspections Details.xlsx
   Data/14 - FDA - Inspection/raw/Inspections Citations Details.xlsx
-  Data/12 - FDA - 483/processed/483_pdf_inventory.csv  → 483 dates + n_observations
-  Data/12 - FDA - 483/processed/483_fei_features.csv   → FEI-level regex flags
-    NOTE: reads 483_fei_features.csv (FEI-level aggregates), NOT 483_observations.csv.
-    The per-observation 483_observations.csv is used by the LLM pipeline (scripts 04-07).
+  Data/99 - Outputs - Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
+    → 483 observations (98/129 FEIs), grouped by (fei, insp_date) into one "483"
+    event per inspection, with regex flags aggregated per inspection date.
   Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv
   Data/21 - FDA - Warning Letter/processed/wl_fei_network.csv
   Data/22 - FDA - Recall/processed/recall_filtered.csv
@@ -53,8 +52,10 @@ OUT  = Path(__file__).parent
 VALISURE   = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
 INSP_RAW   = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
 CIT_RAW    = BASE / "Data/14 - FDA - Inspection/raw/Inspections Citations Details.xlsx"
-INV_483    = BASE / "Data/12 - FDA - 483/processed/483_pdf_inventory.csv"
-OBS_483    = BASE / "Data/12 - FDA - 483/processed/483_fei_features.csv"
+# 483 observations: Redica (98/129 FEIs), not the PDF inventory (38/129 FEIs) —
+# see Data/99 - Outputs - Text Analysis/README.md. One row per observation;
+# grouped by (fei, insp_date) below to form one "483" event per inspection.
+REDICA_483 = BASE / "Data/99 - Outputs - Text Analysis" / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
 WL_REC     = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv"
 WL_NET     = BASE / "Data/21 - FDA - Warning Letter/processed/wl_fei_network.csv"
 REC_FILT   = BASE / "Data/22 - FDA - Recall/processed/recall_filtered.csv"
@@ -181,54 +182,53 @@ for _, row in insp_our.iterrows():
 print(f"  Inspection events: {len(events)}")
 
 
-# ── B: 483 PDFs ──────────────────────────────────────────────────────────
-inv483 = pd.read_csv(INV_483)
-inv483["fei"] = inv483["fei"].astype("Int64")
-inv483 = inv483[inv483["fei"].isin(ref_feis)].copy()
-inv483["insp_date"] = pd.to_datetime(inv483["insp_date"], errors="coerce")
-inv483 = inv483.dropna(subset=["insp_date"])
+# ── B: 483s (Redica) ─────────────────────────────────────────────────────
+redica_483 = pd.read_csv(REDICA_483)
+redica_483["fei"] = pd.to_numeric(redica_483["fei"], errors="coerce").astype("Int64")
+redica_483 = redica_483[redica_483["fei"].isin(ref_feis)].copy()
+redica_483["insp_date"] = pd.to_datetime(redica_483["insp_date"], errors="coerce")
+redica_483 = redica_483.dropna(subset=["fei", "insp_date"])
 
-fei_483_feats = pd.read_csv(OBS_483) if OBS_483.exists() else pd.DataFrame()
-if not fei_483_feats.empty:
-    fei_483_feats["fei"] = pd.to_numeric(fei_483_feats["fei"], errors="coerce").astype("Int64")
+# One "483" event per (fei, insp_date) — the Redica analogue of one PDF per
+# inspection. Regex flags are aggregated across that inspection's own
+# observations (more precise than the old FEI-wide "ever_*" flags, which
+# stamped the same facility-lifetime flags on every event).
+REGEX_FLAG_COLS = [
+    ("has_data_integrity_regex", "DataIntegrity"),
+    ("has_repeat_regex",         "Repeat"),
+    ("has_contamination_regex",  "Contamination"),
+    ("has_systemic_regex",       "Systemic"),
+]
 
 n_before = len(events)
-for _, row in inv483.iterrows():
-    fei   = int(row["fei"])
-    n_obs = int(row.get("n_observations", 0))
-    firm  = safe_str(row.get("firm_name", "")) or get_firm(fei)
+for (fei, insp_date), grp in redica_483.groupby(["fei", "insp_date"]):
+    fei   = int(fei)
+    n_obs = len(grp)
+    firm  = get_firm(fei)
 
-    details = f"483 · {n_obs} observations"
-    if not fei_483_feats.empty:
-        frow = fei_483_feats[fei_483_feats["fei"] == fei]
-        if not frow.empty:
-            sig = []
-            for col, label in [("ever_data_integrity","DataIntegrity"),
-                                ("ever_repeat","Repeat"),
-                                ("ever_contamination","Contamination"),
-                                ("ever_systemic","Systemic")]:
-                if col in frow.columns and bool(frow.iloc[0][col]):
-                    sig.append(label)
-            if sig:
-                details += " · " + ", ".join(sig)
+    details = f"483 (Redica) · {n_obs} observations"
+    sig = [label for col, label in REGEX_FLAG_COLS
+           if col in grp.columns and bool(grp[col].any())]
+    if sig:
+        details += " · " + ", ".join(sig)
 
     events.append({
         "fei":              fei,
         "firm_name":        firm if firm and firm != "nan" else get_firm(fei),
         "country":          get_country(fei),
-        "event_date":       row["insp_date"].date(),
-        "event_year":       row["insp_date"].year,
+        "event_date":       insp_date.date(),
+        "event_year":       insp_date.year,
         "event_type":       "483",
         "event_subtype":    f"{n_obs} obs",
         "severity_num":     SEV["483"],
         "key_details":      details,
-        "source":           "483 PDF",
+        "source":           "Redica 483",
         "inspection_id": "", "city": "", "state": "",
         "product_type": "", "program_area": "",
         "posted_citations": "", "fiscal_year": "",
     })
 
-print(f"  483 events: {len(events) - n_before}")
+print(f"  483 events: {len(events) - n_before}  ({redica_483['fei'].nunique()} FEIs)")
 
 
 # ── C: Warning Letters ───────────────────────────────────────────────────
