@@ -1,0 +1,179 @@
+% ============================================================
+% Updated Evidence: 483 Text Signals and Patient-Harm Risk
+% Rerun of the INFORMS 2026 VAI-only result with the current,
+% human-validated extraction pipeline (Claude Sonnet 5, v2 prompt)
+% Prepared 2026-09-16
+% ============================================================
+\documentclass[aspectratio=169,10pt]{beamer}
+
+% -- Theme -------------------------------------------------------------------
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamersize{text margin left=6mm, text margin right=6mm}
+
+% -- Packages ------------------------------------------------------------------
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{hyperref}
+\pdfstringdefDisableCommands{\let\\\space\let$\relax}
+
+% -- Colors -- matches Paper/Text Analysis/20260714_informs_slides.tex --------
+\definecolor{ncsuRed}{RGB}{204,0,0}
+\definecolor{ncsuGray}{RGB}{100,100,100}
+\definecolor{techBlue}{RGB}{37,99,235}
+\definecolor{govGreen}{RGB}{5,150,105}
+\definecolor{warnOrange}{RGB}{217,119,6}
+\definecolor{lightGray}{RGB}{243,244,246}
+
+\setbeamercolor{structure}{fg=ncsuRed}
+\setbeamercolor{block title}{bg=ncsuRed!90, fg=white}
+\setbeamercolor{block body}{bg=ncsuRed!8}
+\setbeamercolor{alerted text}{fg=ncsuRed}
+
+\newcommand{\highlight}[1]{{\color{ncsuRed}\textbf{#1}}}
+\newcommand{\tech}[1]{{\color{techBlue}\textbf{#1}}}
+\newcommand{\gov}[1]{{\color{govGreen}\textbf{#1}}}
+
+% -- Title ---------------------------------------------------------------------
+\title[Updated Text-Signal Evidence]{%
+  Updated Evidence: 483 Text Signals\texorpdfstring{\\}{ }
+  and Patient-Harm Risk\texorpdfstring{\\}{ }
+  \small A rerun of the INFORMS VAI-only result on the current, validated pipeline}
+
+\author[Sahebi-Fakhrabad et al.]{Amirreza Sahebi-Fakhrabad}
+\date{September 16, 2026 -- internal update, not for external distribution}
+
+\begin{document}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}
+\titlepage
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Why This Update}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item INFORMS Annual Meeting (July 2026) presented a flagship result: 483 text signals
+        predict future patient-harm risk in facilities where FDA's own classification (VAI)
+        carries the least information.
+  \item That analysis used an earlier extraction (before Claude Sonnet 5 was pinned as the
+        validated model, and before the round-1 human-label validation and prompt fixes
+        documented in the LLM Extraction Validation Report).
+  \item \highlight{This deck reruns the exact same test on the current, validated data} --
+        same panel construction, same cohort definition, same models -- to see whether the
+        claim holds up.
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Study Design (unchanged from INFORMS)}
+\begin{itemize}
+  \setlength{\itemsep}{8pt}
+  \item \textbf{Unit:} one inspection event
+  \item \textbf{Features:} 17 LLM text signals from the 483 (now from the validated v2 prompt,
+        Claude Sonnet 5)
+  \item \textbf{Outcome:} above-median adverse events in the 4 quarters after inspection
+  \item \textbf{CV:} FEI-grouped 5-fold logistic regression and random forest
+  \item \textbf{Cohort:} inspections with an ANDA-matched FAERS record in the outcome window --
+        \highlight{176 inspections, 78 FEIs} (98 FEIs, 33 OAI, before this filter)
+  \item \textbf{VAI-only subgroup:} 55 facilities that never received an OAI in this panel --
+        \highlight{110 inspections}
+\end{itemize}
+\vspace{6pt}
+{\small Cohort sizes above match the original INFORMS slide exactly -- confirms this rerun is a
+faithful replication of the original setup, not a different test.}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Sanity Check: The Structured-Data-Only Config}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{block}{Config C: OAI flag only (no text)}
+\begin{itemize}
+  \item Does not use any 483 text.
+  \item Should be unaffected by anything that changed in the text pipeline.
+\end{itemize}
+\end{block}
+\column{0.4\textwidth}
+\begin{center}
+{\small INFORMS (July):} \highlight{0.545}\\[4pt]
+{\small Rerun (Sept):} \highlight{0.545}
+\end{center}
+\end{columns}
+\vspace{10pt}
+Matches almost exactly. This is strong evidence the rerun's panel construction, FAERS matching,
+and cross-validation are a faithful reproduction of the INFORMS methodology -- so where the
+\emph{text}-dependent configs differ below, that is a real finding, not a plumbing difference.
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Updated Results}
+{\small
+\begin{tabular}{clcc}
+\toprule
+ & Feature set & INFORMS (July) & Rerun (Sept, current data) \\
+\midrule
+A & Text only, full sample (LR) & 0.585 & \highlight{0.461} \\
+C & OAI flag only & 0.545 & 0.545 \\
+\midrule
+\pause
+D & Text only, VAI-only (LR) & 0.656, $p{=}0.046$ & \highlight{0.574, $p{=}0.20$} \\
+D & Text only, VAI-only (RF) & not reported & \highlight{0.645, $p{=}0.032$} \\
+\bottomrule
+\multicolumn{4}{l}{\scriptsize $p$ from one-tailed $t$-test vs.\ 0.5 across 5 CV folds, same test as the original slide}
+\end{tabular}
+}
+\vspace{10pt}
+\pause
+\begin{alertblock}{Honest read}
+\small The flagship VAI-only claim does \textbf{not} replicate at the original strength under
+logistic regression, the exact model INFORMS reported (p goes from 0.046 to 0.20). A
+similar-magnitude, still-significant effect shows up under random forest (p=0.032), so there is
+a real signal in the same direction, just not as clean as first presented.
+\end{alertblock}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Why the Numbers Moved}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item The text features themselves changed: the current extraction is human-validated
+        (independent blind review, 68--96\% field accuracy) and had two real prompt bugs and
+        several rule gaps fixed after the INFORMS numbers were produced.
+  \item This is not a case of ``the old number was wrong, ignore it'' -- it is the expected
+        result of tightening the pipeline. A weaker but still-present, still-significant (RF)
+        effect on more rigorously validated data is a more trustworthy basis to build on than a
+        stronger effect on data known to have had extraction bugs at the time.
+  \item Sample size remains the binding constraint either way: 55 VAI-only facilities, 110
+        inspections. INFORMS's own slide called this subgroup result ``hypothesis-generating,''
+        and that framing applies at least as much now.
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Where This Points Next}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item \textbf{More data, not a different model.} The VAI-only cohort is small because
+        Redica-scored inspection history is still short for many facilities. Revisit as
+        coverage grows.
+  \item \textbf{Refresh the OAI/VAI classification.} The FDA Inspection raw source
+        (Data/14 -- FDA -- Inspection) is dated November 2025. Rebuilding this cohort on updated
+        classification data is the next concrete step.
+  \item \textbf{Extend toward shortage.} Working hypothesis: OAI forces remediation and heads
+        off a shortage; VAI does not force the same response, so an undetected quality problem
+        at a VAI facility could keep degrading and eventually cause a shortage. This VAI-only
+        result is the direct empirical foundation for testing that hypothesis once shortage
+        (not just AE) is added as an outcome.
+\end{itemize}
+\end{frame}
+
+\end{document}
