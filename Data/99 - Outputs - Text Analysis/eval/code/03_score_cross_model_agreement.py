@@ -53,8 +53,17 @@ def main() -> None:
         print("  WARNING: merged row count does not match both inputs -- "
               "check the join key still uniquely identifies observations.")
 
+    # severity_tier: also score with Major+Moderate collapsed. Human-eval accuracy
+    # (LLM Extraction Validation Report, Section 2) showed the extraction's dominant
+    # severity error is Major-vs-Moderate confusion, not Critical-vs-Major, so this
+    # is the standard used for severity_tier in analysis going forward.
+    merged["severity_tier_collapsed_c"] = merged["severity_tier_c"].replace(
+        {"Major": "Major_or_Moderate", "Moderate": "Major_or_Moderate"})
+    merged["severity_tier_collapsed_g"] = merged["severity_tier_g"].replace(
+        {"Major": "Major_or_Moderate", "Moderate": "Major_or_Moderate"})
+
     rows = []
-    for field in CATEGORICAL_FIELDS + BINARY_FIELDS:
+    for field in CATEGORICAL_FIELDS + ["severity_tier_collapsed"] + BINARY_FIELDS:
         a, b = merged[f"{field}_c"], merged[f"{field}_g"]
         valid = a.notna() & b.notna()
         n = int(valid.sum())
