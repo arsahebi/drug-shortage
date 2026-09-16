@@ -11,7 +11,7 @@ Recalls are a cleaner prediction target than shortages for this FEI-level panel:
 
 Feature groups:
   Inspection (Redica):    n_oai_cumul, n_vai_t, n_inspections_t, n_warning_letters_t
-  Text/LLM (483 combined): severity_critmajor_share, scope_facilitywide_share,
+  Text/LLM (483 combined): severity_majmod_share, scope_facilitywide_share,
                            scope_multipleproducts_share, cultural_root_cause_share,
                            contamination_llm_share, data_integrity_llm_share,
                            investigation_llm_share, repeat_cross_insp_share,
@@ -97,15 +97,13 @@ INSP_FEATURES = [
     "n_warning_letters_t",
 ]
 
-# KNOWN NOISE SOURCE (eval/results_and_notes/20260916_LLM_Extraction_Validation_Report.docx,
-# Section 2): severity_critmajor_share collapses Critical+Major, but the extraction's
-# dominant severity error is Major-vs-Moderate confusion (over-calls Major), not
-# Critical-vs-Major. Collapsing Critical+Major only moves human-eval accuracy from
-# ~62-70% to ~70-74%; collapsing Major+Moderate instead (not what this feature does)
-# reaches 90-94% on the same rows. This feature likely still carries some of that
-# over-calling noise toward the high-severity direction.
+# severity_majmod_share (Major+Moderate collapsed), not severity_critmajor_share
+# (Critical+Major collapsed): human-eval accuracy (eval/results_and_notes/
+# 20260916_LLM_Extraction_Validation_Report.docx, Section 2) is 90-94% for the
+# Major/Moderate collapse vs. 66-68% for the raw 4-tier -- the extraction's real
+# confusion is at the Major/Moderate boundary, not Critical/Major.
 TEXT_FEATURES = [
-    "severity_critmajor_share",
+    "severity_majmod_share",
     "scope_facilitywide_share",
     "scope_multipleproducts_share",
     "cultural_root_cause_share",
@@ -528,7 +526,7 @@ def _fig_risk_ranking(panel: pd.DataFrame, rf_full, feature_cols: list[str],
     top20 = top20.merge(facility_names, on="fei", how="left")
 
     rank_cols = ["fei", "facility_name", "p_recall", "n_oai_cumul",
-                 "severity_critmajor_share", "contamination_llm_share"]
+                 "severity_majmod_share", "contamination_llm_share"]
     rank_cols_present = [c for c in rank_cols if c in top20.columns]
     top20 = top20[rank_cols_present].reset_index(drop=True)
     top20.index = top20.index + 1

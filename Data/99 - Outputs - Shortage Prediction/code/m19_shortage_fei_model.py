@@ -81,15 +81,13 @@ _PARENTERAL_ROUTES = {
 
 INSP_FEATURES = ["n_oai_cumul", "n_vai_t", "n_inspections_t"]
 
-# KNOWN NOISE SOURCE (eval/results_and_notes/20260916_LLM_Extraction_Validation_Report.docx,
-# Section 2): severity_critmajor_share collapses Critical+Major, but the extraction's
-# dominant severity error is Major-vs-Moderate confusion (over-calls Major), not
-# Critical-vs-Major. Collapsing Critical+Major only moves human-eval accuracy from
-# ~62-70% to ~70-74%; collapsing Major+Moderate instead (not what this feature does)
-# reaches 90-94% on the same rows. This feature likely still carries some of that
-# over-calling noise toward the high-severity direction.
+# severity_majmod_share (Major+Moderate collapsed), not severity_critmajor_share
+# (Critical+Major collapsed): human-eval accuracy (eval/results_and_notes/
+# 20260916_LLM_Extraction_Validation_Report.docx, Section 2) is 90-94% for the
+# Major/Moderate collapse vs. 66-68% for the raw 4-tier -- the extraction's real
+# confusion is at the Major/Moderate boundary, not Critical/Major.
 TEXT_FEATURES = [
-    "severity_critmajor_share",
+    "severity_majmod_share",
     "scope_facilitywide_share",
     "scope_multipleproducts_share",
     "cultural_root_cause_share",

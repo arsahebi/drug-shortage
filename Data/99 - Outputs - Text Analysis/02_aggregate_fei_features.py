@@ -323,6 +323,12 @@ def _layer3_llm(scored: pd.DataFrame, ns: int, categories: list[str]) -> dict:
         # 4-tier analog of the old severity_high_share; single column for models
         "severity_critmajor_share":    round(_value_share(sev, "Critical")
                                              + _value_share(sev, "Major"),  4),
+        # Preferred severity feature (LLM Extraction Validation Report, Section 2):
+        # human-eval accuracy is 90-94% for Major+Moderate collapsed vs. 66-68% for
+        # the raw 4-tier -- the extraction's real confusion is at the Major/Moderate
+        # boundary, not Critical/Major, so critmajor_share still carries that noise.
+        "severity_majmod_share":       round(_value_share(sev, "Major")
+                                             + _value_share(sev, "Moderate"), 4),
         "scope_singlebatch_share":     round(_value_share(sc, "SingleBatch"),      4),
         "scope_multipleproducts_share": round(_value_share(sc, "MultipleProducts"), 4),
         "scope_facilitywide_share":    round(_value_share(sc, "FacilityWide"),     4),
@@ -457,7 +463,7 @@ _COL_ORDER = [
     # Layer 3 -- LLM categorical
     "severity_critical_share", "severity_major_share",
     "severity_moderate_share", "severity_minor_share",
-    "severity_critmajor_share",
+    "severity_critmajor_share", "severity_majmod_share",
     "scope_singlebatch_share", "scope_multipleproducts_share",
     "scope_facilitywide_share", "scope_unclear_share",
     "dominant_violation_category", "dominant_root_cause",
