@@ -64,6 +64,12 @@ OUT_PANEL_INSP      = OUT / "fei_ae_panel_inspection_centered.parquet"
 OUT_PANEL_INSP_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 
 # v2 schema: 2 renames from the original (v1) feature list, rest unchanged.
+# KNOWN NOISE SOURCE (eval/results_and_notes/20260916_LLM_Extraction_Validation_Report.docx,
+# Section 2): severity_critmajor_share collapses Critical+Major, but the extraction's
+# dominant severity error is Major-vs-Moderate confusion (over-calls Major), not
+# Critical-vs-Major. Collapsing Critical+Major only moves human-eval accuracy from
+# ~62-70% to ~70-74%; collapsing Major+Moderate instead (not what this feature does)
+# reaches 90-94% on the same rows.
 TEXT_FEATURES = [
     "severity_critmajor_share",
     "contamination_llm_share",

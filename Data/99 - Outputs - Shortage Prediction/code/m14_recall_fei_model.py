@@ -97,6 +97,13 @@ INSP_FEATURES = [
     "n_warning_letters_t",
 ]
 
+# KNOWN NOISE SOURCE (eval/results_and_notes/20260916_LLM_Extraction_Validation_Report.docx,
+# Section 2): severity_critmajor_share collapses Critical+Major, but the extraction's
+# dominant severity error is Major-vs-Moderate confusion (over-calls Major), not
+# Critical-vs-Major. Collapsing Critical+Major only moves human-eval accuracy from
+# ~62-70% to ~70-74%; collapsing Major+Moderate instead (not what this feature does)
+# reaches 90-94% on the same rows. This feature likely still carries some of that
+# over-calling noise toward the high-severity direction.
 TEXT_FEATURES = [
     "severity_critmajor_share",
     "scope_facilitywide_share",
