@@ -22,6 +22,7 @@ Project - Drug Shortage/
 ├── Paper/                         ← manuscript drafts
 ├── Presentation/                  ← slides
 ├── Proposal/                      ← grant/project proposals
+├── Progress Updates/              ← PI/funder-facing progress memos (e.g. LOE status updates), not the proposal itself
 ├── Lit Review/                    ← literature notes
 ├── Meeting/                       ← meeting notes
 ├── Conferences/
