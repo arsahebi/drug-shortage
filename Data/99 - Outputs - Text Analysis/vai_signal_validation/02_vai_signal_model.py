@@ -316,7 +316,7 @@ def main() -> None:
     OUT_TABS.mkdir(parents=True, exist_ok=True)
     OUT_FIGS.mkdir(parents=True, exist_ok=True)
 
-    suffix = "" if args.outcome == "relative" else "_global"
+    suffix = ("_anda" if args.anda_ae else "") + ("" if args.outcome == "relative" else "_global")
     metrics.to_csv(OUT_MOD / f"ablation_metrics{suffix}.csv", index=False)
     print(f"\nResults:\n{metrics[['config','model','auc','p_vs_0.5','n_folds','n']].to_string(index=False)}")
 
