@@ -84,8 +84,8 @@
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{Validation Results}
-{\small
-\begin{tabular}{p{3.6cm}p{2.4cm}p{2.2cm}p{2.6cm}}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tabular}{lccc}
 \toprule
 Field & Claude vs.\ human & GPT vs.\ human & Verdict \\
 \midrule
@@ -94,7 +94,7 @@ root\_cause\_type & 90\% & 70\% & Claude preferred \\
 scope & 90\% & 94\% & comparable \\
 violation\_category & 84\% & 86\% & comparable \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
 }
 \vspace{10pt}
 Cross-model agreement at full scale (n=1,067): binary flags \highlight{92--99\%};
@@ -145,8 +145,8 @@ which is most of what the old label contained.
 New outcome: did this facility's own AE count rise after inspection vs.\ its
 own pre-inspection window, same facility, same window length.
 \vspace{8pt}
-{\small
-\begin{tabular}{p{4.3cm}p{2.6cm}p{4.3cm}}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tabular}{lcc}
 \toprule
 Config (text only) & Old outcome & New outcome (relative) \\
 \midrule
@@ -155,7 +155,7 @@ Random Forest & 0.532 (n.s.) & \highlight{0.593, $p{=}0.041$} \\
 \midrule
 OAI/VAI flag alone & 0.537 (n.s.) & \highlight{0.457} (below random) \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
 }
 \vspace{10pt}
 Two things changed: text now predicts across the \highlight{full sample}, not
@@ -182,22 +182,22 @@ a small subgroup; FDA's own classification alone predicts
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
-\begin{frame}{Does OAI Calm the Trend More Than VAI? (John's Hypothesis)}
-John's expectation: after an inspection, the AE rise should reverse with a lag,
+\begin{frame}{Does OAI Calm the Trend More Than VAI?}
+Expectation: after an inspection, the AE rise should reverse with a lag,
 especially if FDA assigns OAI (forces correction). Tested directly on the
 corrected panel, split by \emph{this specific inspection's} classification, not
 by whether the facility ever had an OAI (a different, coarser cut used
 elsewhere in this deck).
 \vspace{8pt}
-{\small
-\begin{tabular}{p{3.0cm}p{1.8cm}p{3.6cm}p{2.6cm}}
+\resizebox{0.9\textwidth}{!}{%
+\begin{tabular}{lccc}
 \toprule
 Classification & $n$ & Pre$\to$post AE ratio & Direction \\
 \midrule
 OAI & 29 & \highlight{0.995} & flat / very slightly down \\
 VAI & 94 & \highlight{1.183} & up 18\% \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
 }
 \vspace{10pt}
 \begin{alertblock}{Read this carefully}
@@ -245,9 +245,32 @@ not a result to cite yet.
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
-\begin{frame}{Results Across All Three Models}
+\begin{frame}{Variables Used in Every Model}
 {\small
-\begin{tabular}{p{2.2cm}p{2.4cm}p{2.4cm}p{4.0cm}}
+\begin{itemize}
+  \setlength{\itemsep}{6pt}
+  \item \tech{Inspection (4):} n\_oai\_cumul, n\_vai\_t, n\_inspections\_t,
+        n\_warning\_letters\_t
+  \item \tech{Structural (2):} parenteral\_ever, n\_feis\_drug (supply
+        concentration -- FEIs making the same drug)
+  \item \tech{Text/LLM (12):} severity, scope, root cause, contamination,
+        data integrity, investigation, repeat findings, Lab Controls share,
+        Quality System share, remediation strength
+\end{itemize}
+}
+\vspace{10pt}
+\begin{block}{The two models}
+\small \textbf{Baseline} = Inspection + Structural only (6 features), every
+facility with real data, no text required.
+\textbf{With-text} = all 18 features, only facilities with a real as-of-year
+483 snapshot.
+\end{block}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Results Across All Three Models}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccc}
 \toprule
 Model & Baseline AUC & With-text AUC & Note \\
 \midrule
@@ -255,26 +278,54 @@ Recall (m14) & 0.26--0.34 & too few events & baseline below random \\
 AE (m17) & 0.57--0.60 & 0.43--0.49 & baseline up, with-text down \\
 Shortage (m19) & \highlight{0.54--0.61} & 0.49--0.50 & baseline \highlight{significant} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
 }
 \vspace{10pt}
+\begin{alertblock}{Why adding text hurts here}
+\small The with-text subset is small (148--177 rows). Adding 12 text
+features on top of 6 structural/inspection ones, on that few rows, spreads
+too little data across too many features -- the model overfits noise instead
+of learning signal. The baseline (6 features, 1{,}100+ rows) has room to
+learn; the with-text model does not. This is a sample-size problem, not
+evidence that text is uninformative.
+\end{alertblock}
+\vspace{6pt}
 Shortage baseline: $p{=}0.003$ (LR), $p{=}0.011$ (RF) -- \highlight{the strongest,
 cleanest result in either pipeline right now, and it uses no text at all.}
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{What the Shortage Result Means}
+\begin{columns}[T]
+\column{0.5\textwidth}
+{\small
+\begin{tabular}{lc}
+\toprule
+Feature & Importance \\
+\midrule
+n\_feis\_drug & \highlight{62\%} \\
+parenteral\_ever & 12\% \\
+n\_oai\_cumul & 11\% \\
+n\_inspections\_t & 8\% \\
+n\_vai\_t & 6\% \\
+\bottomrule
+\end{tabular}
+}
+\column{0.47\textwidth}
+{\small Random Forest importance, baseline model.}
+\end{columns}
+\vspace{10pt}
 \begin{itemize}
-  \setlength{\itemsep}{10pt}
-  \item Plain inspection history (OAI/VAI counts, inspection frequency,
-        warning letters) plus structural features (parenteral status, supply
-        concentration) significantly predicts shortage exposure
+  \setlength{\itemsep}{8pt}
+  \item \highlight{Mostly supply concentration}, not quality per se:
+        n\_feis\_drug (how many other facilities make the same drug) alone
+        is 62\% of the signal -- sole-source facilities are the risk
+  \item Inspection-based features (OAI/VAI/inspection count) still contribute
+        \highlight{about 25\% combined} -- a real, if secondary, quality signal
   \item Only visible once the panel stopped being restricted to text-covered
         facilities -- every earlier version of this model missed it
-  \item Does not confirm the text-specific VAI hypothesis on its own; it is a
-        separate, additive finding about not discarding facilities without text
-  \item Not yet stress-tested the way the AE story has been (repeated
-        cohorts, multiple reruns) -- next step, not a finished result
+  \item Not yet stress-tested the way the AE story has been -- next step, not
+        a finished result
 \end{itemize}
 \end{frame}
 
