@@ -105,13 +105,15 @@ faithful replication of the original setup, not a different test.}
 \column{0.4\textwidth}
 \begin{center}
 {\small INFORMS (July):} \highlight{0.545}\\[4pt]
-{\small Rerun (Sept):} \highlight{0.545}
+{\small Rerun (Sept):} \highlight{0.537}
 \end{center}
 \end{columns}
 \vspace{10pt}
-Matches almost exactly. This is strong evidence the rerun's panel construction, FAERS matching,
-and cross-validation are a faithful reproduction of the INFORMS methodology -- so where the
+Matches closely. This is strong evidence the rerun's panel construction, FAERS matching, and
+cross-validation are a faithful reproduction of the INFORMS methodology -- so where the
 \emph{text}-dependent configs differ below, that is a real finding, not a plumbing difference.
+The small residual gap (0.545 vs.\ 0.537) is from an unrelated data refresh (the panel was
+rebuilt against updated FDA Inspection data), not anything text-related.
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -119,14 +121,14 @@ and cross-validation are a faithful reproduction of the INFORMS methodology -- s
 {\small
 \begin{tabular}{clcc}
 \toprule
- & Feature set & INFORMS (July) & Rerun (Sept, current data) \\
+ & Feature set & INFORMS (July) & Current (Sept 16, corrected feature) \\
 \midrule
-A & Text only, full sample (LR) & 0.585 & \highlight{0.461} \\
-C & OAI flag only & 0.545 & 0.545 \\
+A & Text only, full sample (LR) & 0.585 & \highlight{0.483} \\
+C & OAI flag only & 0.545 & 0.537 \\
 \midrule
 \pause
-D & Text only, VAI-only (LR) & 0.656, $p{=}0.046$ & \highlight{0.574, $p{=}0.20$} \\
-D & Text only, VAI-only (RF) & not reported & \highlight{0.645, $p{=}0.032$} \\
+D & Text only, VAI-only (LR) & 0.656, $p{=}0.046$ & \highlight{0.591, $p{=}0.189$} \\
+D & Text only, VAI-only (RF) & not reported & \highlight{0.610, $p{=}0.080$} \\
 \bottomrule
 \multicolumn{4}{l}{\scriptsize $p$ from one-tailed $t$-test vs.\ 0.5 across 5 CV folds, same test as the original slide}
 \end{tabular}
@@ -135,9 +137,11 @@ D & Text only, VAI-only (RF) & not reported & \highlight{0.645, $p{=}0.032$} \\
 \pause
 \begin{alertblock}{Honest read}
 \small The flagship VAI-only claim does \textbf{not} replicate at the original strength under
-logistic regression, the exact model INFORMS reported (p goes from 0.046 to 0.20). A
-similar-magnitude, still-significant effect shows up under random forest (p=0.032), so there is
-a real signal in the same direction, just not as clean as first presented.
+logistic regression, the exact model INFORMS reported (p goes from 0.046 to 0.189). The random
+forest version, which had looked significant in an earlier rerun of this analysis (p=0.032),
+moved further from significance once a severity-feature bug fix landed the same day (p=0.080).
+Neither model clears p$<$0.05 now. Both still point the same direction, so there is a real signal,
+but it is suggestive, not statistically established.
 \end{alertblock}
 \end{frame}
 
@@ -145,13 +149,17 @@ a real signal in the same direction, just not as clean as first presented.
 \begin{frame}{Why the Numbers Moved}
 \begin{itemize}
   \setlength{\itemsep}{10pt}
-  \item The text features themselves changed: the current extraction is human-validated
-        (independent blind review, 68--96\% field accuracy) and had two real prompt bugs and
-        several rule gaps fixed after the INFORMS numbers were produced.
+  \item The text features themselves changed twice: first, the current extraction is
+        human-validated (independent blind review, 68--96\% field accuracy) with two real prompt
+        bugs and several rule gaps fixed after the INFORMS numbers were produced. Second, a
+        severity-feature bug fix landed the same day this rerun was first drafted:
+        severity\_tier's real confusion is at the Major/Moderate boundary, not Critical/Major, so
+        severity\_majmod\_share replaced severity\_critmajor\_share as the severity feature
+        everywhere, moving the VAI-only numbers again (RF: p=0.032 $\to$ p=0.080).
   \item This is not a case of ``the old number was wrong, ignore it'' -- it is the expected
-        result of tightening the pipeline. A weaker but still-present, still-significant (RF)
-        effect on more rigorously validated data is a more trustworthy basis to build on than a
-        stronger effect on data known to have had extraction bugs at the time.
+        result of tightening the pipeline twice in the same direction. A weaker, no-longer-
+        significant effect on more rigorously validated data is a more honest basis to build on
+        than a stronger effect on data known to have had extraction bugs at the time.
   \item Sample size remains the binding constraint either way: 55 VAI-only facilities, 110
         inspections. INFORMS's own slide called this subgroup result ``hypothesis-generating,''
         and that framing applies at least as much now.
@@ -162,17 +170,22 @@ a real signal in the same direction, just not as clean as first presented.
 \begin{frame}{Where This Points Next}
 \begin{itemize}
   \setlength{\itemsep}{10pt}
-  \item \textbf{More data, not a different model.} The VAI-only cohort is small because
-        Redica-scored inspection history is still short for many facilities. Revisit as
+  \item \textbf{The shortage test has now been run (m19).} Working hypothesis: OAI forces
+        remediation and heads off a shortage; VAI does not force the same response, so an
+        undetected quality problem at a VAI facility could keep degrading into a shortage. Direct
+        test (text-only, VAI-only, shortage as outcome): inconclusive, AUC 0.51--0.59 on only 28
+        events, too sparse to read either way.
+  \item \textbf{An unrelated, more promising finding from the same model.} A plain inspection +
+        structural baseline (no text, full 127-facility universe) shows real signal for shortage
+        exposure, AUC up to 0.61 -- evidence for the broader claim (quality/regulatory signals
+        predict shortage) even though it doesn't confirm the text-specific VAI hypothesis above.
+        Not yet significance-tested; see RESULTS.docx.
+  \item \textbf{More data, not a different model.} The VAI-only cohort is still small (55
+        facilities) because 483-text coverage is still short for many facilities. Revisit as
         coverage grows.
-  \item \textbf{Refresh the OAI/VAI classification.} The FDA Inspection raw source
-        (Data/14 -- FDA -- Inspection) is dated November 2025. Rebuilding this cohort on updated
-        classification data is the next concrete step.
-  \item \textbf{Extend toward shortage.} Working hypothesis: OAI forces remediation and heads
-        off a shortage; VAI does not force the same response, so an undetected quality problem
-        at a VAI facility could keep degrading and eventually cause a shortage. This VAI-only
-        result is the direct empirical foundation for testing that hypothesis once shortage
-        (not just AE) is added as an outcome.
+  \item \textbf{Align the OAI/VAI source.} This analysis still relies mainly on the
+        Redica-derived classification (last refreshed 2026-07-15); m19 already switched to the
+        fresher FDA Inspection Details file directly. Matching that here is the next concrete step.
 \end{itemize}
 \end{frame}
 
