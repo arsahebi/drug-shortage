@@ -104,7 +104,9 @@ PNGs, `text_signal_grid.csv`, etc.) are archived alongside it in the matching
    or accumulates more calendar time. The baseline models added 2026-09-16 (inspection
    + structural only, full facility universe) sidestep this for the features that don't
    need text, but m14's baseline itself scores below random on the current sample.
-2. **m19's baseline finding (AUC up to 0.61) is not yet stress-tested** the way the
-   with-text/VAI-only comparisons have been — no significance test, no repeated cohort
-   check. Treat it as a promising lead, not a validated result, until that's done.
+2. **m19's baseline finding (AUC up to 0.61) now has a significance test** (one-tailed
+   t-test of fold-level AUCs vs. 0.5, same convention as the VAI-only text-signal work)
+   and clears it: p=0.003 (logistic), p=0.011 (Random Forest). It still hasn't had the
+   repeated-cohort, multiple-rerun scrutiny the VAI-only comparison has had over several
+   sessions — treat it as a real first signal, not yet as battle-tested as that one.
 3. **SDUD volume weighting not incorporated** — see the TODO block in `config.py`.

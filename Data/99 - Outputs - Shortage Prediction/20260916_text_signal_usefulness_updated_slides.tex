@@ -169,23 +169,25 @@ but it is suggestive, not statistically established.
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{Where This Points Next}
 \begin{itemize}
-  \setlength{\itemsep}{10pt}
-  \item \textbf{The shortage test has now been run (m19).} Working hypothesis: OAI forces
-        remediation and heads off a shortage; VAI does not force the same response, so an
-        undetected quality problem at a VAI facility could keep degrading into a shortage. Direct
-        test (text-only, VAI-only, shortage as outcome): inconclusive, AUC 0.51--0.59 on only 28
-        events, too sparse to read either way.
+  \setlength{\itemsep}{9pt}
+  \item \textbf{The shortage test has now been run (m19), with a significance test.} Direct test
+        (text-only, VAI-only, shortage as outcome): mixed -- logistic not significant (AUC 0.514,
+        $p{=}0.243$), Random Forest significant (AUC 0.590, $p{=}0.013$) despite only 28 events.
+        Worth taking seriously, not dismissing as too sparse.
   \item \textbf{An unrelated, more promising finding from the same model.} A plain inspection +
         structural baseline (no text, full 127-facility universe) shows real signal for shortage
-        exposure, AUC up to 0.61 -- evidence for the broader claim (quality/regulatory signals
-        predict shortage) even though it doesn't confirm the text-specific VAI hypothesis above.
-        Not yet significance-tested; see RESULTS.docx.
+        exposure and clears significance comfortably: AUC 0.540--0.610, $p{=}0.003$ and
+        $p{=}0.011$ -- evidence for the broader claim (quality/regulatory signals predict
+        shortage), though it doesn't confirm the text-specific VAI hypothesis above. See
+        RESULTS.docx.
   \item \textbf{More data, not a different model.} The VAI-only cohort is still small (55
-        facilities) because 483-text coverage is still short for many facilities. Revisit as
-        coverage grows.
-  \item \textbf{Align the OAI/VAI source.} This analysis still relies mainly on the
-        Redica-derived classification (last refreshed 2026-07-15); m19 already switched to the
-        fresher FDA Inspection Details file directly. Matching that here is the next concrete step.
+        facilities) because 483-text coverage is still short for many facilities. Sample size,
+        not signal quality, is still what keeps the logistic-regression versions from clearing
+        significance. Revisit as coverage grows.
+  \item \textbf{Done: OAI/VAI source aligned with m19.} This analysis now matches m19's source
+        order (FDA Inspection Details primary, Redica fallback). Rerunning reproduced the
+        identical cohort and identical AUCs -- a useful robustness check, not a source of the
+        movement seen on this deck.
 \end{itemize}
 \end{frame}
 
