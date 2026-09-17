@@ -30,14 +30,22 @@ Feature groups (identical to m14):
 Time-aware join: for prediction year t, the text snapshot with the most recent
 snapshot_date ≤ Dec 31 of year t is used (as-of feature).
 
+Two models, checked and run independently (2026-09-16, same design as m14):
+  - Baseline: inspection + structural features only, on every FEI with Redica
+    inspection history (not restricted to text coverage).
+  - With-text: the full feature set, naturally restricted by _prep() to the
+    subset of facility-years with an actual as-of-year text snapshot (no
+    zero-fill). This is the fair with/without-text ablation comparison.
+
 Cross-validation: GroupKFold grouped by FEI to prevent data leakage.
 
 Models: Logistic Regression (L2) and Random Forest.
 
 Outputs:
-  outputs/models/metrics_faers_fei.csv
+  outputs/models/metrics_faers_fei_baseline.csv (inspection+structural, full universe)
+  outputs/models/metrics_faers_fei.csv          (with-text, text-covered subset -- if modeled)
   outputs/models/rf_importance_faers_fei.csv
-  outputs/models/text_ablation_faers_fei.csv
+  outputs/models/text_ablation_faers_fei.csv     (if both models ran)
   outputs/figures/roc_faers_fei.png
   outputs/figures/feature_importance_faers_fei.png
   outputs/figures/text_feature_lift_faers_fei.png
@@ -388,17 +396,21 @@ def build_panel() -> pd.DataFrame:
     text_ts   = _load_text_features()
     struct    = _load_structural_features()
 
-    # Universe: FEIs with Redica 483 TEXT coverage only (not just Redica inspection
-    # events, which cover a broader set). Modeling on the broader set and zero-
-    # filling missing text features dilutes the text signal materially — see
-    # README.md's "Known methodology gap" note. No zero-filling for text features
-    # below either; rows with no as-of-year text snapshot are dropped, not zeroed.
+    # Universe: every FEI with Redica inspection history, not just the subset with
+    # 483 text coverage. A facility's inspection record (OAI/VAI counts, warning
+    # letters) is real, legitimate signal on its own and has nothing to do with
+    # whether its 483 text has been scored yet -- dropping those facilities from
+    # the panel entirely, not just their text columns, threw away real events
+    # (146 more AE-high events across 27 FEIs, as of 2026-09-16). Text features
+    # are still never zero-filled (see _prep): a facility-year with no as-of-year
+    # snapshot has those columns as NaN and is excluded only from the with-text
+    # model, not from the inspection-only baseline or the panel itself.
     text_feis = set(text_ts["fei"].dropna().unique())
     redica_feis = set(redica_fy["fei"].dropna().unique())
-    all_feis = np.array(sorted(redica_feis & text_feis))
+    all_feis = np.array(sorted(redica_feis))
     log.info(
-        "Restricting to %d FEIs with Redica 483 text coverage (of %d in Redica "
-        "inspection data)", len(all_feis), len(redica_feis),
+        "Panel universe: %d FEIs with Redica inspection history (%d also have "
+        "483 text coverage)", len(all_feis), len(redica_feis & text_feis),
     )
     years    = range(PANEL_START_YEAR, PANEL_END_YEAR + 1)
     panel = pd.DataFrame(
@@ -574,13 +586,18 @@ def _write_panel_summary(panel: pd.DataFrame) -> None:
         f"- **FEI × year rows (full panel):** {len(panel):,}",
         f"- **Unique FEIs:** {panel['fei'].nunique()}",
         f"- **Years:** {int(panel['year'].min())}–{int(panel['year'].max())}",
-        f"- **Rows with a valid outcome:** {len(modeled):,}",
-        f"- **Rows actually modeled (have an as-of-year text snapshot, no zero-fill):** "
-          f"{len(with_snapshot):,} ({with_snapshot['fei'].nunique()} FEIs)",
+        f"- **Rows with a valid outcome (baseline model population):** {len(modeled):,} "
+          f"({modeled['fei'].nunique()} FEIs)",
+        f"- **Rows with an as-of-year text snapshot (with-text model population, no "
+          f"zero-fill):** {len(with_snapshot):,} ({with_snapshot['fei'].nunique()} FEIs)",
         f"- **AE-high events (y=1), full outcome set:** {n_events} "
           f"({100 * modeled['y_ae_next'].mean():.1f}%)",
         f"- **FEIs with ≥1 AE-high event in panel:** "
           f"{int((modeled.groupby('fei')['y_ae_next'].max() == 1).sum())}",
+        "",
+        "Two models are attempted independently (see RESULTS.docx): a baseline using "
+        "inspection + structural features on the full panel above, and a with-text model "
+        "restricted to the as-of-year-snapshot population.",
         "",
         "## Feature coverage",
         f"- Inspection features: {sum(modeled[f].notna().any() for f in INSP_FEATURES)}/{len(INSP_FEATURES)} present",
@@ -590,6 +607,22 @@ def _write_panel_summary(panel: pd.DataFrame) -> None:
     out_path = OUT_TABS / "faers_fei_panel_summary.md"
     out_path.write_text("\n".join(lines))
     log.info("Saved faers_fei_panel_summary.md")
+
+
+def _fit_l2_rf(X: pd.DataFrame, y: pd.Series, groups: pd.Series):
+    """Fit both L2 logistic and Random Forest via CV; return preds + metrics for each."""
+    Xz = pd.DataFrame(StandardScaler().fit_transform(X), columns=X.columns)
+    preds_l2, met_l2 = _cv_metrics(
+        Xz, y, groups,
+        lambda: LogisticRegression(penalty="l2", C=1.0, max_iter=500,
+                                   class_weight="balanced", random_state=SEED),
+    )
+    preds_rf, met_rf = _cv_metrics(
+        X, y, groups,
+        lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=3,
+                                       class_weight="balanced", random_state=SEED, n_jobs=-1),
+    )
+    return preds_l2, met_l2, preds_rf, met_rf
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -603,69 +636,81 @@ def main():
     write_table(panel, OUT_DATA / "faers_fei_panel.parquet", log)
     _write_panel_summary(panel)
 
-    X_all, y, groups, df_model = _prep(panel, ALL_FEATURES)
-    X_insp, y_i, g_i, _       = _prep(panel, INSP_FEATURES + STRUCT_FEATURES)
+    # Baseline: inspection + structural only, on every FEI with a valid outcome
+    # (the full inspection-covered universe, not restricted to text coverage).
+    # Checked and modeled independently of the with-text model below.
+    X_insp, y_insp, g_insp, df_insp = _prep(panel, INSP_FEATURES + STRUCT_FEATURES)
+    baseline_ok = y_insp.sum() >= 3 and len(X_insp) >= 20
 
-    if y.sum() < 3 or len(X_all) < 20:
-        log.warning("Too few events (n=%d events=%d); skipping modeling", len(X_all), int(y.sum()))
+    # With-text: _prep() drops rows with no as-of-year text snapshot, so this is
+    # naturally restricted to the text-covered subset -- the fair with/without-
+    # text ablation population.
+    X_all, y_all, g_all, df_all = _prep(panel, ALL_FEATURES)
+    text_ok = y_all.sum() >= 3 and len(X_all) >= 20
+
+    if not baseline_ok and not text_ok:
+        log.warning(
+            "Too few events for either model (baseline: rows=%d events=%d; "
+            "with-text: rows=%d events=%d); skipping modeling entirely",
+            len(X_insp), int(y_insp.sum()), len(X_all), int(y_all.sum()),
+        )
         return
 
-    log.info("Modeling: rows=%d events=%d FEIs=%d features=%d",
-             len(X_all), int(y.sum()), groups.nunique(), X_all.shape[1])
+    ablation_rows = []
+    fig_source = None  # (label, X, y, groups, preds_l2, met_l2, preds_rf, met_rf)
 
-    # L2 Logistic Regression
-    Xz = pd.DataFrame(StandardScaler().fit_transform(X_all), columns=X_all.columns)
-    preds_l2, met_l2 = _cv_metrics(
-        Xz, y, groups,
-        lambda: LogisticRegression(penalty="l2", C=1.0, max_iter=500,
-                                   class_weight="balanced", random_state=SEED),
-    )
-    log.info("L2 Logit  AUC=%.3f AP=%.3f Brier=%.3f", met_l2["auc"], met_l2["ap"], met_l2["brier"])
+    if baseline_ok:
+        log.info("Baseline (inspection+structural, full universe): rows=%d events=%d FEIs=%d",
+                 len(X_insp), int(y_insp.sum()), g_insp.nunique())
+        preds_l2_b, met_l2_b, preds_rf_b, met_rf_b = _fit_l2_rf(X_insp, y_insp, g_insp)
+        log.info("  L2 Logit     AUC=%.3f AP=%.3f Brier=%.3f", met_l2_b["auc"], met_l2_b["ap"], met_l2_b["brier"])
+        log.info("  RandomForest AUC=%.3f AP=%.3f Brier=%.3f", met_rf_b["auc"], met_rf_b["ap"], met_rf_b["brier"])
+        pd.DataFrame([
+            {"model": "L2_logit",     **met_l2_b},
+            {"model": "RandomForest", **met_rf_b},
+        ]).to_csv(OUT_MODELS / "metrics_faers_fei_baseline.csv", index=False)
+        ablation_rows.append({"label": "Without text\n(full universe)", "auc": met_l2_b["auc"], "model": "L2"})
+        fig_source = ("baseline", X_insp, y_insp, g_insp, preds_l2_b, met_l2_b, preds_rf_b, met_rf_b)
+    else:
+        log.warning("Baseline model has too few events (rows=%d events=%d); skipping",
+                     len(X_insp), int(y_insp.sum()))
 
-    # Random Forest
-    preds_rf, met_rf = _cv_metrics(
-        X_all, y, groups,
-        lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=3,
-                                       class_weight="balanced", random_state=SEED, n_jobs=-1),
-    )
-    log.info("RandomForest AUC=%.3f AP=%.3f Brier=%.3f", met_rf["auc"], met_rf["ap"], met_rf["brier"])
+    if text_ok:
+        log.info("With-text (text-covered subset): rows=%d events=%d FEIs=%d",
+                 len(X_all), int(y_all.sum()), g_all.nunique())
+        preds_l2_t, met_l2_t, preds_rf_t, met_rf_t = _fit_l2_rf(X_all, y_all, g_all)
+        log.info("  L2 Logit     AUC=%.3f AP=%.3f Brier=%.3f", met_l2_t["auc"], met_l2_t["ap"], met_l2_t["brier"])
+        log.info("  RandomForest AUC=%.3f AP=%.3f Brier=%.3f", met_rf_t["auc"], met_rf_t["ap"], met_rf_t["brier"])
+        pd.DataFrame([
+            {"model": "L2_logit",     **met_l2_t},
+            {"model": "RandomForest", **met_rf_t},
+        ]).to_csv(OUT_MODELS / "metrics_faers_fei.csv", index=False)
+        ablation_rows.append({"label": "With text\n(text-covered subset)", "auc": met_l2_t["auc"], "model": "L2"})
+        fig_source = ("with-text", X_all, y_all, g_all, preds_l2_t, met_l2_t, preds_rf_t, met_rf_t)
+    else:
+        log.warning("With-text model has too few events (rows=%d events=%d); skipping "
+                     "the text-augmented model and the with/without-text ablation",
+                     len(X_all), int(y_all.sum()))
 
-    pd.DataFrame([
-        {"model": "L2_logit",     **met_l2},
-        {"model": "RandomForest", **met_rf},
-    ]).to_csv(OUT_MODELS / "metrics_faers_fei.csv", index=False)
+    if len(ablation_rows) == 2:
+        pd.DataFrame(ablation_rows).to_csv(OUT_MODELS / "text_ablation_faers_fei.csv", index=False)
+        _fig_text_lift(ablation_rows)
 
-    # Ablation: no text features
-    Xz_i = pd.DataFrame(StandardScaler().fit_transform(X_insp), columns=X_insp.columns)
-    _, met_no_text = _cv_metrics(
-        Xz_i, y_i, g_i,
-        lambda: LogisticRegression(penalty="l2", C=1.0, max_iter=500,
-                                   class_weight="balanced", random_state=SEED),
-    )
-    _, met_no_rf = _cv_metrics(
-        X_insp, y_i, g_i,
-        lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=3,
-                                       class_weight="balanced", random_state=SEED, n_jobs=-1),
-    )
-    log.info("Without text — L2 AUC=%.3f  RF AUC=%.3f", met_no_text["auc"], met_no_rf["auc"])
+    # ── Figures: prefer the with-text model (richer feature set); fall back to
+    # the baseline if the with-text model couldn't be run ──────────────────────
+    if fig_source is not None:
+        label, X_fig, y_fig, g_fig, preds_l2_f, met_l2_f, preds_rf_f, met_rf_f = fig_source
+        log.info("Figures generated from the %s model", label)
+        _fig_roc(preds_l2_f, preds_rf_f, met_l2_f, met_rf_f, y_fig)
 
-    ablation_rows = [
-        {"label": "Without text",             "auc": met_no_text["auc"], "model": "L2"},
-        {"label": "With text\n(Redica FEIs)", "auc": met_l2["auc"],      "model": "L2"},
-    ]
-    pd.DataFrame(ablation_rows).to_csv(OUT_MODELS / "text_ablation_faers_fei.csv", index=False)
-    _fig_text_lift(ablation_rows)
+        rf_full = RandomForestClassifier(n_estimators=400, min_samples_leaf=3,
+                                         class_weight="balanced", random_state=SEED, n_jobs=-1)
+        rf_full.fit(X_fig, y_fig)
 
-    _fig_roc(preds_l2, preds_rf, met_l2, met_rf, y)
-
-    rf_full = RandomForestClassifier(n_estimators=400, min_samples_leaf=3,
-                                     class_weight="balanced", random_state=SEED, n_jobs=-1)
-    rf_full.fit(X_all, y)
-
-    fi = pd.DataFrame({"feature": X_all.columns, "importance": rf_full.feature_importances_})
-    fi = fi.sort_values("importance", ascending=False)
-    fi.to_csv(OUT_MODELS / "rf_importance_faers_fei.csv", index=False)
-    _fig_feature_importance(fi)
+        fi = pd.DataFrame({"feature": X_fig.columns, "importance": rf_full.feature_importances_})
+        fi = fi.sort_values("importance", ascending=False)
+        fi.to_csv(OUT_MODELS / "rf_importance_faers_fei.csv", index=False)
+        _fig_feature_importance(fi)
 
     log.info("m17 complete — outputs in %s", OUT_MODELS)
 

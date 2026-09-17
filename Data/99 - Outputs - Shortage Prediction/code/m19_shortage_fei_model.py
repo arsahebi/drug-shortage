@@ -2,10 +2,10 @@
 Module 19 — FEI x year shortage prediction model, and the VAI-only leading-
 indicator hypothesis.
 
-Panel: FEI x year, 2015-2024, restricted to the 98 FEIs with Redica 483-text
-coverage (same universe and same no-zero-fill standard as m14/m17). For each
-facility in year t, predict whether any drug it manufactures enters a UUtah-
-tracked shortage in year t+1.
+Panel: FEI x year, 2015-2024, over our full 129-FEI reference universe that
+has FDA Inspection Details records (not restricted to 483-text coverage --
+see "Universe fix" below). For each facility in year t, predict whether any
+drug it manufactures enters a UUtah-tracked shortage in year t+1.
 
 New in this module (2026-09-16):
   - OAI/VAI/NAI classification now comes directly from
@@ -23,7 +23,13 @@ New in this module (2026-09-16):
     level event, not necessarily caused by any one facility), same reason
     the team moved off shortage-as-outcome in June 2026. Kept explicit in
     the panel summary rather than hidden.
-  - Two analyses beyond the standard prediction model:
+  - Universe fix: the panel is no longer restricted to text-covered FEIs.
+    A facility's inspection record is real signal on its own; restricting
+    the whole panel to text coverage discarded it for no reason related to
+    the model actually being run. A separate baseline model (inspection +
+    structural only, full reference universe) is checked and run
+    independently of the with-text model, same fix applied to m14/m17.
+  - Two analyses beyond the standard prediction models:
       (a) Descriptive: does an OAI-ever facility show lower forward shortage
           risk than a VAI-only facility (testing the literature's
           "OAI reduces shortage risk" finding, Wang/Anand/Ball/Park)?
@@ -33,10 +39,11 @@ New in this module (2026-09-16):
           for adverse events (vai_signal_validation/), now for shortage.
 
 Outputs:
-  outputs/models/metrics_shortage_fei.csv
+  outputs/models/metrics_shortage_baseline.csv (inspection+structural, full universe)
+  outputs/models/metrics_shortage_fei.csv       (with-text, text-covered subset)
+  outputs/models/metrics_shortage_vai_only.csv
   outputs/tables/shortage_fei_panel_summary.md
   outputs/tables/oai_vs_vai_shortage_rates.csv
-  outputs/models/metrics_shortage_vai_only.csv
 """
 
 from __future__ import annotations
@@ -294,12 +301,22 @@ def build_panel() -> pd.DataFrame:
     struct    = _load_structural_features(fei_drug_map)
     shortage_fy = _load_shortage_fei_year(fei_drug_map)
 
+    # Universe: our 129-FEI reference universe (Valisure FEI-API map, the same set
+    # m14/m17 draw from) intersected with FEIs that actually have FDA Inspection
+    # Details records -- NOT intersected with text coverage. fda_feis itself is
+    # unfiltered (it's every US facility in the raw FDA file, ~9,952 FEIs), so it
+    # must be restricted to our reference universe via fei_drug_map regardless;
+    # the text-coverage restriction on top of that was throwing away real
+    # inspection-based signal for facilities without 483 text yet, the same
+    # problem fixed in m14/m17 on 2026-09-16.
     text_feis = set(text_ts["fei"].dropna().unique())
     fda_feis  = set(redica_fy["fei"].dropna().unique())
-    all_feis  = np.array(sorted(fda_feis & text_feis))
+    reference_feis = set(fei_drug_map["fei"].dropna().unique())
+    all_feis  = np.array(sorted(fda_feis & reference_feis))
     log.info(
-        "Restricting to %d FEIs with Redica 483 text coverage (of %d in FDA Inspection "
-        "Details for our reference universe)", len(all_feis), len(fda_feis),
+        "Panel universe: %d FEIs in our reference universe with FDA Inspection Details "
+        "records (%d also have 483 text coverage)",
+        len(all_feis), len(set(all_feis) & text_feis),
     )
     years = range(PANEL_START_YEAR, PANEL_END_YEAR + 1)
     panel = pd.DataFrame(
@@ -407,13 +424,20 @@ def main() -> None:
     summary_lines = [
         "# Shortage FEI Panel Summary",
         "",
-        f"- **FEI x year rows (full panel):** {len(panel):,}",
+        f"- **FEI x year rows (full panel, baseline model population):** {len(panel):,}",
         f"- **Unique FEIs:** {panel['fei'].nunique()}",
-        f"- **Rows with an as-of-year text snapshot (actually modeled):** "
-        f"{len(with_snapshot):,} ({with_snapshot['fei'].nunique()} FEIs, "
+        f"- **Rows with a valid outcome (baseline model population):** {len(modeled):,} "
+        f"({modeled['fei'].nunique()} FEIs)",
+        f"- **Rows with an as-of-year text snapshot (with-text model population, no "
+        f"zero-fill):** {len(with_snapshot):,} ({with_snapshot['fei'].nunique()} FEIs, "
         f"{int(with_snapshot['y_shortage_next'].sum())} shortage-exposed events)",
         f"- **Shortage-exposed FEI-years, full outcome set:** "
         f"{int(modeled['y_shortage_next'].sum())} ({100*modeled['y_shortage_next'].mean():.1f}%)",
+        "",
+        "Three models are attempted independently (see RESULTS.docx): a baseline using "
+        "inspection + structural features on the full panel above, a with-text model "
+        "restricted to the as-of-year-snapshot population, and a VAI-only text-signal "
+        "subgroup model within that.",
         "",
         "Caveat: shortage exposure is bridged from drug-level UUtah events through the "
         "FEI-API map. Every facility manufacturing a shortaged drug is marked exposed; "
@@ -427,9 +451,32 @@ def main() -> None:
     rates.to_csv(OUT_TABS / "oai_vs_vai_shortage_rates.csv", index=False)
     log.info("OAI vs VAI-only forward shortage risk:\n%s", rates.to_string(index=False))
 
-    # ── Standard prediction model (full restricted panel) ──
+    # ── Baseline: inspection + structural only, full reference universe, not
+    # restricted to text coverage (same fix applied to m14/m17 on 2026-09-16).
+    # Checked and modeled independently of the with-text models below. ──
+    X_base, y_base, g_base, df_base = _prep(panel, INSP_FEATURES + STRUCT_FEATURES)
+    log.info("Baseline (inspection+structural, full universe): rows=%d events=%d FEIs=%d",
+              len(X_base), int(y_base.sum()), g_base.nunique())
+    if y_base.sum() >= 3 and len(X_base) >= 20:
+        Xz_base = pd.DataFrame(StandardScaler().fit_transform(X_base), columns=X_base.columns)
+        _, met_base_l2 = _cv_metrics(Xz_base, y_base, g_base,
+            lambda: LogisticRegression(penalty="l2", C=1.0, max_iter=500,
+                                       class_weight="balanced", random_state=SEED))
+        _, met_base_rf = _cv_metrics(X_base, y_base, g_base,
+            lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=3,
+                                           class_weight="balanced", random_state=SEED, n_jobs=-1))
+        pd.DataFrame([
+            {"model": "L2_logit", **met_base_l2},
+            {"model": "RandomForest", **met_base_rf},
+        ]).to_csv(OUT_MODELS / "metrics_shortage_baseline.csv", index=False)
+        log.info("Baseline L2 AUC=%.3f RF AUC=%.3f", met_base_l2["auc"], met_base_rf["auc"])
+    else:
+        log.warning("Baseline model has too few events (n=%d events=%d); skipping, not "
+                     "reporting an unreliable number", len(X_base), int(y_base.sum()))
+
+    # ── With-text prediction model (text-covered subset) ──
     X_all, y, groups, df_model = _prep(panel, ALL_FEATURES)
-    log.info("Full-panel model: rows=%d events=%d FEIs=%d", len(X_all), int(y.sum()), groups.nunique())
+    log.info("With-text model: rows=%d events=%d FEIs=%d", len(X_all), int(y.sum()), groups.nunique())
     if y.sum() >= 3 and len(X_all) >= 20:
         Xz = pd.DataFrame(StandardScaler().fit_transform(X_all), columns=X_all.columns)
         _, met_l2 = _cv_metrics(Xz, y, groups,
@@ -442,9 +489,9 @@ def main() -> None:
             {"model": "L2_logit", **met_l2},
             {"model": "RandomForest", **met_rf},
         ]).to_csv(OUT_MODELS / "metrics_shortage_fei.csv", index=False)
-        log.info("Full-panel L2 AUC=%.3f RF AUC=%.3f", met_l2["auc"], met_rf["auc"])
+        log.info("With-text L2 AUC=%.3f RF AUC=%.3f", met_l2["auc"], met_rf["auc"])
     else:
-        log.warning("Too few shortage events (n=%d events=%d) for the full-panel model; "
+        log.warning("Too few shortage events (n=%d events=%d) for the with-text model; "
                      "skipping, not reporting an unreliable number", len(X_all), int(y.sum()))
 
     # ── VAI-only subgroup: does text predict shortage where FDA's label can't? ──
