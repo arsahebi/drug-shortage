@@ -8,8 +8,20 @@ for exactly what changed vs. the archived version).
 
 Unit of observation: one inspection event.
 Features: 17 LLM text signals from the 483 observations at that inspection.
-Outcome: binary -- were AEs in the 4 quarters after inspection above median?
-         ae_high_next4q = 1 if sum(n_ae_tp1..tp4) > median.
+
+Outcome (updated 2026-09-16, --outcome relative is now the default): binary
+-- did this facility's own AE count rise after the inspection, compared to
+its own AE count before it? A variance decomposition found the original
+outcome (--outcome global: above-median AEs pooled across ALL facilities
+and drugs) is confounded: 88.6% of the variance in raw AE count across
+inspection-events is BETWEEN facilities (which facility/drug this is), only
+11.4% is WITHIN a facility over time. A global median split mostly labels
+"is this a high-volume facility," which FEI-grouped CV correctly refuses to
+let a model exploit, leaving little for any feature to explain. The
+relative outcome (ae_rise_next4q = post-inspection AE count > pre-
+inspection AE count, same facility, same window length) cancels the
+facility/drug-size confound out entirely. Both are still implemented,
+see _build_outcome_global() and _build_outcome_relative(), for comparison.
 
 Five configurations, matching the INFORMS slide table exactly:
   A. Text only, full sample
@@ -85,14 +97,25 @@ TEXT_FEATURES = [
 SEED = 42
 
 
-def _build_outcome(df: pd.DataFrame) -> pd.DataFrame:
-    """Restrict to inspections with at least one real (non-imputed) AE count
-    in the post-inspection window before summing. Reproduces the INFORMS
-    slide's "176 inspections, 78 FEIs with ANDA-matched AEs" cohort exactly
-    (verified against --anda-ae): an inspection whose FEI has zero ANDA-
-    matched AE records anywhere in tp1..tp4 is excluded, not zero-filled.
-    Within a kept row, a still-missing individual quarter is treated as 0
-    (the FEI does have AE tracking; that specific quarter is a true zero).
+def _build_outcome_global(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+    """Original outcome (kept for comparison): above-median AEs in the 4
+    quarters after inspection, split against a single median pooled across
+    ALL facilities and ALL drugs. Restrict to inspections with at least one
+    real (non-imputed) AE count in the post-inspection window before
+    summing. Reproduces the INFORMS slide's "176 inspections, 78 FEIs with
+    ANDA-matched AEs" cohort exactly (verified against --anda-ae): an
+    inspection whose FEI has zero ANDA-matched AE records anywhere in
+    tp1..tp4 is excluded, not zero-filled. Within a kept row, a still-
+    missing individual quarter is treated as 0 (the FEI does have AE
+    tracking; that specific quarter is a true zero).
+
+    KNOWN CONFOUND (found 2026-09-16): a global median split on raw AE
+    count is dominated by which facility/drug this is -- 88.6% of the
+    variance in n_ae_next4q across inspection-events is BETWEEN facilities,
+    only 11.4% is WITHIN a facility over time. GroupKFold CV (which holds
+    out entire facilities) correctly refuses to let a model exploit that,
+    which leaves little for any feature, text or otherwise, to explain.
+    See _build_outcome_relative() for the fix.
     """
     df = df.copy()
     ae_cols = ["n_ae_tp1", "n_ae_tp2", "n_ae_tp3", "n_ae_tp4"]
@@ -104,7 +127,39 @@ def _build_outcome(df: pd.DataFrame) -> pd.DataFrame:
     df = df[has_any_ae_data].copy()
     df["n_ae_next4q"] = df[ae_cols].fillna(0).sum(axis=1)
     df["ae_high_next4q"] = (df["n_ae_next4q"] > df["n_ae_next4q"].median()).astype(int)
-    return df
+    return df, "ae_high_next4q"
+
+
+def _build_outcome_relative(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+    """Per-facility relative-change outcome (added 2026-09-16 to fix the
+    confound documented in _build_outcome_global): compare each inspection's
+    facility to ITSELF, pre- vs. post-inspection, instead of splitting
+    against a median pooled across every facility and drug. This cancels
+    out facility/drug size entirely, since both windows come from the same
+    FEI.
+
+    ae_rise_next4q = 1 if this facility's AE count in the 4 quarters after
+    the inspection is higher than its own AE count in the 4 quarters
+    before it. Requires real (non-imputed) AE data on both sides; an
+    inspection with no real AE record on either side is dropped, not
+    zero-filled, same no-zero-fill standard as the rest of this session's
+    work.
+    """
+    df = df.copy()
+    pre_cols  = ["n_ae_tm4", "n_ae_tm3", "n_ae_tm2", "n_ae_tm1"]
+    post_cols = ["n_ae_tp1", "n_ae_tp2", "n_ae_tp3", "n_ae_tp4"]
+    has_pre  = df[pre_cols].notna().any(axis=1)
+    has_post = df[post_cols].notna().any(axis=1)
+    keep = has_pre & has_post
+    dropped = (~keep).sum()
+    if dropped:
+        print(f"  Dropping {dropped} inspections missing real AE data on the "
+              f"pre- or post-inspection side (not zero-filling)")
+    df = df[keep].copy()
+    df["n_ae_pre4q"]  = df[pre_cols].fillna(0).sum(axis=1)
+    df["n_ae_post4q"] = df[post_cols].fillna(0).sum(axis=1)
+    df["ae_rise_next4q"] = (df["n_ae_post4q"] > df["n_ae_pre4q"]).astype(int)
+    return df, "ae_rise_next4q"
 
 
 def _cv_evaluate(X: np.ndarray, y: np.ndarray, groups: np.ndarray, label: str,
@@ -148,7 +203,7 @@ def _cv_evaluate(X: np.ndarray, y: np.ndarray, groups: np.ndarray, label: str,
     return results
 
 
-def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path) -> None:
+def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path, outcome_label: str = "relative") -> None:
     lr = metrics[metrics["model"] == "LR"].copy()
     rf = metrics[metrics["model"] == "RF"].copy()
     configs = lr["config"].tolist()
@@ -162,8 +217,10 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(configs, fontsize=9, rotation=20, ha="right")
     ax.set_ylabel("Mean AUC (GroupKFold CV)", fontsize=10)
-    ax.set_title("VAI-signal validation rerun (current text pipeline)\n"
-                 "outcome: above-median AEs in 4 quarters after inspection", fontsize=9)
+    outcome_desc = ("AE count rose vs. this facility's own pre-inspection window"
+                     if outcome_label == "relative" else
+                     "above-median AEs in 4 quarters after inspection (pooled across facilities)")
+    ax.set_title(f"VAI-signal validation rerun (current text pipeline)\noutcome: {outcome_desc}", fontsize=9)
     ax.set_ylim(0.3, 1.0)
     ax.legend(fontsize=9)
     for bar in [*bars_lr, *bars_rf]:
@@ -181,6 +238,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="VAI-only text-signal AE prediction, rerun with current data")
     parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
                         help="Use ANDA-specific AE panel instead of drug-level panel")
+    parser.add_argument("--outcome", choices=["global", "relative"], default="relative",
+                        help="global = original above-pooled-median split (confounded by "
+                             "facility/drug size, see _build_outcome_global). relative = "
+                             "per-facility pre-vs-post comparison, the 2026-09-16 fix "
+                             "(default).")
     args = parser.parse_args()
     panel_path = PANEL_ANDA if args.anda_ae else PANEL
 
@@ -189,10 +251,14 @@ def main() -> None:
 
     print(f"Loading panel ({'ANDA-specific' if args.anda_ae else 'drug-level'})...")
     df = pd.read_parquet(panel_path)
-    df = _build_outcome(df)
+    if args.outcome == "relative":
+        df, outcome_col = _build_outcome_relative(df)
+    else:
+        df, outcome_col = _build_outcome_global(df)
     print(f"  {len(df)} inspection events, {df['fei'].nunique()} FEIs")
+    print(f"  Outcome definition: {args.outcome} ({outcome_col})")
 
-    complete_mask = df[TEXT_FEATURES].notna().all(axis=1) & df["ae_high_next4q"].notna()
+    complete_mask = df[TEXT_FEATURES].notna().all(axis=1) & df[outcome_col].notna()
     df = df[complete_mask].copy()
     print(f"  Complete rows for modeling: {len(df)} (FEIs: {df['fei'].nunique()})")
 
@@ -201,9 +267,9 @@ def main() -> None:
         return
 
     X_text  = df[TEXT_FEATURES].values
-    y       = df["ae_high_next4q"].values.astype(int)
+    y       = df[outcome_col].values.astype(int)
     groups  = df["fei"].astype(int).values
-    print(f"  Outcome: {y.mean():.1%} above-median AEs in Q+1..Q+4")
+    print(f"  Outcome base rate: {y.mean():.1%}")
 
     print("\nConfig A: Text only, full sample...")
     results_A = _cv_evaluate(X_text, y, groups, "A: Text only (full sample)")
@@ -222,9 +288,9 @@ def main() -> None:
     vai_feis = fei_ever_oai[fei_ever_oai == 0].index
     df_vai = df[df["fei"].isin(vai_feis)].copy()
     print(f"\nConfig D: VAI-only facilities ({df_vai['fei'].nunique()} FEIs, {len(df_vai)} rows)...")
-    if len(df_vai) >= 20 and df_vai["ae_high_next4q"].nunique() > 1:
+    if len(df_vai) >= 20 and df_vai[outcome_col].nunique() > 1:
         X_vai   = df_vai[TEXT_FEATURES].values
-        y_vai   = df_vai["ae_high_next4q"].values.astype(int)
+        y_vai   = df_vai[outcome_col].values.astype(int)
         grp_vai = df_vai["fei"].astype(int).values
         results_D = _cv_evaluate(X_vai, y_vai, grp_vai, "D: VAI-only (text)")
     else:
@@ -235,9 +301,9 @@ def main() -> None:
     fei_has_oai = fei_ever_oai[fei_ever_oai == 1].index
     df_oai_sub = df[df["fei"].isin(fei_has_oai)].copy()
     print(f"\nConfig E: OAI-ever facilities ({df_oai_sub['fei'].nunique()} FEIs, {len(df_oai_sub)} rows)...")
-    if len(df_oai_sub) >= 20 and df_oai_sub["ae_high_next4q"].nunique() > 1:
+    if len(df_oai_sub) >= 20 and df_oai_sub[outcome_col].nunique() > 1:
         X_oai_e   = df_oai_sub[TEXT_FEATURES].values
-        y_oai_e   = df_oai_sub["ae_high_next4q"].values.astype(int)
+        y_oai_e   = df_oai_sub[outcome_col].values.astype(int)
         grp_oai_e = df_oai_sub["fei"].astype(int).values
         results_E = _cv_evaluate(X_oai_e, y_oai_e, grp_oai_e, "E: OAI-ever (text)")
     else:
@@ -250,14 +316,16 @@ def main() -> None:
     OUT_TABS.mkdir(parents=True, exist_ok=True)
     OUT_FIGS.mkdir(parents=True, exist_ok=True)
 
-    metrics.to_csv(OUT_MOD / "ablation_metrics.csv", index=False)
+    suffix = "" if args.outcome == "relative" else "_global"
+    metrics.to_csv(OUT_MOD / f"ablation_metrics{suffix}.csv", index=False)
     print(f"\nResults:\n{metrics[['config','model','auc','p_vs_0.5','n_folds','n']].to_string(index=False)}")
 
     md_lines = [
         "# VAI-signal validation rerun -- model summary",
         "",
+        f"Outcome definition: {args.outcome} ({outcome_col})",
         f"Panel: {len(df)} inspection events, {df['fei'].nunique()} unique FEIs",
-        f"Outcome: above-median AEs in Q+1..Q+4 after inspection (base rate {y.mean():.1%})",
+        f"Outcome base rate: {y.mean():.1%}",
         "",
         metrics[["config", "model", "auc", "p_vs_0.5", "ap"]].to_string(index=False),
         "",
@@ -265,9 +333,9 @@ def main() -> None:
         "p_vs_0.5: one-tailed t-test of the 5 fold-level AUCs against 0.5, matching",
         "the INFORMS slide's own stated test.",
     ]
-    (OUT_TABS / "model_summary.md").write_text("\n".join(md_lines))
+    (OUT_TABS / f"model_summary{suffix}.md").write_text("\n".join(md_lines))
 
-    plot_ablation_bar(metrics, OUT_FIGS / "ablation_auc_bar.png")
+    plot_ablation_bar(metrics, OUT_FIGS / f"ablation_auc_bar{suffix}.png", outcome_label=args.outcome)
     print(f"\nAll outputs saved to {OUT}/")
 
 
