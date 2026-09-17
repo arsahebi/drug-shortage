@@ -2,20 +2,30 @@
 Module 17 — FEI × year adverse event prediction model.
 
 Panel: FEI × year, 2015–2024.  For each facility in year t, predict whether
-serious adverse event volume is above-median in year t+1
-(y_ae_next = 1 if drug-year AE count > median for that drug across all years).
+its total AE volume (summed across every drug it makes) rises in year t+1
+relative to its own year-t total (y_ae_next = 1 if n_ae_total_next > n_ae_total_t).
 
 Adverse events are the primary dependent variable: they directly measure patient
 harm from quality failures and are more interpretable than shortage (which has
 confounding supply/demand factors) and more common than shortage events.
 
-AE outcome construction:
+AE outcome construction (updated 2026-09-17 -- see _fei_year_ae_total()):
   - Source: FAERS_ALL (14 Valisure drugs, pre-filtered serious AEs, 2015–2024)
   - Aggregate FAERS prod_ai × year → n_ae (count of serious AE reports)
   - Match prod_ai to Valisure API name (first-word fuzzy via ValisureDrugMatcher)
   - Join to FEI via Valisure API Only_FEI Mapping sheet
-  - ae_high = 1 if n_ae > per-drug median, 0 otherwise (binary, per drug-year)
-  - y_ae_next: take ae_high at FEI level (max across drugs) for year t+1
+  - n_ae_total: sum n_ae across every drug a FEI makes, per year (a FEI's own
+    AE burden that year)
+  - y_ae_next = 1 if n_ae_total in year t+1 > n_ae_total in year t, for the
+    same FEI. A per-facility relative-change outcome, not a per-drug-median
+    split: the old version (ae_high = n_ae > per-drug median across years,
+    kept in _load_faers_fei_year() for reference) is confounded by facility
+    size within a drug, the same problem found and fixed for the
+    inspection-event AE model in vai_signal_validation/02_vai_signal_model.py
+    (88.6% of the variance in raw AE count was between-facility, not
+    within-facility). Requires a real AE record for the same FEI in both
+    year t and year t+1; a FEI missing either side is dropped, not
+    zero-filled.
 
 Feature groups (identical to m14):
   Inspection (Redica):    n_oai_cumul, n_vai_t, n_inspections_t, n_warning_letters_t
@@ -221,6 +231,22 @@ def _load_faers_fei_year() -> pd.DataFrame:
         len(merged), merged["fei"].nunique(), merged["drug"].nunique(),
     )
     return merged[["fei", "year", "drug", "n_ae", "ae_high"]]
+
+
+def _fei_year_ae_total(ae_fy: pd.DataFrame) -> pd.DataFrame:
+    """Sum AE count across every drug a FEI makes, per year -- the facility's
+    own total AE burden that year. Used for the relative-change outcome
+    below (2026-09-17 fix): a per-drug-across-years median split (the old
+    ae_high column above) controls for which drug this is but not for
+    facility size within that drug -- the same confound found and fixed in
+    vai_signal_validation/02_vai_signal_model.py (88.6% of the variance in
+    raw AE count across inspection-events was between-facility, not
+    within-facility). Comparing a facility's own AE total year over year
+    cancels that out."""
+    return (
+        ae_fy.groupby(["fei", "year"], as_index=False)["n_ae"].sum()
+             .rename(columns={"n_ae": "n_ae_total"})
+    )
 
 
 def _load_redica_fei_year() -> pd.DataFrame:
@@ -431,15 +457,23 @@ def build_panel() -> pd.DataFrame:
     # Text features (time-aware)
     panel = _join_text_as_of_year(panel, text_ts)
 
-    # Outcome: ae_high in year t+1 (max across drugs per FEI-year)
-    ae_next = (
-        ae_fy.groupby(["fei", "year"], as_index=False)["ae_high"]
-             .max()
-             .rename(columns={"year": "year_next", "ae_high": "ae_high_next"})
+    # Outcome (2026-09-17): does this FEI's own total AE count in year t+1
+    # exceed its own total AE count in year t? A per-facility relative-change
+    # outcome, not a per-drug-across-years median split -- see
+    # _fei_year_ae_total() docstring for why. Requires a real (non-imputed)
+    # AE total on both sides; a FEI with no real AE record in year t or
+    # year t+1 is left NaN here (dropped in _prep, not zero-filled).
+    ae_totals = _fei_year_ae_total(ae_fy)
+    panel = panel.merge(ae_totals.rename(columns={"n_ae_total": "n_ae_total_t"}),
+                        on=["fei", "year"], how="left")
+    next_totals = ae_totals.rename(columns={"year": "year_next", "n_ae_total": "n_ae_total_next"})
+    next_totals["year"] = next_totals["year_next"] - 1
+    panel = panel.merge(next_totals[["fei", "year", "n_ae_total_next"]], on=["fei", "year"], how="left")
+    panel["y_ae_next"] = np.where(
+        panel["n_ae_total_t"].notna() & panel["n_ae_total_next"].notna(),
+        (panel["n_ae_total_next"] > panel["n_ae_total_t"]).astype(float),
+        np.nan,
     )
-    ae_next["year"] = ae_next["year_next"] - 1
-    panel = panel.merge(ae_next[["fei", "year", "ae_high_next"]], on=["fei", "year"], how="left")
-    panel["y_ae_next"] = panel["ae_high_next"].fillna(np.nan)
 
     # Fill inspection zeros
     for col in ["n_inspections_t", "n_vai_t", "n_warning_letters_t"]:
@@ -449,7 +483,7 @@ def build_panel() -> pd.DataFrame:
     n_events = int(panel["y_ae_next"].sum()) if panel["y_ae_next"].notna().any() else 0
     n_mod    = int(panel["y_ae_next"].notna().sum())
     log.info(
-        "Panel: %d rows, %d FEIs, %d years | AE-high events: %d / %d rows (%.1f%%)",
+        "Panel: %d rows, %d FEIs, %d years | AE-rise events: %d / %d rows (%.1f%%)",
         len(panel), panel["fei"].nunique(), panel["year"].nunique(),
         n_events, n_mod, 100 * n_events / max(n_mod, 1),
     )
@@ -590,9 +624,9 @@ def _write_panel_summary(panel: pd.DataFrame) -> None:
           f"({modeled['fei'].nunique()} FEIs)",
         f"- **Rows with an as-of-year text snapshot (with-text model population, no "
           f"zero-fill):** {len(with_snapshot):,} ({with_snapshot['fei'].nunique()} FEIs)",
-        f"- **AE-high events (y=1), full outcome set:** {n_events} "
+        f"- **AE-rise events (y=1), full outcome set:** {n_events} "
           f"({100 * modeled['y_ae_next'].mean():.1f}%)",
-        f"- **FEIs with ≥1 AE-high event in panel:** "
+        f"- **FEIs with ≥1 AE-rise event in panel:** "
           f"{int((modeled.groupby('fei')['y_ae_next'].max() == 1).sum())}",
         "",
         "Two models are attempted independently (see RESULTS.docx): a baseline using "
