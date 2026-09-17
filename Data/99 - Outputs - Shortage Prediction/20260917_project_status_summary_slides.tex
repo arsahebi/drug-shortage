@@ -1,0 +1,284 @@
+% ============================================================
+% Project Status Summary -- Text Signals, Outcome Fixes, Prediction Models
+% Prepared 2026-09-17
+% ============================================================
+\documentclass[aspectratio=169,10pt]{beamer}
+
+% -- Theme -------------------------------------------------------------------
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamersize{text margin left=6mm, text margin right=6mm}
+
+% -- Packages ------------------------------------------------------------------
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{hyperref}
+\pdfstringdefDisableCommands{\let\\\space\let$\relax}
+
+% -- Colors -- matches Paper/Text Analysis/20260714_informs_slides.tex --------
+\definecolor{ncsuRed}{RGB}{204,0,0}
+\definecolor{ncsuGray}{RGB}{100,100,100}
+\definecolor{techBlue}{RGB}{37,99,235}
+\definecolor{govGreen}{RGB}{5,150,105}
+\definecolor{warnOrange}{RGB}{217,119,6}
+\definecolor{lightGray}{RGB}{243,244,246}
+
+\setbeamercolor{structure}{fg=ncsuRed}
+\setbeamercolor{block title}{bg=ncsuRed!90, fg=white}
+\setbeamercolor{block body}{bg=ncsuRed!8}
+\setbeamercolor{alerted text}{fg=ncsuRed}
+
+\newcommand{\highlight}[1]{{\color{ncsuRed}\textbf{#1}}}
+\newcommand{\tech}[1]{{\color{techBlue}\textbf{#1}}}
+\newcommand{\gov}[1]{{\color{govGreen}\textbf{#1}}}
+
+% -- Title ---------------------------------------------------------------------
+\title[Project Status Summary]{Project Status Summary}
+\subtitle{Text extraction, the outcome-variable problem, and prediction models}
+
+\author[Sahebi-Fakhrabad]{Amirreza Sahebi-Fakhrabad}
+\date{September 17, 2026 -- internal, not for external distribution}
+
+\begin{document}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}
+\titlepage
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Roadmap}
+\begin{enumerate}
+  \setlength{\itemsep}{12pt}
+  \item \textbf{The extraction pipeline} -- validated, model chosen, \highlight{closed}
+  \item \textbf{Is the text useful?} -- and a bigger problem we found in the outcome variable
+  \item \textbf{Prediction models} -- recall, adverse events, shortage
+  \item \textbf{Where this points next}
+\end{enumerate}
+\end{frame}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Part 1: Extraction Pipeline -- Closed}
+
+\begin{frame}{Part 1: The Extraction Pipeline is Closed}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item \textbf{Scale:} 1,067 observations, 98 facilities, 14 APIs, two LLM providers
+  \item \textbf{Validation:} independent human reviewer blind-labeled 50 observations
+  \item \textbf{Found and fixed:} 1 real bug, 6 real prompt gaps (contamination rules,
+        patient-risk scoping, scope calibration, root-cause bleed, data-integrity gap)
+  \item \textbf{Found and standardized:} severity\_tier's real confusion is
+        Major/Moderate, not Critical/Major -- collapsing the right pair takes accuracy
+        from 66--68\% to \highlight{90--94\%}
+  \item \textbf{Model decision:} \tech{Claude Sonnet 5} is production; GPT-5-mini is a
+        free, at-scale cross-check, not an equal second labeler
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Validation Results}
+{\small
+\begin{tabular}{lccc}
+\toprule
+Field & Claude vs.\ human & GPT vs.\ human & Verdict \\
+\midrule
+severity\_tier (collapsed) & 96\% & 88\% & Claude preferred \\
+root\_cause\_type          & 90\% & 70\% & Claude preferred \\
+scope                      & 90\% & 94\% & comparable \\
+violation\_category        & 84\% & 86\% & comparable \\
+\bottomrule
+\end{tabular}
+}
+\vspace{10pt}
+Cross-model agreement at full scale (n=1,067): binary flags \highlight{92--99\%};
+severity\_tier collapsed \highlight{94.5\%} (kappa 0.82); root\_cause\_type only
+58\% (Claude's own accuracy vs.\ human is fine at 90\%, it is specifically GPT's
+weak field).
+\vspace{6pt}
+\begin{alertblock}{Status}
+\small Extraction, validation, and model selection are done. Not revisited unless new
+data arrives.
+\end{alertblock}
+\end{frame}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Part 2: Is the Text Useful?}
+
+\begin{frame}{Part 2: Is the Text Useful, and a Problem We Found}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item INFORMS (July): text alone predicted future patient harm in VAI-only
+        facilities, AUC \highlight{0.656}, $p{=}0.046$
+  \item Rerun on the current, validated pipeline: AUC \highlight{0.591--0.610},
+        no longer significant ($p{=}0.19$, $p{=}0.08$)
+  \item Investigated why -- found something bigger than a weaker replication
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{The Outcome Variable Was Confounded}
+\begin{columns}[T]
+\column{0.55\textwidth}
+The AE outcome (above-median AE count, pooled across all facilities and drugs)
+was mostly measuring \highlight{which facility this is}, not whether quality
+changed.
+\vspace{8pt}
+\begin{block}{Variance decomposition}
+\small \textbf{88.6\%} of the variance in raw AE count is BETWEEN facilities
+(size/drug identity). Only \textbf{11.4\%} is WITHIN a facility over time.
+\end{block}
+\column{0.42\textwidth}
+GroupKFold CV correctly refuses to let a model exploit facility identity --
+which is most of what the old label contained.
+\end{columns}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{The Fix: Compare Each Facility to Itself}
+{\small
+\begin{tabular}{lcc}
+\toprule
+Config (text only, full sample) & Old outcome & New outcome (relative) \\
+\midrule
+Logistic Regression & 0.483 (n.s.) & \highlight{0.589, $p{=}0.048$} \\
+Random Forest        & 0.532 (n.s.) & \highlight{0.593, $p{=}0.041$} \\
+\midrule
+OAI/VAI flag alone   & 0.537 (n.s.) & \highlight{0.457 -- worse than random} \\
+\bottomrule
+\end{tabular}
+}
+\vspace{10pt}
+New outcome: did this facility's own AE count rise after inspection vs.\ its own
+pre-inspection window. Two things changed: text now predicts across the
+\highlight{full sample}, not a small subgroup; FDA's own classification alone
+predicts \highlight{nothing}.
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Robustness Checks}
+\begin{itemize}
+  \setlength{\itemsep}{9pt}
+  \item \textbf{Feature convergence:} Lab Controls signal and
+        data\_integrity\_llm\_share are top-8 in three independently built models
+        (facility-year AE, raw correlation, the new significant model)
+  \item \textbf{Calendar-time check:} no reporting-lag artifact -- FAERS volume
+        stable through 2026 Q1
+  \item \textbf{Facility trend plots:} some facilities show a textbook pattern
+        (severity spikes, AE count triples next quarter); others are pure noise --
+        exactly the mix an AUC of 0.55--0.60 represents
+  \item \textbf{AE-linkage precision matters:} the significant result needs
+        ANDA-matched AE data; broader drug-level matching is noisier and not
+        significant
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{The Dependent Variable Still Needs to Get Better}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item Even fixed, FAERS AE counts top out around AUC 0.55--0.60 -- real signal,
+        not a strong one
+  \item \tech{MarketScan} (OSU team) offers a stronger design: patient-level
+        self-control (same patient, before/after a manufacturer switch), not just
+        facility-level
+  \item Not usable yet -- only reference documentation exists in the project
+        folder so far
+  \item Formal data request drafted: exact fields, formulas, time-window caveats,
+        which of our 14 drugs the design covers (9 of 14; hospital-administered
+        drugs do not qualify)
+\end{itemize}
+\end{frame}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Part 3: Prediction Models}
+
+\begin{frame}{Part 3: Prediction Models -- Recall, AE, Shortage}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item Same design question as Part 2, one level up: facility-year models for
+        three outcomes
+  \item Fixed the same problem here too: models were restricted to
+        text-covered facilities only, discarding real inspection history for
+        facilities without text yet
+  \item Every model now runs two populations independently: a
+        \textbf{baseline} (inspection + structural only, full facility
+        universe) and a \textbf{with-text} model (text-covered subset)
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Results Across All Three Models}
+{\small
+\begin{tabular}{lccc}
+\toprule
+Model & Baseline AUC & With-text AUC & Note \\
+\midrule
+Recall (m14)   & 0.26--0.34 & too few events & baseline below random \\
+AE (m17)       & 0.57--0.60 & 0.43--0.49 & baseline improved after fix; with-text did not \\
+Shortage (m19) & \highlight{0.54--0.61} & 0.49--0.50 & baseline \highlight{significant} \\
+\bottomrule
+\end{tabular}
+}
+\vspace{10pt}
+Shortage baseline: $p{=}0.003$ (LR), $p{=}0.011$ (RF) -- \highlight{the strongest,
+cleanest result in either pipeline right now, and it uses no text at all.}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{What the Shortage Result Means}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item Plain inspection history (OAI/VAI counts, inspection frequency,
+        warning letters) plus structural features (parenteral status, supply
+        concentration) significantly predicts shortage exposure
+  \item Only visible once the panel stopped being restricted to text-covered
+        facilities -- every earlier version of this model missed it
+  \item Does not confirm the text-specific VAI hypothesis on its own; it is a
+        separate, additive finding about not discarding facilities without text
+  \item Not yet stress-tested the way the AE story has been (repeated
+        cohorts, multiple reruns) -- next step, not a finished result
+\end{itemize}
+\end{frame}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Where This Points Next}
+
+\begin{frame}{Where This Points Next}
+\begin{itemize}
+  \setlength{\itemsep}{9pt}
+  \item \textbf{Send the MarketScan request} -- get a real, patient-controlled
+        outcome to validate against
+  \item \textbf{Stress-test the shortage baseline} -- repeated cohorts, closer
+        look at what is driving it
+  \item \textbf{Resolve the m17 with-text puzzle} -- why the corrected outcome
+        helped the baseline but hurt the smaller with-text subset
+  \item \textbf{Keep growing the sample} -- VAI-only and shortage cohorts are
+        still small; more calendar time and 483-text coverage is the binding
+        constraint everywhere in this deck
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Summary}
+\begin{itemize}
+  \setlength{\itemsep}{9pt}
+  \item \textbf{Closed:} extraction pipeline, human validation, model choice
+  \item \textbf{Fixed:} the outcome-variable confound, in both the AE and
+        facility-year pipelines
+  \item \textbf{Real, if modest:} text signals predict AE change across the full
+        sample once the outcome is fixed ($p<0.05$)
+  \item \textbf{Best current result:} plain inspection history predicts
+        shortage, significantly, without text
+  \item \textbf{Open:} a better dependent variable (MarketScan), more stress-testing,
+        and more calendar time
+\end{itemize}
+\end{frame}
+
+\end{document}
