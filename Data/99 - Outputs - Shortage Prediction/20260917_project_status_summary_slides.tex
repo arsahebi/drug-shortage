@@ -85,14 +85,14 @@
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{Validation Results}
 {\small
-\begin{tabular}{lccc}
+\begin{tabular}{p{3.6cm}p{2.4cm}p{2.2cm}p{2.6cm}}
 \toprule
 Field & Claude vs.\ human & GPT vs.\ human & Verdict \\
 \midrule
 severity\_tier (collapsed) & 96\% & 88\% & Claude preferred \\
-root\_cause\_type          & 90\% & 70\% & Claude preferred \\
-scope                      & 90\% & 94\% & comparable \\
-violation\_category        & 84\% & 86\% & comparable \\
+root\_cause\_type & 90\% & 70\% & Claude preferred \\
+scope & 90\% & 94\% & comparable \\
+violation\_category & 84\% & 86\% & comparable \\
 \bottomrule
 \end{tabular}
 }
@@ -142,23 +142,25 @@ which is most of what the old label contained.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{The Fix: Compare Each Facility to Itself}
+New outcome: did this facility's own AE count rise after inspection vs.\ its
+own pre-inspection window, same facility, same window length.
+\vspace{8pt}
 {\small
-\begin{tabular}{lcc}
+\begin{tabular}{p{4.3cm}p{2.6cm}p{4.3cm}}
 \toprule
-Config (text only, full sample) & Old outcome & New outcome (relative) \\
+Config (text only) & Old outcome & New outcome (relative) \\
 \midrule
 Logistic Regression & 0.483 (n.s.) & \highlight{0.589, $p{=}0.048$} \\
-Random Forest        & 0.532 (n.s.) & \highlight{0.593, $p{=}0.041$} \\
+Random Forest & 0.532 (n.s.) & \highlight{0.593, $p{=}0.041$} \\
 \midrule
-OAI/VAI flag alone   & 0.537 (n.s.) & \highlight{0.457 -- worse than random} \\
+OAI/VAI flag alone & 0.537 (n.s.) & \highlight{0.457} (below random) \\
 \bottomrule
 \end{tabular}
 }
 \vspace{10pt}
-New outcome: did this facility's own AE count rise after inspection vs.\ its own
-pre-inspection window. Two things changed: text now predicts across the
-\highlight{full sample}, not a small subgroup; FDA's own classification alone
-predicts \highlight{nothing}.
+Two things changed: text now predicts across the \highlight{full sample}, not
+a small subgroup; FDA's own classification alone predicts
+\highlight{nothing}.
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -216,12 +218,12 @@ predicts \highlight{nothing}.
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{Results Across All Three Models}
 {\small
-\begin{tabular}{lccc}
+\begin{tabular}{p{2.2cm}p{2.4cm}p{2.4cm}p{4.0cm}}
 \toprule
 Model & Baseline AUC & With-text AUC & Note \\
 \midrule
-Recall (m14)   & 0.26--0.34 & too few events & baseline below random \\
-AE (m17)       & 0.57--0.60 & 0.43--0.49 & baseline improved after fix; with-text did not \\
+Recall (m14) & 0.26--0.34 & too few events & baseline below random \\
+AE (m17) & 0.57--0.60 & 0.43--0.49 & baseline up, with-text down \\
 Shortage (m19) & \highlight{0.54--0.61} & 0.49--0.50 & baseline \highlight{significant} \\
 \bottomrule
 \end{tabular}
