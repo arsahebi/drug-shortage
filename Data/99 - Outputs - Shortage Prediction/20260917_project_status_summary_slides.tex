@@ -268,30 +268,28 @@ facility with real data, no text required.
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
-\begin{frame}{Results Across All Three Models}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccc}
+\begin{frame}{The One Clean Result: Shortage}
+\resizebox{0.85\textwidth}{!}{%
+\begin{tabular}{lcc}
 \toprule
-Model & Baseline AUC & With-text AUC & Note \\
+Shortage (m19) & AUC & $p$ vs.\ 0.5 \\
 \midrule
-Recall (m14) & 0.26--0.34 & too few events & baseline below random \\
-AE (m17) & 0.57--0.60 & 0.43--0.49 & baseline up, with-text down \\
-Shortage (m19) & \highlight{0.54--0.61} & 0.49--0.50 & baseline \highlight{significant} \\
+Baseline (inspection + structural, no text) & \highlight{0.54--0.61} & \highlight{0.003 / 0.011} \\
+With-text (restricted subset) & 0.49--0.50 & n.s. \\
 \bottomrule
 \end{tabular}%
 }
 \vspace{10pt}
-\begin{alertblock}{Why adding text hurts here}
-\small The with-text subset is small (148--177 rows). Adding 12 text
-features on top of 6 structural/inspection ones, on that few rows, spreads
-too little data across too many features -- the model overfits noise instead
-of learning signal. The baseline (6 features, 1{,}100+ rows) has room to
-learn; the with-text model does not. This is a sample-size problem, not
-evidence that text is uninformative.
-\end{alertblock}
-\vspace{6pt}
-Shortage baseline: $p{=}0.003$ (LR), $p{=}0.011$ (RF) -- \highlight{the strongest,
-cleanest result in either pipeline right now, and it uses no text at all.}
+\highlight{The strongest, cleanest result in either pipeline, and it uses no
+text at all.}
+\vspace{12pt}
+\begin{block}{Recall and AE (facility-year) were also tried}
+\small Recall (m14): too few events to model at all (20 total). AE (m17,
+annual): baseline improved after the outcome fix but the with-text model got
+worse, likely the same small-sample overfitting problem as the shortage
+with-text model. Neither gives a clean result at current sample size -- not
+shown as a peer comparison to shortage.
+\end{block}
 \end{frame}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -316,17 +314,21 @@ n\_vai\_t & 6\% \\
 \end{columns}
 \vspace{10pt}
 \begin{itemize}
-  \setlength{\itemsep}{8pt}
-  \item \highlight{Mostly supply concentration}, not quality per se:
-        n\_feis\_drug (how many other facilities make the same drug) alone
-        is 62\% of the signal -- sole-source facilities are the risk
+  \setlength{\itemsep}{7pt}
+  \item \highlight{Mostly supply concentration}, not quality: n\_feis\_drug
+        (how many other facilities make the same drug) alone is 62\% of the
+        signal -- sole-source facilities are the risk
   \item Inspection-based features (OAI/VAI/inspection count) still contribute
         \highlight{about 25\% combined} -- a real, if secondary, quality signal
-  \item Only visible once the panel stopped being restricted to text-covered
-        facilities -- every earlier version of this model missed it
-  \item Not yet stress-tested the way the AE story has been -- next step, not
-        a finished result
 \end{itemize}
+\vspace{8pt}
+\begin{alertblock}{This does not question whether text signals are useful}
+\small Shortage and patient harm (Part 2) are different questions. Shortage is
+mostly a market-structure outcome -- how many alternative suppliers exist --
+which text was never expected to predict well on its own. Part 2's
+significant AE result stands on its own evidence; this slide is not a
+rebuttal of it, it's a separate finding about a separate outcome.
+\end{alertblock}
 \end{frame}
 
 % ═══════════════════════════════════════════════════════════════════════════
