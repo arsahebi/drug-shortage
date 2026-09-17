@@ -19,12 +19,16 @@ What changed vs. the archived version
   - Everything else (FAERS matching, SDUD volume, OAI/VAI resolution via
     Redica + FDA Drug QA 3-pass fallback) is unchanged from the original.
 
-Known limitation (as of 2026-09-16): the FDA Inspection raw source
-(Data/14 - FDA - Inspection/raw/Inspections Details.xlsx and
-Inspections Citations Details.xlsx) is dated November 20, 2025, about 10
-months old. If a facility's OAI/VAI status changed since then, the VAI-only
-subgroup here is defined on a stale classification. Re-run this script after
-that raw data is refreshed.
+OAI/VAI/NAI classification source (updated 2026-09-16, matches m19):
+FDA Inspection Details.xlsx (refreshed by the user this month, current
+through early September 2026) is now the PRIMARY source, matched exact-date
+per inspection event. Redica's classification (redica_all_drugs_combined.csv,
+last refreshed 2026-07-15) is the first fallback for rows FDA doesn't cover
+exact-date, then an FDA near-match (+/-30 days) is the second fallback, same
+as before. Previously Redica was primary and FDA was the only fallback; that
+was backwards once FDA's own file became the fresher source (this was the
+stale one when this script was first written, dated November 2025 at the
+time).
 
 Usage
 ─────
@@ -170,7 +174,8 @@ def _load_anda_ae_quarterly() -> pd.DataFrame:
 
 # ── Inspection outcomes ───────────────────────────────────────────────────────
 
-def _load_inspection_outcomes_by_date() -> pd.DataFrame:
+def _load_redica_outcomes_by_date() -> pd.DataFrame:
+    """Fallback source (last refreshed 2026-07-15) -- see FDA_INSP_XLSX above."""
     df = pd.read_csv(REDICA_COMBINED)
     df.columns = [c.strip() for c in df.columns]
     df["fei"]       = pd.to_numeric(df["FEI"], errors="coerce").astype("Int64")
@@ -184,7 +189,9 @@ def _load_inspection_outcomes_by_date() -> pd.DataFrame:
     return df[["fei", "insp_date", "n_oai", "n_vai", "n_nai", "any_oai"]].copy()
 
 
-def _load_fda_drug_outcomes() -> pd.DataFrame:
+def _load_fda_outcomes_by_date() -> pd.DataFrame:
+    """Primary source: FDA Inspection Details.xlsx, refreshed by the user 2026-09,
+    the same file m19_shortage_fei_model.py uses directly (see module docstring)."""
     fda = pd.read_excel(FDA_INSP_XLSX,
                         usecols=["FEI Number", "Inspection End Date",
                                  "Classification", "Project Area"])
@@ -290,37 +297,37 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame,
     panel = pd.DataFrame(rows)
     print(f"  {len(panel)} inspection-event rows built")
 
-    # ── Inspection outcome resolution (3-pass) ───────────────────────────────
+    # ── Inspection outcome resolution (3-pass, FDA primary as of 2026-09-16) ──
     panel["_date_key"] = pd.to_datetime(panel["insp_date"]).dt.normalize()
-    outcomes = _load_inspection_outcomes_by_date().rename(columns={"insp_date": "_date_key"})
+    fda = _load_fda_outcomes_by_date()
+    outcomes = fda.rename(columns={"insp_date": "_date_key"})
     panel = panel.merge(outcomes, on=["fei", "_date_key"], how="left")
-    n_after_redica = panel["any_oai"].isna().sum()
-    print(f"  After Redica exact match: {n_after_redica} unmatched")
+    n_after_fda = panel["any_oai"].isna().sum()
+    print(f"  After FDA exact match: {n_after_fda} unmatched")
 
-    if n_after_redica > 0:
-        print("  Loading FDA Drug QA fallback...")
-        fda = _load_fda_drug_outcomes()
+    def _apply_fill(panel, rows, label):
+        unmatched_mask = panel["any_oai"].isna()
+        if unmatched_mask.sum() == 0:
+            return panel, 0
+        rows_keyed = rows.rename(columns={"insp_date": "_date_key"})
+        tmp = (panel.loc[unmatched_mask, ["fei", "_date_key"]]
+               .reset_index()
+               .merge(rows_keyed, on=["fei", "_date_key"], how="left")
+               .set_index("index"))
+        n_filled = 0
+        for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
+            hits = tmp.index[tmp[col].notna()]
+            if len(hits):
+                panel.loc[hits, col] = tmp.loc[hits, col]
+                n_filled = max(n_filled, len(hits))
+        if n_filled:
+            print(f"  {label} filled {n_filled} rows")
+        return panel, n_filled
 
-        def _apply_fda_fill(panel, fda_rows, label):
-            unmatched_mask = panel["any_oai"].isna()
-            if unmatched_mask.sum() == 0:
-                return panel, 0
-            fda_keyed = fda_rows.rename(columns={"insp_date": "_date_key"})
-            tmp = (panel.loc[unmatched_mask, ["fei", "_date_key"]]
-                   .reset_index()
-                   .merge(fda_keyed, on=["fei", "_date_key"], how="left")
-                   .set_index("index"))
-            n_filled = 0
-            for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
-                hits = tmp.index[tmp[col].notna()]
-                if len(hits):
-                    panel.loc[hits, col] = tmp.loc[hits, col]
-                    n_filled = max(n_filled, len(hits))
-            if n_filled:
-                print(f"  {label} filled {n_filled} rows")
-            return panel, n_filled
-
-        panel, _ = _apply_fda_fill(panel, fda, "FDA exact match")
+    if n_after_fda > 0:
+        print("  Loading Redica fallback...")
+        redica = _load_redica_outcomes_by_date()
+        panel, _ = _apply_fill(panel, redica, "Redica exact match")
 
         still_unmatched = panel["any_oai"].isna()
         if still_unmatched.sum() > 0:
@@ -348,7 +355,7 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame,
     n_remaining = panel["any_oai"].isna().sum()
     if n_remaining:
         print(f"  {n_remaining} inspections still unresolved after all passes "
-              f"(no Redica or FDA Drug QA record) -- defaulted to 0")
+              f"(no FDA or Redica record) -- defaulted to 0")
     for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
         panel[col] = panel[col].fillna(0).astype(int)
 
