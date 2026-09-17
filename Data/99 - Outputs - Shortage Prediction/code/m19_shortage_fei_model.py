@@ -372,6 +372,7 @@ def _cv_metrics(X, y, groups, model_factory, n_splits=5):
     n_splits = min(n_splits, max(2, groups.nunique() - 1))
     gkf = GroupKFold(n_splits=n_splits)
     preds = np.zeros(len(y))
+    fold_aucs = []
     for tr, te in gkf.split(X, y, groups):
         if y.iloc[tr].nunique() < 2:
             preds[te] = y.iloc[tr].mean()
@@ -379,9 +380,25 @@ def _cv_metrics(X, y, groups, model_factory, n_splits=5):
         m = model_factory()
         m.fit(X.iloc[tr], y.iloc[tr])
         preds[te] = m.predict_proba(X.iloc[te])[:, 1]
+        y_te = y.iloc[te]
+        if y_te.nunique() == 2:
+            fold_aucs.append(roc_auc_score(y_te, preds[te]))
     auc = roc_auc_score(y, preds) if y.sum() > 0 else float("nan")
     ap  = average_precision_score(y, preds) if y.sum() > 0 else float("nan")
-    return preds, {"auc": auc, "ap": ap, "n": len(y), "events": int(y.sum())}
+    # One-tailed t-test of fold-level AUCs vs. 0.5 -- same convention as
+    # vai_signal_validation/02_vai_signal_model.py and the original INFORMS
+    # slide's own stated test. Not previously computed for this model; added
+    # so the baseline finding (see RESULTS.docx) can be read against a
+    # significance threshold instead of just the pooled AUC.
+    if len(fold_aucs) >= 2:
+        t_stat, p_two = stats.ttest_1samp(fold_aucs, 0.5)
+        p_vs_half = p_two / 2 if t_stat > 0 else 1 - p_two / 2
+    else:
+        p_vs_half = float("nan")
+    return preds, {
+        "auc": auc, "ap": ap, "n": len(y), "events": int(y.sum()),
+        "p_vs_0.5": p_vs_half, "n_folds": len(fold_aucs),
+    }
 
 
 def _oai_vs_vai_shortage_rates(panel: pd.DataFrame) -> pd.DataFrame:
@@ -469,7 +486,9 @@ def main() -> None:
             {"model": "L2_logit", **met_base_l2},
             {"model": "RandomForest", **met_base_rf},
         ]).to_csv(OUT_MODELS / "metrics_shortage_baseline.csv", index=False)
-        log.info("Baseline L2 AUC=%.3f RF AUC=%.3f", met_base_l2["auc"], met_base_rf["auc"])
+        log.info("Baseline L2 AUC=%.3f (p=%.3f) RF AUC=%.3f (p=%.3f)",
+                  met_base_l2["auc"], met_base_l2["p_vs_0.5"],
+                  met_base_rf["auc"], met_base_rf["p_vs_0.5"])
     else:
         log.warning("Baseline model has too few events (n=%d events=%d); skipping, not "
                      "reporting an unreliable number", len(X_base), int(y_base.sum()))
@@ -489,7 +508,8 @@ def main() -> None:
             {"model": "L2_logit", **met_l2},
             {"model": "RandomForest", **met_rf},
         ]).to_csv(OUT_MODELS / "metrics_shortage_fei.csv", index=False)
-        log.info("With-text L2 AUC=%.3f RF AUC=%.3f", met_l2["auc"], met_rf["auc"])
+        log.info("With-text L2 AUC=%.3f (p=%.3f) RF AUC=%.3f (p=%.3f)",
+                  met_l2["auc"], met_l2["p_vs_0.5"], met_rf["auc"], met_rf["p_vs_0.5"])
     else:
         log.warning("Too few shortage events (n=%d events=%d) for the with-text model; "
                      "skipping, not reporting an unreliable number", len(X_all), int(y.sum()))
@@ -515,8 +535,9 @@ def main() -> None:
             {"model": "L2_logit", **met_vai_l2},
             {"model": "RandomForest", **met_vai_rf},
         ]).to_csv(OUT_MODELS / "metrics_shortage_vai_only.csv", index=False)
-        log.info("VAI-only text-signal shortage model: L2 AUC=%.3f RF AUC=%.3f",
-                  met_vai_l2["auc"], met_vai_rf["auc"])
+        log.info("VAI-only text-signal shortage model: L2 AUC=%.3f (p=%.3f) RF AUC=%.3f (p=%.3f)",
+                  met_vai_l2["auc"], met_vai_l2["p_vs_0.5"],
+                  met_vai_rf["auc"], met_vai_rf["p_vs_0.5"])
     else:
         log.warning(
             "VAI-only subgroup has too few shortage events (n=%d events=%d) to model "
