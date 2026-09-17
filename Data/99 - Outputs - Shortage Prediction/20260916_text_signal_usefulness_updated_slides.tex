@@ -166,28 +166,121 @@ but it is suggestive, not statistically established.
 \end{itemize}
 \end{frame}
 
+% ═══════════════════════════════════════════════════════════════════════════
+% PART 2: EXTENDING TO SHORTAGE
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Part 2: Extending to Shortage}
+
+\begin{frame}{Part 2: Extending to Shortage (m19)}
+\begin{itemize}
+  \setlength{\itemsep}{10pt}
+  \item Part 1 asked whether 483 text predicts \emph{adverse events} in VAI-only facilities.
+        The project's actual motivating hypothesis is about \emph{shortage}: if VAI does not
+        force the same remediation OAI does, an undetected quality problem at a VAI facility
+        could keep degrading and eventually cause a shortage.
+  \item m19\_shortage\_fei\_model.py tests this directly for the first time this session,
+        using a facility-year panel (not inspection-event) and the FDA Inspection Details file
+        as the primary OAI/VAI source.
+  \item Three models, same significance-testing convention as Part 1 (one-tailed $t$-test of
+        fold-level AUCs vs.\ 0.5).
+\end{itemize}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Study Design: Facility-Year Shortage Panel}
+\begin{itemize}
+  \setlength{\itemsep}{8pt}
+  \item \textbf{Unit:} one facility (FEI) x year, 2015--2024
+  \item \textbf{Outcome:} does any drug this facility manufactures enter a University of
+        Utah-tracked shortage in year $t{+}1$
+  \item \textbf{Universe:} 127 FEIs (our full reference universe with FDA Inspection Details
+        records, not restricted to 483-text coverage -- same universe fix applied to m14/m17)
+  \item \textbf{Three models, checked independently:} baseline (inspection + structural
+        features, all 127 facilities), with-text (full feature set, text-covered subset only),
+        VAI-only subgroup (text features, facilities with no OAI on record as of year $t$)
+\end{itemize}
+\vspace{8pt}
+\begin{alertblock}{Limitation, kept explicit}
+\small Shortage exposure is bridged from drug-level UUtah events through the Valisure
+FEI-API map: every facility manufacturing a shortaged drug is marked ``exposed,'' whether or
+not that facility caused it. Same reason the team moved off shortage as the primary outcome
+in June 2026 -- m19 tests the VAI hypothesis specifically, not a reversal of that decision.
+\end{alertblock}
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Descriptive Check: Does an OAI Reduce Forward Shortage Risk?}
+\begin{columns}[T]
+\column{0.6\textwidth}
+{\small
+\begin{tabular}{lccc}
+\toprule
+Group & FEI-years & FEIs & Rate \\
+\midrule
+OAI on record as of $t$ & 115 & 38 & 18.3\% \\
+\rowcolor{lightGray}
+No OAI as of $t$ (VAI/NAI only) & 1{,}155 & 127 & 19.2\% \\
+\bottomrule
+\end{tabular}
+}
+\column{0.37\textwidth}
+{\small Literature (Wang et al., cited in the shortages working paper) predicts OAI should
+mean \emph{lower} forward shortage risk.}
+\end{columns}
+\vspace{10pt}
+Essentially identical rates. This data doesn't show OAI facilities having lower forward
+shortage risk, but it also doesn't show the opposite -- at 21 vs.\ 222 events, a 1-point gap
+is noise either way.
+\end{frame}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{frame}{Results: Three Models, Different Answers}
+{\small
+\begin{tabular}{lccc}
+\toprule
+Model & AUC & $p$ vs.\ 0.5 & $n$ (events) \\
+\midrule
+Baseline, L2 Logit           & \highlight{0.540} & \highlight{0.003} & 1{,}270 (243) \\
+Baseline, Random Forest      & \highlight{0.610} & \highlight{0.011} & 1{,}270 (243) \\
+\midrule
+With-text, L2 Logit          & 0.499 & 0.848 & 177 (36) \\
+With-text, Random Forest     & 0.490 & 0.490 & 177 (36) \\
+\midrule
+VAI-only, L2 Logit           & 0.514 & 0.243 & 144 (28) \\
+VAI-only, Random Forest      & \highlight{0.590} & \highlight{0.013} & 144 (28) \\
+\bottomrule
+\end{tabular}
+}
+\vspace{10pt}
+\pause
+\begin{alertblock}{Honest read}
+\small The \textbf{baseline} (plain inspection + structural features, full 127-facility
+universe, no text) is the strongest and only fully significant result here. The with-text
+model (smaller, restricted subset) is not significant either way. The VAI-only text-signal
+test is mixed: Random Forest is significant despite only 28 events; logistic regression is
+not. This doesn't confirm the text-specific VAI hypothesis on its own terms, but the baseline
+result is independent evidence that quality/regulatory signals broadly predict shortage.
+\end{alertblock}
+\end{frame}
+
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{frame}{Where This Points Next}
 \begin{itemize}
   \setlength{\itemsep}{9pt}
-  \item \textbf{The shortage test has now been run (m19), with a significance test.} Direct test
-        (text-only, VAI-only, shortage as outcome): mixed -- logistic not significant (AUC 0.514,
-        $p{=}0.243$), Random Forest significant (AUC 0.590, $p{=}0.013$) despite only 28 events.
-        Worth taking seriously, not dismissing as too sparse.
-  \item \textbf{An unrelated, more promising finding from the same model.} A plain inspection +
-        structural baseline (no text, full 127-facility universe) shows real signal for shortage
-        exposure and clears significance comfortably: AUC 0.540--0.610, $p{=}0.003$ and
-        $p{=}0.011$ -- evidence for the broader claim (quality/regulatory signals predict
-        shortage), though it doesn't confirm the text-specific VAI hypothesis above. See
-        RESULTS.docx.
   \item \textbf{More data, not a different model.} The VAI-only cohort is still small (55
-        facilities) because 483-text coverage is still short for many facilities. Sample size,
-        not signal quality, is still what keeps the logistic-regression versions from clearing
-        significance. Revisit as coverage grows.
-  \item \textbf{Done: OAI/VAI source aligned with m19.} This analysis now matches m19's source
-        order (FDA Inspection Details primary, Redica fallback). Rerunning reproduced the
-        identical cohort and identical AUCs -- a useful robustness check, not a source of the
-        movement seen on this deck.
+        facilities for AE, 28 shortage events) because 483-text coverage is still short for
+        many facilities. Sample size, not signal quality, is what keeps the
+        logistic-regression versions from clearing significance in both parts.
+  \item \textbf{Resolve the LR/RF disagreement.} The VAI-only shortage result is significant
+        under Random Forest but not logistic regression -- worth understanding whether that's
+        a real nonlinear pattern RF is finding, or an artifact of the small sample, before
+        leaning on it.
+  \item \textbf{Done: OAI/VAI source aligned across both parts.} Part 1's analysis now matches
+        m19's source order (FDA Inspection Details primary, Redica fallback). Rerunning
+        reproduced the identical cohort and identical AUCs -- a useful robustness check.
+  \item \textbf{The baseline finding needs the same scrutiny Part 1 got.} Significance-tested,
+        but not yet stress-tested across repeated reruns and cohort checks the way the
+        VAI-only AE comparison has been over several sessions.
 \end{itemize}
 \end{frame}
 
