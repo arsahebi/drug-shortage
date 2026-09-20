@@ -41,19 +41,22 @@ import pandas as pd
 from pathlib import Path
 
 BASE     = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-STEP1    = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.csv"
+import os
+STEP1    = Path(os.environ.get("STEP1_OVERRIDE",
+           str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.csv")))
 QA_FILE  = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
 RAW      = BASE / "Data/07 - Redica/raw"
 FEI_MAP  = RAW  / "MetfrmoinValisure_FEI_RedicaID_Mapping_RedicaJuly26.xlsx"
 EVENTS   = RAW  / "MetfrmoinValisure_Red_Flag_Events_RedicaJuly26.xlsx"
-OUT      = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv"
+OUT      = Path(os.environ.get("STEP2_OUT_OVERRIDE",
+           str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv")))
 
 # ── Sample exclusions (apply to the ENTIRE analysis, every downstream figure) ──
 # Enforced here in step 2 so steps 3-6 inherit one filtered panel and every
 # reported result describes the same sample. Do not re-filter per figure.
 EXCLUDE_COUNTRIES     = {"Canada", "Bangladesh"}   # drop these facilities outright
-REQUIRE_REDICA_HISTORY = True   # drop FEIs with no Redica inspection events
-DROP_NDCS_WITHOUT_FEI  = True   # same logic: an NDC with no FEI has no history either
+REQUIRE_REDICA_HISTORY = os.environ.get("REQUIRE_REDICA_HISTORY", "1") == "1"
+DROP_NDCS_WITHOUT_FEI  = os.environ.get("DROP_NDCS_WITHOUT_FEI", "1") == "1"
 
 COUNTRY_MAP = {
     "India": "IND", "China": "CHN", "United States": "USA",
@@ -233,6 +236,16 @@ meta["Strength"] = meta["s1_strength"].replace({"0": None, "nan": None, "": None
 print("Building panel...")
 hist_feis = set(df_insp["FEI"].dropna())
 
+# EXCLUSION 1 is absolute: an excluded-country facility is dropped from every
+# NDC regardless of REQUIRE_REDICA_HISTORY, so it can never re-enter the panel
+# via the no-history bucket with just a blank country field.
+if excluded_feis:
+    n_excl = meta[meta["FEI"].isin(excluded_feis)]["NDC11"].nunique()
+    if n_excl:
+        print(f"  (dropping {n_excl} NDC11(s) matched to an excluded-country "
+              f"facility, unconditionally)")
+    meta = meta[~meta["FEI"].isin(excluded_feis)].copy()
+
 with_hist = meta[meta["FEI"].notna() & meta["FEI"].isin(hist_feis)]
 no_hist   = meta[meta["FEI"].notna() & ~meta["FEI"].isin(hist_feis)].copy()
 no_fei    = meta[meta["FEI"].isna()].copy()
@@ -269,6 +282,17 @@ panel["Year"] = panel["EventYear"]
 # Country from Redica site display name; Sheet1 country as fallback
 panel["CountryName"] = panel["FEI"].map(fei_to_country)
 panel["CountryCode"] = panel["FEI"].map(fei_to_country_code).fillna(panel["s1_country"])
+
+# EXCLUSION 1 also applies to the Sheet1 fallback: an NDC with no matched FEI
+# can still carry a Canada/Bangladesh country from the old Q&A spreadsheet.
+_excl_codes = {"CAN": "Canada", "BGD": "Bangladesh"}
+_excl_codes = {c for c, name in _excl_codes.items() if name in EXCLUDE_COUNTRIES}
+if _excl_codes:
+    _leak = panel["FEI"].isna() & panel["CountryCode"].isin(_excl_codes)
+    if _leak.any():
+        print(f"\n  (dropping {panel.loc[_leak, 'NDC11'].nunique()} more NDC11(s) whose only "
+              f"country signal is the Sheet1 fallback and reads Canada/Bangladesh)")
+        panel = panel[~_leak].reset_index(drop=True)
 
 # Inspections per Year
 panel = panel.merge(insp_stats[["FEI", "Inspections per Year"]], on="FEI", how="left")
@@ -321,8 +345,10 @@ print(f"FEIs in analysis sample (post-exclusion) : {panel_out['FEI'].nunique()}"
 print(f"NDC11s in analysis sample : {panel_out['NDC11'].nunique()}")
 print(f"Inspection rows : {panel_out['EventYear'].notna().sum()}")
 print(f"Countries in sample : {sorted(panel_out['CountryName'].dropna().unique())}")
-assert not (set(panel_out['CountryName'].dropna()) & EXCLUDE_COUNTRIES), "excluded country leaked into panel"
-assert panel_out['EventYear'].notna().all(), "row without inspection history leaked into panel"
+assert not (set(panel_out['CountryName'].dropna()) & EXCLUDE_COUNTRIES), "excluded country leaked into panel (CountryName)"
+assert not (set(panel_out['CountryCode'].dropna()) & _excl_codes), "excluded country leaked into panel (CountryCode / Sheet1 fallback)"
+if REQUIRE_REDICA_HISTORY and DROP_NDCS_WITHOUT_FEI:
+    assert panel_out['EventYear'].notna().all(), "row without inspection history leaked into panel"
 
 print(f"\nInspection outcome breakdown (NAI/VAI/OAI):")
 insp_rows_dedup = panel_out.dropna(subset=["EventYear"]).drop_duplicates(["FEI","Event End Date"])

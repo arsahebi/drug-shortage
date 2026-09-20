@@ -34,10 +34,13 @@ from pathlib import Path
 from typing import Optional
 
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-STEP2   = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv"
+import os
+STEP2   = Path(os.environ.get("STEP2_OVERRIDE",
+          str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv")))
 RAW24   = BASE / "Data/08 - Valisure/raw/Valisure_2024_raw.xlsx"
 DOD     = BASE / "Data/08 - Valisure/raw/Testing Data_DoD First 13 Drug Scores with ANDAs & NDCs.xlsx"
-OUT     = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step3_panel_july26.csv"
+OUT     = Path(os.environ.get("STEP3_OUT_OVERRIDE",
+          str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step3_panel_july26.csv")))
 
 LOQ_VAL = 151.54   # sentinel for <LOQ / BLOQ results
 
