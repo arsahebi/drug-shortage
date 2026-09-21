@@ -178,15 +178,22 @@ def _cgm_vcov(y, X, c1, c2, beta=None):
     return _v(c1) + _v(c2) - _v(inter)
 
 
-def _coef_table(log, names, params, se, dof, header="", group_support=None):
+def _coef_table(log, names, params, se, dof, header="", group_support=None, ref_support=None):
     """group_support: optional {name: (n_obs, n_fei)} to flag dummies resting on
     too few observations or too few facilities. A coefficient with e.g. one
     China observation can still return a tiny SE and p<0.001 -- that is a
-    single-point artifact, not evidence, and must not be reported as a finding."""
+    single-point artifact, not evidence, and must not be reported as a finding.
+
+    ref_support: optional (n_obs, n_fei) for the omitted/reference category.
+    Every dummy in the table is a contrast against that baseline, so if the
+    baseline itself is thin (e.g. a 3-observation, 1-facility reference group),
+    every coefficient in the table is just as unreliable even when its own
+    group_support looks fine -- this flags all of them in that case."""
     from scipy.stats import t as t_dist
     t_vals = params / np.where(se > 0, se, np.nan)
     p_vals = 2 * t_dist.sf(np.abs(t_vals), df=max(dof, 1))
     lo, hi = params - 1.96 * se, params + 1.96 * se
+    ref_thin = ref_support is not None and (ref_support[0] < 3 or ref_support[1] < 2)
     if header:
         log(f"\n  {header}")
     for i, name in enumerate(names):
@@ -199,6 +206,9 @@ def _coef_table(log, names, params, se, dof, header="", group_support=None):
             n_obs, n_fei = group_support[name]
             if n_obs < 3 or n_fei < 2:
                 flag = f"  ** UNRELIABLE: only {n_obs} obs from {n_fei} facility(ies), not a real estimate **"
+        if not flag and ref_thin:
+            flag = (f"  ** UNRELIABLE: reference group has only {ref_support[0]} obs "
+                     f"from {ref_support[1]} facility(ies), not a real baseline **")
         log(f"    {name}: beta={params[i]:+.3f}, SE={se[i]:.3f}, "
             f"95% CI [{lo[i]:+.3f}, {hi[i]:+.3f}], {p_str}{sig}{flag}")
 
@@ -237,6 +247,8 @@ def modelB_re_twoway(log, sub, y_col, dummy_names, ndc_col, fei_col, tag, cross_
     for d in dummy_names:
         m = sub[d] == 1
         group_support[d] = (int(m.sum()), int(sub.loc[m, fei_col].nunique()))
+    ref_mask = (sub[dummy_names] == 0).all(axis=1)
+    ref_support = (int(ref_mask.sum()), int(sub.loc[ref_mask, fei_col].nunique()))
 
     if cross_section:
         log("    cross-section (single year): FEI-only clustered SE, NDC clustering N/A")
@@ -246,7 +258,7 @@ def modelB_re_twoway(log, sub, y_col, dummy_names, ndc_col, fei_col, tag, cross_
             ols = sm.OLS(y, X).fit(cov_type="cluster", cov_kwds={"groups": sub[fei_col].values})
             _coef_table(log, ["const"] + dummy_names, ols.params, ols.bse, dof,
                         header=f"OLS + FEI-clustered SE -- PRIMARY (cross-section) [{tag}]:",
-                        group_support=group_support)
+                        group_support=group_support, ref_support=ref_support)
         except Exception as exc:
             log(f"    FEI-clustered error: {exc}")
         return
@@ -273,7 +285,7 @@ def modelB_re_twoway(log, sub, y_col, dummy_names, ndc_col, fei_col, tag, cross_
         se2 = np.sqrt(np.diag(V2))
         _coef_table(log, ["const"] + dummy_names, ols.params, se2, dof,
                     header=f"OLS + TWO-WAY clustered SE (NDC x FEI) -- PRIMARY [{tag}]:",
-                    group_support=group_support)
+                    group_support=group_support, ref_support=ref_support)
     except Exception as exc:
         log(f"    CGM error: {exc}")
 
