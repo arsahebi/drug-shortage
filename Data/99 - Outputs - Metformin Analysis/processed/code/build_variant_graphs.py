@@ -514,6 +514,46 @@ def figS1(df, outdir, log):
 
 
 # ── driver ────────────────────────────────────────────────────────────────────
+def _redica_country_lookup():
+    """FEI -> country code, derived only from Redica's FDA inspection Site
+    Display Name -- never the Q&A spreadsheet's independent CountryCode column.
+
+    That spreadsheet column traces to Valisure's own self-reported "Mfr
+    location" field on the raw testing sheets (e.g. Valisure_2024_raw_prices_
+    20260728.xlsx, "2022 Testing Data - Actual" sheet), filled from the
+    product label at test time -- not derived from any facility match. A
+    facility with zero Redica inspection events (e.g. Chartwell Congers,
+    FEI 3008897678) has no entry here even if step1 matched it to an NDC, so
+    using this lookup rather than the panel's own CountryCode column is the
+    only way to guarantee every plotted country is Redica-derived. Mirrors
+    step2_build_panel_july26.py's fei_to_country_code construction exactly."""
+    import ast, re
+    ev = pd.read_excel(BASE / "Data/07 - Redica/raw/MetfrmoinValisure_Red_Flag_Events_RedicaJuly26.xlsx")
+    fm = pd.read_excel(BASE / "Data/07 - Redica/raw/MetfrmoinValisure_FEI_RedicaID_Mapping_RedicaJuly26.xlsx", dtype=str)
+    id_to_fei = dict(zip(fm["Redica ID"].str.strip(), fm["All FEIs"].str.strip()))
+    ev["FEI"] = ev["Site Redica Id"].map(id_to_fei)
+    def parse_list(x):
+        try:
+            return ast.literal_eval(x) if pd.notna(x) and str(x).strip().startswith("[") else []
+        except Exception:
+            return []
+    ev["agency"] = ev["Agency List"].apply(parse_list)
+    ev["event_dt"] = pd.to_datetime(ev["Event Date"], errors="coerce")
+    df_fda = ev[(ev["Event Type"] == "Inspection") & ev["agency"].apply(lambda a: "US - FDA" in a)
+                & ev["event_dt"].notna()]
+    cmap = {"India": "IND", "China": "CHN", "United States": "USA", "United States of America": "USA",
+            "Canada": "CAN", "Bangladesh": "BGD"}
+    def extract(s):
+        if not isinstance(s, str):
+            return None
+        m = re.search(r"\[.+?\s*/\s*(.+?)\]", s)
+        return cmap.get(m.group(1).strip()) if m else None
+    out = {}
+    for fei, grp in df_fda.dropna(subset=["FEI"]).groupby("FEI"):
+        out[fei] = extract(grp["Site Display Name"].iloc[0])
+    return out
+
+
 def _matched_fei_lookup(map_label):
     """NDC11 -> one manufacturing FEI, independent of inspection history.
     prior_fei only exists where a prior inspection was found (null for the 31
@@ -530,10 +570,26 @@ def _matched_fei_lookup(map_label):
     return m.drop_duplicates("NDC11", keep="first").set_index("NDC11")["FEI"].to_dict()
 
 
+_REDICA_COUNTRY_CACHE = None
+
+
 def build(map_label, dosage):
+    global _REDICA_COUNTRY_CACHE
+    if _REDICA_COUNTRY_CACHE is None:
+        _REDICA_COUNTRY_CACHE = _redica_country_lookup()
+
     df = pd.read_csv(VDIR / f"step5_{map_label}.csv")
     df = df[df[[DMF_COL, NDMA_COL, DIFF_COL]].notna().any(axis=1)]  # Valisure-tested rows only
     df["matched_fei"] = df["NDC11"].map(_matched_fei_lookup(map_label))
+    # Overwrite CountryCode with a Redica-derived-only value. The panel's own
+    # CountryCode (built in step2) falls back to the Q&A spreadsheet's
+    # independent CountryCode column whenever the matched FEI has no Redica
+    # inspection coverage, and that spreadsheet field traces to Valisure's own
+    # self-reported "Mfr location" on the raw testing sheets -- not to any
+    # facility match. Every figure that colors or groups by country must use
+    # this column, or it can silently plot a country nothing here actually
+    # confirmed.
+    df["CountryCode"] = df["matched_fei"].map(_REDICA_COUNTRY_CACHE)
     if dosage != "all":
         df = df[df.IR_ER == dosage]
     outdir = OUT / f"{map_label}_{dosage}"
@@ -541,7 +597,7 @@ def build(map_label, dosage):
     logpath = outdir / "stats_log.txt"
     lines = [f"=== {map_label} / {dosage} ===",
              f"rows={len(df)}  NDC11s={df.NDC11.nunique()}  "
-             f"facility-linked={df.CountryCode.notna().sum()}  not={df.CountryCode.isna().sum()}"]
+             f"Redica-confirmed country={df.CountryCode.notna().sum()}  not={df.CountryCode.isna().sum()}"]
     def log(s): lines.append(str(s))
     fig1(df, outdir, log)
     fig2_3(df, outdir, log, VOL_COL, "Market Volume (Extended Units)", "Figure2_Volume_vs_Quality")

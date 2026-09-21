@@ -255,11 +255,28 @@ def build():
     ds.p(doc,
          "Six versions of Figures 1 through 4: the rule-based and manual NDC-FEI maps, each "
          "pooled and split by dosage form (immediate vs. extended release). The only universal "
-         "exclusion is Canada and Bangladesh. Figures 1 and 4 require a matched facility (for "
-         "prior inspection outcome and country respectively); Figures 2 and 3 color points by "
-         "country and so likewise require an actual matched facility, not just a non-null "
-         "country field, since that field can otherwise come from an old spreadsheet fallback "
-         "with no real facility behind it. Each regression is reported against two reference "
+         "exclusion is Canada and Bangladesh.",
+         size=10)
+
+    ds.p(doc,
+         "Country of origin is a documented data point only in the Redica facility-inspection "
+         "data, indexed by FEI. It cannot be observed until an NDC has been linked to an FEI. "
+         "The Valisure raw testing sheets do carry a self-reported manufacturer location column "
+         "(e.g. Valisure_2024_raw_prices_20260728.xlsx, \"2022 Testing Data - Actual\", column "
+         "\"Mfr location\"), filled from the product label at test time; an earlier version of "
+         "the pipeline had copied that field into a fallback country column, so an NDC with no "
+         "FEI match, or one whose matched FEI has no Redica inspection history at all, could "
+         "still show a country that was never confirmed against a facility. Because country of "
+         "origin is part of every figure here, either as an axis or as the point color, all four "
+         "figures are now restricted to NDCs whose matched facility has actual Redica inspection "
+         "coverage; the Valisure-reported location is not used anywhere in this document. This "
+         "did not change any figure's sample size, which means the fallback was not, in fact, "
+         "firing on the current data, but the restriction is now enforced structurally rather "
+         "than confirmed by inspection.",
+         italic=True, size=9)
+
+    ds.p(doc,
+         "Each regression is reported against two reference "
          "groups: NAI for VAI and OAI, then VAI for OAI (so OAI vs VAI is direct, not inferred); "
          "USA for India and China, then India for China (so China vs India is direct). A "
          "coefficient resting on fewer than 3 observations or 2 facilities is marked UNRELIABLE "
