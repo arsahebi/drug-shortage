@@ -134,11 +134,14 @@ def _block_bootstrap_spearman(x, y, clusters, n_boot=2000, seed=42):
             r, _ = spearmanr(xm[idx], ym[idx])
         boot_rhos.append(r if np.isfinite(r) else 0.0)
     if len(boot_rhos) < 10:
-        return {"rho": rho_obs, "p_naive": p_obs, "p_boot": np.nan, "n_obs": int(mask.sum()), "n_clusters": n_cl}
+        return {"rho": rho_obs, "p_naive": p_obs, "p_boot": np.nan, "ci_lo": np.nan, "ci_hi": np.nan,
+                "n_obs": int(mask.sum()), "n_clusters": n_cl}
     boot_rhos = np.array(boot_rhos)
     shifted = boot_rhos - np.mean(boot_rhos)
     p_boot = max(float(np.mean(np.abs(shifted) >= abs(rho_obs))), 1.0 / n_boot)
-    return {"rho": rho_obs, "p_naive": p_obs, "p_boot": p_boot, "n_obs": int(mask.sum()), "n_clusters": n_cl}
+    ci_lo, ci_hi = np.percentile(boot_rhos, [2.5, 97.5])
+    return {"rho": rho_obs, "p_naive": p_obs, "p_boot": p_boot, "ci_lo": float(ci_lo), "ci_hi": float(ci_hi),
+            "n_obs": int(mask.sum()), "n_clusters": n_cl}
 
 
 # ── Model B: RE + two-way CGM clustered SE (NDC x FEI) ────────────────────────
@@ -311,83 +314,118 @@ def correlation_tests(log, sub, x_col, y_col, cluster_col="NDC11"):
     d = sub[[x_col, y_col, cluster_col]].dropna()
     if len(d) < 5:
         log(f"  n={len(d)}: insufficient data")
-        return
+        return None
     res = _block_bootstrap_spearman(d[x_col].values.astype(float), d[y_col].values.astype(float), d[cluster_col].values)
     sig = " **" if res["p_boot"] < 0.01 else (" *" if res["p_boot"] < 0.05 else "")
     log(f"  n={res['n_obs']} (NDCs={res['n_clusters']})  rho={res['rho']:+.4f}  "
+        f"95% CI [{res['ci_lo']:+.3f}, {res['ci_hi']:+.3f}]  "
         f"p_naive={res['p_naive']:.4f}  p_boot={res['p_boot']:.4f}{sig}")
+    return res
+
+
+COUNTRY_FULL = {"IND": "India", "USA": "United States of America", "CHN": "China"}
+
+
+def _country_legend(fig, ax_ref, title="Country"):
+    handles = [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor=COUNTRY_COLORS[cc],
+                           markersize=7, label=COUNTRY_FULL[cc]) for cc in COUNTRY_ORDER]
+    fig.legend(handles=handles, loc="lower center", ncol=len(COUNTRY_ORDER), title=title,
+               bbox_to_anchor=(0.5, -0.06), frameon=True, fontsize=8, title_fontsize=8)
+
+
+def _n_label(ax, x_pos, n, y_frac=0.03):
+    ymin, ymax = ax.get_ylim()
+    if ax.get_yscale() == "log":
+        y = ymin * (ymax / ymin) ** y_frac
+    else:
+        y = ymin + (ymax - ymin) * y_frac
+    ax.text(x_pos, y, f"n={n}", ha="center", va="top", fontsize=8, color="#444444")
 
 
 # ── figure builders ───────────────────────────────────────────────────────────
 def fig1(df, outdir, log):
     d = df.copy()
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-    for ax, col, title in [(axes[0], PRICE_COL, "Medicaid price ($/unit)"),
-                            (axes[1], VOL_COL, "IQVIA extended units")]:
+    for ax, col, ylab in [(axes[0], PRICE_COL, "Price per Unit ($)"),
+                           (axes[1], VOL_COL, "Market Volume (Extended Units)")]:
         sub = d[d["prior_outcome"].notna() & d[col].notna() & (d[col] > 0)]
         if col == PRICE_COL:
             sub = sub[sub.get("price_outlier", 0) == 0]
         if sub.empty:
             ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
-            ax.set_title(f"{title}  (n=0)")
-            log(f"\n[{title}] n=0"); continue
+            ax.set_title("n=0")
+            log(f"\n[{ylab}] n=0"); continue
         data = [sub.loc[sub.prior_outcome == o, col].values for o in OUTCOME_ORDER]
-        bp = ax.boxplot(data, labels=OUTCOME_ORDER, showfliers=False, patch_artist=True)
-        for patch, o in zip(bp["boxes"], OUTCOME_ORDER):
-            patch.set_facecolor(OUTCOME_COLORS[o]); patch.set_alpha(0.35)
+        bp = ax.boxplot(data, labels=OUTCOME_ORDER, showfliers=False, patch_artist=True,
+                         boxprops=dict(facecolor="none", edgecolor="black"),
+                         medianprops=dict(color="#f59e0b", linewidth=1.5))
+        rng = np.random.default_rng(0)
         for i, o in enumerate(OUTCOME_ORDER):
-            y = sub.loc[sub.prior_outcome == o, col].values
-            ax.scatter(np.random.default_rng(0).normal(i + 1, 0.05, len(y)), y, s=14, alpha=0.6, color=OUTCOME_COLORS[o])
+            s = sub.loc[sub.prior_outcome == o]
+            jitter = rng.uniform(-0.06, 0.06, len(s))
+            colors = [COUNTRY_COLORS.get(cc, "#9ca3af") for cc in s.CountryCode]
+            ax.scatter(i + 1 + jitter, s[col], s=16, alpha=0.75, color=colors, edgecolor="none")
         if col == VOL_COL:
             ax.set_yscale("log")
-        ax.set_title(f"{title}  (n={len(sub)})")
-        log(f"\n[{title}] n={len(sub)}, by outcome: "
+        ax.set_xlabel("Prior Inspection Outcome")
+        ax.set_ylabel(ylab)
+        for i, o in enumerate(OUTCOME_ORDER):
+            _n_label(ax, i + 1, int((sub.prior_outcome == o).sum()))
+        log(f"\n[{ylab}] n={len(sub)}, by outcome: "
             f"{ {o: int((sub.prior_outcome==o).sum()) for o in OUTCOME_ORDER} }")
         pairwise_group_tests(log, sub, col, "prior_outcome", OUTCOME_ORDER, fei_col="prior_fei")
         m = sub.copy()
         m["VAI"] = (m.prior_outcome == "VAI").astype(float)
         m["OAI"] = (m.prior_outcome == "OAI").astype(float)
         m["_y"] = np.log(m[col].astype(float))
-        modelB_re_twoway(log, m, "_y", ["VAI", "OAI"], "NDC11", "prior_fei", f"log({title}), ref=NAI")
-    fig.suptitle("Figure 1 — Price and volume by prior inspection outcome (facility-linked rows only)")
-    fig.tight_layout()
-    fig.savefig(outdir / "Figure1_Price_Volume_by_Outcome.png", dpi=150); plt.close(fig)
+        modelB_re_twoway(log, m, "_y", ["VAI", "OAI"], "NDC11", "prior_fei", f"log({ylab}), ref=NAI")
+    _country_legend(fig, axes[0], title="Country")
+    fig.tight_layout(rect=[0, 0.08, 1, 1])
+    fig.savefig(outdir / "Figure1_Price_Volume_by_Outcome.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
 def fig2_3(df, outdir, log, x_col, label, fname):
     d = df.copy()
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
-    metrics = [(DMF_COL, "DMF (ng/day)", "symlog"), (NDMA_COL, "NDMA (ng/day)", "symlog"),
-               (DIFF_COL, "Difference Factor", "linear")]
-    for ax, (col, ylab, yscale) in zip(axes, metrics):
+    metrics = [(DMF_COL, "DMF (ng/day)", False), (NDMA_COL, "NDMA (ng/day)", False),
+               (DIFF_COL, "Dissolution Difference", True)]
+    for ax, (col, xlab, linear_x) in zip(axes, metrics):
         sub = d[d[col].notna() & d[x_col].notna() & (d[x_col] > 0)]
         if x_col == PRICE_COL:
             sub = sub[sub.get("price_outlier", 0) == 0]
         if sub.empty:
             ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
-            ax.set_title("n=0")
-            log(f"\n[{ylab} vs {label}] n=0")
+            log(f"\n[{xlab} vs {label}] n=0")
             continue
         known = sub[sub.CountryCode.notna()]
         unknown = sub[sub.CountryCode.isna()]
         for cc in COUNTRY_ORDER:
             s = known[known.CountryCode == cc]
             if len(s):
-                ax.scatter(s[x_col], s[col], s=18, alpha=0.7, color=COUNTRY_COLORS[cc], label=cc)
+                ax.scatter(s[col], s[x_col], s=22, alpha=0.75, color=COUNTRY_COLORS[cc])
         if len(unknown):
-            ax.scatter(unknown[x_col], unknown[col], s=18, alpha=0.5, color="#9ca3af", label="unmatched facility")
-        ax.set_xscale("log")
-        if (sub[col] > 0).any():
-            ax.set_yscale(yscale)
-        ax.set_xlabel(label); ax.set_ylabel(ylab)
-        ax.set_title(f"n={len(sub)}")
-        log(f"\n[{ylab} vs {label}] n={len(sub)} (NDCs={sub.NDC11.nunique()}, "
+            ax.scatter(unknown[col], unknown[x_col], s=22, alpha=0.5, color="#9ca3af")
+        if not linear_x:
+            ax.set_xscale("symlog", linthresh=1)
+        ax.set_yscale("log")
+        ax.set_xlabel(xlab); ax.set_ylabel(label)
+        log(f"\n[{xlab} vs {label}] n={len(sub)} (NDCs={sub.NDC11.nunique()}, "
             f"{sub.CountryCode.notna().sum()} facility-linked, {sub.CountryCode.isna().sum()} not)")
-        correlation_tests(log, sub, x_col, col)
-    axes[0].legend(fontsize=8, loc="best")
-    fig.suptitle(f"{fname.split('_')[0]} — Quality vs {label} (maximum available sample; grey = no facility match)")
-    fig.tight_layout()
-    fig.savefig(outdir / f"{fname}.png", dpi=150); plt.close(fig)
+        res = correlation_tests(log, sub, col, x_col)
+        if res is not None:
+            sig = " **" if res["p_boot"] < 0.01 else (" *" if res["p_boot"] < 0.05 else "")
+            ci = f"[{res['ci_lo']:+.3f}, {res['ci_hi']:+.3f}]" if np.isfinite(res["ci_lo"]) else "[n/a]"
+            txt = f"n={res['n_obs']}\nrho={res['rho']:+.3f} {ci}\np={res['p_boot']:.4f}{sig}"
+            ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left", fontsize=8,
+                     bbox=dict(boxstyle="round", facecolor="#f5eedc", edgecolor="#c9b98a", alpha=0.9))
+            xs = sub[col].values.astype(float)
+            if len(xs) >= 3 and xs.max() > xs.min():
+                zx = np.linspace(xs.min(), xs.max(), 50)
+                b, a = np.polyfit(xs, sub[x_col].values.astype(float), 1)
+                ax.plot(zx, a + b * zx, "--", color="#f4777f", linewidth=1.5)
+    _country_legend(fig, axes[0], title="Country")
+    fig.tight_layout(rect=[0, 0.1, 1, 1])
+    fig.savefig(outdir / f"{fname}.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
 def fig4(df, outdir, log):
@@ -399,34 +437,38 @@ def fig4(df, outdir, log):
     # are excluded here even though the max-sample policy keeps them for
     # Figures 2/3, which don't use country at all.
     d = df[df.CountryCode.isin(COUNTRY_ORDER) & df.matched_fei.notna()].copy()
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
-    metrics = [(DMF_COL, "DMF (ng/day)"), (NDMA_COL, "NDMA (ng/day)"), (DIFF_COL, "Difference Factor")]
-    for ax, (col, ylab) in zip(axes, metrics):
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.2))
+    metrics = [(DMF_COL, "DMF (ng/day)"), (NDMA_COL, "NDMA (ng/day)"), (DIFF_COL, "Dissolution Difference")]
+    for ax, (col, title) in zip(axes, metrics):
         sub = d[d[col].notna()]
         if sub.empty:
             ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
-            ax.set_title(f"{ylab}  (n=0)")
-            log(f"\n[{ylab} by country] n=0"); continue
-        data = [sub.loc[sub.CountryCode == cc, col].values for cc in COUNTRY_ORDER]
-        bp = ax.boxplot(data, labels=COUNTRY_ORDER, showfliers=False, patch_artist=True)
-        for patch, cc in zip(bp["boxes"], COUNTRY_ORDER):
-            patch.set_facecolor(COUNTRY_COLORS[cc]); patch.set_alpha(0.35)
-        for i, cc in enumerate(COUNTRY_ORDER):
-            y = sub.loc[sub.CountryCode == cc, col].values
-            ax.scatter(np.random.default_rng(0).normal(i + 1, 0.05, len(y)), y, s=14, alpha=0.6, color=COUNTRY_COLORS[cc])
-        ax.set_title(f"{ylab}  (n={len(sub)})")
-        log(f"\n[{ylab} by country] n={len(sub)}, by country: "
+            ax.set_title(title)
+            log(f"\n[{title} by country] n=0"); continue
+        means = [sub.loc[sub.CountryCode == cc, col].mean() for cc in COUNTRY_ORDER]
+        ns    = [int((sub.CountryCode == cc).sum()) for cc in COUNTRY_ORDER]
+        bars = ax.bar(range(len(COUNTRY_ORDER)), means, color="#93c5fd", edgecolor="black", width=0.6)
+        ax.set_xticks(range(len(COUNTRY_ORDER)))
+        ax.set_xticklabels([COUNTRY_FULL[cc].replace("United States of America", "USA") for cc in COUNTRY_ORDER])
+        ax.set_xlabel("Country")
+        ax.set_title(title)
+        ymax = max(means) if means else 1
+        for i, (m, n) in enumerate(zip(means, ns)):
+            ax.text(i, m + ymax * 0.02, f"{m:,.2f}" if m < 100 else f"{m:,.0f}",
+                    ha="center", va="bottom", fontsize=9)
+            ax.text(i, -ymax * 0.06, f"n={n}", ha="center", va="top", fontsize=8, color="#444444")
+        ax.set_ylim(bottom=-ymax * 0.12 if ymax else -0.1, top=ymax * 1.15 if ymax else 1)
+        log(f"\n[{title} by country] n={len(sub)}, by country: "
             f"{ {cc: int((sub.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
         pairwise_group_tests(log, sub, col, "CountryCode", COUNTRY_ORDER, fei_col="matched_fei")
         m = sub.copy()
         m["IND"] = (m.CountryCode == "IND").astype(float)
         m["CHN"] = (m.CountryCode == "CHN").astype(float)
         m["_y"] = np.log1p(m[col].astype(float))
-        modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei", f"log1p({ylab}), ref=USA",
+        modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei", f"log1p({title}), ref=USA",
                           cross_section=(col == DIFF_COL))
-    fig.suptitle("Figure 4 — Quality by country of manufacture (facility-linked rows only)")
     fig.tight_layout()
-    fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150); plt.close(fig)
+    fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
 def figS1(df, outdir, log):
@@ -477,8 +519,8 @@ def build(map_label, dosage):
              f"facility-linked={df.CountryCode.notna().sum()}  not={df.CountryCode.isna().sum()}"]
     def log(s): lines.append(str(s))
     fig1(df, outdir, log)
-    fig2_3(df, outdir, log, VOL_COL, "IQVIA extended units", "Figure2_Volume_vs_Quality")
-    fig2_3(df, outdir, log, PRICE_COL, "Medicaid price ($/unit)", "Figure3_Price_vs_Quality")
+    fig2_3(df, outdir, log, VOL_COL, "Market Volume (Extended Units)", "Figure2_Volume_vs_Quality")
+    fig2_3(df, outdir, log, PRICE_COL, "Price per Unit ($)", "Figure3_Price_vs_Quality")
     fig4(df, outdir, log)
     figS1(df, outdir, log)
     logpath.write_text("\n".join(lines))
