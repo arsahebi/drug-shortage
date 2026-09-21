@@ -259,20 +259,10 @@ def build():
          size=10)
 
     ds.p(doc,
-         "Country of origin is a documented data point only in the Redica facility-inspection "
-         "data, indexed by FEI. It cannot be observed until an NDC has been linked to an FEI. "
-         "The Valisure raw testing sheets do carry a self-reported manufacturer location column "
-         "(e.g. Valisure_2024_raw_prices_20260728.xlsx, \"2022 Testing Data - Actual\", column "
-         "\"Mfr location\"), filled from the product label at test time; an earlier version of "
-         "the pipeline had copied that field into a fallback country column, so an NDC with no "
-         "FEI match, or one whose matched FEI has no Redica inspection history at all, could "
-         "still show a country that was never confirmed against a facility. Because country of "
-         "origin is part of every figure here, either as an axis or as the point color, all four "
-         "figures are now restricted to NDCs whose matched facility has actual Redica inspection "
-         "coverage; the Valisure-reported location is not used anywhere in this document. This "
-         "did not change any figure's sample size, which means the fallback was not, in fact, "
-         "firing on the current data, but the restriction is now enforced structurally rather "
-         "than confirmed by inspection.",
+         "Country of origin is determined from Redica facility-inspection data, indexed by FEI. "
+         "Because country appears in every figure here, either as an axis or as the point color, "
+         "all four figures are restricted to NDCs whose manufacturing facility has a Redica-"
+         "assigned FEI.",
          italic=True, size=9)
 
     ds.p(doc,
