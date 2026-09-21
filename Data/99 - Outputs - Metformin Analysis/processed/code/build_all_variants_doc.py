@@ -128,13 +128,17 @@ def build():
          "Six versions of Figures 1 through 4 and S1: the rule-based and manual NDC-FEI maps, "
          "each pooled and split by dosage form (immediate vs. extended release). Every figure "
          "uses the largest sample its own axes allow; the only universal exclusion is Canada "
-         "and Bangladesh. Figures 1 and 4 report Model B, the random-NDC-intercept regression "
-         "with Cameron-Gelbach-Miller two-way clustered standard errors on NDC and facility "
-         "simultaneously, the established primary specification for country and outcome "
-         "comparisons. Figures 2 and 3 report Spearman correlation with an NDC-cluster "
-         "bootstrap, unchanged from that same specification. A coefficient resting on fewer "
-         "than 3 observations or 2 facilities is marked UNRELIABLE rather than reported as a "
-         "finding.", italic=True, size=9)
+         "and Bangladesh. Figures 1 and 4 report Model B: an OLS point estimate with "
+         "Cameron-Gelbach-Miller (2011) two-way clustered standard errors on NDC and facility "
+         "simultaneously, matching Metformin_2026 03 10_Appendix.docx. A random-NDC-intercept "
+         "mixed model is fit alongside it only to report the ICC that documents within-NDC "
+         "correlation and justifies clustering; its coefficient is not the one reported. "
+         "Difference Factor (2024 only) has no repeated-measures structure for a NDC cluster "
+         "to describe, so it uses FEI-only clustered SE with no mixed-model step at all. "
+         "Figures 2 and 3 report Spearman correlation with an NDC-cluster bootstrap, unchanged "
+         "from that same specification. A coefficient resting on fewer than 3 observations or "
+         "2 facilities is marked UNRELIABLE rather than reported as a finding.",
+         italic=True, size=9)
 
     for map_label, dose in VARIANTS:
         log_path = VOUT / f"{map_label}_{dose}" / "stats_log.txt"

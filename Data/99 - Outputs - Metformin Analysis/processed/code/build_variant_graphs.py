@@ -191,14 +191,23 @@ def _coef_table(log, names, params, se, dof, header="", group_support=None):
 
 
 def modelB_re_twoway(log, sub, y_col, dummy_names, ndc_col, fei_col, tag, cross_section=False):
-    """Model B (PRIMARY for Fig 1 / Fig 4): MixedLM random NDC intercept, then
-    Cameron-Gelbach-Miller (2011) two-way clustered SE on NDC x FEI.
+    """Model B (PRIMARY for Fig 1 / Fig 4), matching
+    Metformin_2026 03 10_Appendix.docx: OLS point estimate + Cameron-Gelbach-
+    Miller (2011) two-way clustered SE on NDC x FEI is PRIMARY. A random-NDC-
+    intercept MixedLM is fit only as a diagnostic, to report the ICC that
+    justifies clustering -- it does not supply the reported beta.
 
-    cross_section=True (Difference Factor, 2024 only) switches to plain OLS with
-    FEI-only clustered SE, matching step6_graphs_july26.py's is_xs branch. A
-    single-year metric gives exactly one observation per NDC, so n_NDC == n_obs
-    and a random NDC intercept has no repeated-measures structure to fit -- the
-    ICC and two-way SE from that branch are not meaningful, not just noisy."""
+    (Changed 2026-09-21 to match step6_graphs_july26.py: an earlier version
+    used the MixedLM beta as primary. On this data the India coefficient is
+    essentially unaffected either way; OLS is what every paper draft from
+    March 10 onward has described, and it is what CGM (2011) itself derives
+    the clustering formula for.)
+
+    cross_section=True (Difference Factor, 2024 only) switches to FEI-only
+    clustered SE with no MixedLM diagnostic step at all, matching
+    step6_graphs_july26.py's is_xs branch. A single-year metric gives exactly
+    one observation per NDC, so n_NDC == n_obs and there is no repeated-measures
+    structure for an ICC to describe in the first place."""
     if not HAS_STATSMODELS:
         log("  statsmodels not available; Model B skipped"); return
     sub = sub.dropna(subset=[y_col, ndc_col, fei_col] + dummy_names).copy()
@@ -232,26 +241,25 @@ def modelB_re_twoway(log, sub, y_col, dummy_names, ndc_col, fei_col, tag, cross_
     if n_ndc < 2 or n_fei < 2:
         log("    too few NDC or FEI clusters for two-way clustering (need >=2 each)"); return
 
-    beta_re = None
+    # Diagnostic only: MixedLM ICC, to document within-NDC correlation and
+    # justify clustering. Its beta is not used below.
     try:
         formula = f"{y_col} ~ " + " + ".join(dummy_names)
         mlm = smf.mixedlm(formula, data=sub, groups=sub[ndc_col]).fit(reml=True)
         var_re = float(mlm.cov_re.iloc[0, 0]) if hasattr(mlm, "cov_re") else 0
         var_res = float(mlm.scale)
         icc = var_re / (var_re + var_res) if (var_re + var_res) > 0 else 0
-        log(f"    MixedLM: ICC={icc:.4f}")
-        beta_re = np.array([mlm.params.get("Intercept", np.nan)] +
-                            [mlm.params.get(d, np.nan) for d in dummy_names])
+        log(f"    MixedLM (diagnostic only): ICC={icc:.4f}")
     except Exception as exc:
-        log(f"    MixedLM error: {exc} -- falling back to OLS beta")
+        log(f"    MixedLM diagnostic error: {exc}")
 
-    beta = beta_re if (beta_re is not None and not np.any(np.isnan(beta_re))) else None
+    # PRIMARY: OLS point estimate + CGM two-way clustered SE (NDC x FEI)
+    ols = sm.OLS(y, X).fit()
     try:
-        V2 = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values, beta=beta)
+        V2 = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values, beta=ols.params)
         se2 = np.sqrt(np.diag(V2))
-        used = "RE" if beta is not None else "OLS"
-        _coef_table(log, ["const"] + dummy_names, beta if beta is not None else np.linalg.lstsq(X, y, rcond=None)[0],
-                    se2, dof, header=f"{used} + TWO-WAY clustered SE (NDC x FEI) -- PRIMARY [{tag}]:",
+        _coef_table(log, ["const"] + dummy_names, ols.params, se2, dof,
+                    header=f"OLS + TWO-WAY clustered SE (NDC x FEI) -- PRIMARY [{tag}]:",
                     group_support=group_support)
     except Exception as exc:
         log(f"    CGM error: {exc}")

@@ -26,7 +26,8 @@ Figures produced
 Statistical models (after figures)
 -----------------------------------
   Country (Fig 1): log(metric) ~ IND + CHN + (1|NDC11)
-                   Random NDC intercept (MixedLM) + CGM two-way clustered SE (NDC × FEI)
+                   OLS + CGM two-way clustered SE (NDC × FEI); MixedLM fit only
+                   as a diagnostic to report the ICC
   Inspection outcome (Fig 2/4): log(DMF) ~ VAI + OAI + (1|NDC11)
                    Same approach; reference = NAI; additional test OAI vs VAI
 
@@ -934,8 +935,18 @@ def _print_coef_table(names: list, params: np.ndarray, se: np.ndarray,
 def _modelB_re_twoway(sub: pd.DataFrame, y_col: str, dummy_names: list,
                       ndc_col: str, fei_col: str, tag: str) -> None:
     """
-    Run Model B: MixedLM with random NDC intercept + CGM two-way SE (NDC × FEI).
-    Prints results. Reference category is the omitted dummy (see dummy_names).
+    Run Model B, matching Metformin_2026 03 10_Appendix.docx: OLS point estimate
+    + CGM two-way clustered SE (NDC × FEI) is PRIMARY. A random-NDC-intercept
+    MixedLM is fit only as a diagnostic, to report the ICC that justifies
+    clustering in the first place — it does not supply the reported beta.
+
+    (Changed 2026-09-21: an earlier version of this function used the MixedLM
+    beta as the primary point estimate instead. On this data the India
+    coefficient — the substantive result in every draft — is unaffected either
+    way (DMF +1.840 vs +1.845, NDMA +1.188 vs +1.174, p differs by <0.001), but
+    OLS is what every draft from March 10 onward has actually described, and it
+    is what Cameron-Gelbach-Miller (2011) itself derives the two-way clustering
+    formula for.)
     """
     if not HAS_STATSMODELS:
         return
@@ -950,43 +961,30 @@ def _modelB_re_twoway(sub: pd.DataFrame, y_col: str, dummy_names: list,
 
     print(f"\n  n_obs={n_obs}  n_NDC={n_ndc}  n_FEI={n_fei}")
 
-    # Step 1: MixedLM (random NDC intercept)
-    beta_re = None
+    # Diagnostic only: MixedLM ICC, to document within-NDC correlation and
+    # justify clustering. Its beta is not used below.
     try:
         formula = f"{y_col} ~ " + " + ".join(dummy_names)
         mlm = smf.mixedlm(formula, data=sub, groups=sub[ndc_col]).fit(reml=True)
         var_re  = float(mlm.cov_re.iloc[0, 0]) if hasattr(mlm, "cov_re") else 0
         var_res = float(mlm.scale)
         icc = var_re / (var_re + var_res) if (var_re + var_res) > 0 else 0
-        print(f"  MixedLM: ICC={icc:.4f}  Var(NDC)={var_re:.4f}  Var(resid)={var_res:.4f}")
-        beta_re = np.array([mlm.params.get("Intercept", np.nan)] +
-                            [mlm.params.get(d, np.nan) for d in dummy_names])
+        print(f"  MixedLM (diagnostic only): ICC={icc:.4f}  Var(NDC)={var_re:.4f}  Var(resid)={var_res:.4f}")
     except Exception as exc:
-        print(f"  MixedLM error: {exc} — falling back to OLS beta")
+        print(f"  MixedLM diagnostic error: {exc}")
 
-    # Step 2: CGM two-way SE on RE beta (PRIMARY)
+    # PRIMARY: OLS point estimate + CGM two-way clustered SE (NDC × FEI)
     has_fei = fei_col in sub.columns and n_fei >= 2
     has_ndc = n_ndc >= 2
-    if beta_re is not None and not np.any(np.isnan(beta_re)) and has_ndc and has_fei:
-        try:
-            V2  = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values, beta=beta_re)
-            se2 = np.sqrt(np.diag(V2))
-            _print_coef_table(["const"] + dummy_names, beta_re, se2, dof,
-                              header=f"★ RE + TWO-WAY clustered SE (NDC×FEI)  [{tag}]  — PRIMARY:")
-        except Exception as exc:
-            print(f"  CGM error: {exc}")
-            beta_re = None
-
-    # Fallback: OLS + two-way clustered SE
-    if beta_re is None and has_ndc and has_fei:
+    if has_ndc and has_fei:
         ols = sm.OLS(y, X).fit()
         try:
-            V2  = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values)
+            V2  = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values, beta=ols.params)
             se2 = np.sqrt(np.diag(V2))
             _print_coef_table(["const"] + dummy_names, ols.params, se2, dof,
-                              header=f"OLS + TWO-WAY clustered SE  [{tag}]:")
+                              header=f"★ OLS + TWO-WAY clustered SE (NDC×FEI)  [{tag}]  — PRIMARY:")
         except Exception as exc:
-            print(f"  OLS+CGM error: {exc}")
+            print(f"  CGM error: {exc}")
 
 
 def run_statistical_models() -> None:
@@ -999,7 +997,7 @@ def run_statistical_models() -> None:
 
     print("\n" + "═" * 80)
     print("  STATISTICAL MODELS — Model B (RE + Two-Way Clustered SE)")
-    print("  Random NDC intercept (MixedLM) + CGM (2011) SE clustered on NDC × prior_fei")
+    print("  OLS point estimate + CGM (2011) SE clustered on NDC × prior_fei (MixedLM diagnostic only)")
     print("═" * 80)
 
     d_core = df[df["CountryCode"].isin(COUNTRY_ORDER)].copy()
