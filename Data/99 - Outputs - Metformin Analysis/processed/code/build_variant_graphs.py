@@ -424,11 +424,16 @@ def fig2_3(df, outdir, log, x_col, label, fname):
             txt = f"n={res['n_obs']}\nrho={res['rho']:+.3f} {ci}\np={res['p_boot']:.4f}{sig}"
             ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left", fontsize=8,
                      bbox=dict(boxstyle="round", facecolor="#f5eedc", edgecolor="#c9b98a", alpha=0.9))
+            # Fit in the same space the axes are drawn in (x on symlog, y on log)
+            # so the line renders straight rather than bending on the plot. A
+            # linear-space fit plotted on log axes looks curved even though the
+            # fit itself is a straight line -- it is straight in the wrong space.
             xs = sub[col].values.astype(float)
+            ys = sub[x_col].values.astype(float)
             if len(xs) >= 3 and xs.max() > xs.min():
                 zx = np.linspace(xs.min(), xs.max(), 50)
-                b, a = np.polyfit(xs, sub[x_col].values.astype(float), 1)
-                ax.plot(zx, a + b * zx, "--", color="#f4777f", linewidth=1.5)
+                b, a = np.polyfit(np.log1p(xs), np.log(ys), 1)
+                ax.plot(zx, np.exp(a + b * np.log1p(zx)), "--", color="#f4777f", linewidth=1.5)
     _country_legend(fig, axes[0], title="Country")
     fig.tight_layout(rect=[0, 0.1, 1, 1])
     fig.savefig(outdir / f"{fname}.png", dpi=150, bbox_inches="tight"); plt.close(fig)
