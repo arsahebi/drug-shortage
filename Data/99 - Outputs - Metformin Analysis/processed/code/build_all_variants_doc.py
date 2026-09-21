@@ -206,19 +206,61 @@ def build():
     ds.p(doc, "September 21, 2026", italic=True, size=10)
     ds.rule(doc)
 
+    # Statistical Procedure and Outcomes, as written in the paper draft, carried
+    # forward unchanged except where the underlying analysis actually changed.
+    doc.add_heading("Statistical Procedure and Outcomes", 1)
+
+    ds.p(doc,
+         "Our first analysis examines how manufacturing quality relates to the market outcomes "
+         "of volume and price. Manufacturing quality is measured as whether the last FDA "
+         "inspection outcome of the facility where the drug is made resulted in an official "
+         "action. This outcome is visible to the market, if it chooses to look. Skewed outcomes "
+         "were log-transformed prior to analysis. To account for the two sources of "
+         "non-independence, repeated NDC testing across years and multiple NDCs from the same "
+         "manufacturing facility, we estimated primary regression coefficients using OLS and "
+         "clustered standard errors at both the NDC and facility levels using the "
+         "Cameron-Gelbach-Miller (2011) two-way clustering formula. Note that since the "
+         "dissolution difference was only tested in 2024, for it we only cluster standard "
+         "errors at the facility level.", size=10)
+
+    ds.p(doc,
+         "The last inspection is the most recent FDA inspection with a classified Drug Quality "
+         "Assurance outcome (NAI, VAI, or OAI) strictly before the product's test year. Where a "
+         "facility has more than one such inspection in the same year, the most recent by exact "
+         "date is used; a tie on the same date is broken to the worse outcome.",
+         italic=True, size=9)
+
+    ds.p(doc,
+         "Our next analyses examine the association between the three tested drug quality "
+         "measures and the market outcomes of volume and price. As the linkage to facility is "
+         "not relevant in this analysis, we simply provide a Spearman rank correlation (we use "
+         "Spearman due to the skewness of the quality metrics). To account for repeated NDC "
+         "measurements across sweep years, NDC-level block bootstrap resampling (2,000 "
+         "iterations) was applied to obtain bootstrap p-values and 95% confidence intervals.",
+         size=10)
+
+    ds.p(doc,
+         "Finally, we study the relationship between country of origin of manufacture and "
+         "tested drug quality. We use the same statistical analysis methodology as in the "
+         "manufacturing quality and market outcomes analysis, described in the first paragraph "
+         "of this section.", size=10)
+
+    ds.p(doc,
+         "Because NDCs in some cases are missing the manufacturer linkage, inspection history, "
+         "or market measures, the sample sizes differ for each analysis. We report sample sizes "
+         "on each figure as NDC-year observations. Analyses were performed using Python "
+         "version 3.13.", size=10)
+
+    doc.add_heading("This Document", 1)
     ds.p(doc,
          "Six versions of Figures 1 through 4: the rule-based and manual NDC-FEI maps, each "
          "pooled and split by dosage form (immediate vs. extended release). Every figure uses "
          "the largest sample its own axes allow; the only universal exclusion is Canada and "
-         "Bangladesh. n is the count of NDC-year observations, shown on each plot. Figures 1 "
-         "and 4 report an OLS regression with Cameron-Gelbach-Miller (2011) two-way clustered "
-         "standard errors on NDC and facility; the ICC reported alongside it documents the "
-         "within-NDC correlation that justifies clustering. Difference Factor is 2024 only, so "
-         "it has no ICC and uses facility-only clustering. Figures 2 and 3 report a Spearman "
-         "correlation with an NDC-cluster bootstrap, annotated directly on each panel. Each "
-         "regression is reported against two reference groups: NAI for VAI and OAI, then VAI "
-         "for OAI (so OAI vs VAI is direct, not inferred); USA for India and China, then India "
-         "for China (so China vs India is direct).",
+         "Bangladesh. Each regression is reported against two reference groups: NAI for VAI and "
+         "OAI, then VAI for OAI (so OAI vs VAI is direct, not inferred); USA for India and "
+         "China, then India for China (so China vs India is direct). A coefficient resting on "
+         "fewer than 3 observations or 2 facilities is marked UNRELIABLE rather than reported "
+         "as a finding.",
          italic=True, size=9)
 
     for map_label, dose in VARIANTS:
