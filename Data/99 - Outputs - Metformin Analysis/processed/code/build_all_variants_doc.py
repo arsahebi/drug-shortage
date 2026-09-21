@@ -149,9 +149,10 @@ def coef_phrase(coefs, name, label):
     if name not in coefs:
         return f"{label} n/a"
     c = coefs[name]
+    base = f"{label} beta={c['beta']:+.3f}, p={pfmt(c['p'])}{_sig_tag(c['sig'])}"
     if c["unreliable"]:
-        return f"{label} not estimable (too few observations)"
-    return f"{label} beta={c['beta']:+.3f}, p={pfmt(c['p'])}{_sig_tag(c['sig'])}"
+        return f"{base} (too few observations, not reliable)"
+    return base
 
 
 def _is_sig(sig):
