@@ -269,10 +269,10 @@ def build():
     ds.p(doc,
          "Each regression is reported against two reference "
          "groups: NAI for VAI and OAI, then VAI for OAI (so OAI vs VAI is direct, not inferred); "
-         "USA for India and China, then India for China (so China vs India is direct). A "
-         "coefficient resting on fewer than 3 observations or 2 facilities is marked UNRELIABLE "
-         "rather than reported "
-         "as a finding.",
+         "USA for India and China, then India for China (so China vs India is direct). Where a "
+         "coefficient's own group, or the reference group it is measured against, rests on fewer "
+         "than 3 observations or 2 facilities, the estimate is still reported but marked as too "
+         "few observations to be reliable, and is excluded from the bolded finding sentence.",
          italic=True, size=9)
 
     for map_label, dose in VARIANTS:
