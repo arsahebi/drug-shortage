@@ -254,12 +254,16 @@ def build():
     doc.add_heading("This Document", 1)
     ds.p(doc,
          "Six versions of Figures 1 through 4: the rule-based and manual NDC-FEI maps, each "
-         "pooled and split by dosage form (immediate vs. extended release). Every figure uses "
-         "the largest sample its own axes allow; the only universal exclusion is Canada and "
-         "Bangladesh. Each regression is reported against two reference groups: NAI for VAI and "
-         "OAI, then VAI for OAI (so OAI vs VAI is direct, not inferred); USA for India and "
-         "China, then India for China (so China vs India is direct). A coefficient resting on "
-         "fewer than 3 observations or 2 facilities is marked UNRELIABLE rather than reported "
+         "pooled and split by dosage form (immediate vs. extended release). The only universal "
+         "exclusion is Canada and Bangladesh. Figures 1 and 4 require a matched facility (for "
+         "prior inspection outcome and country respectively); Figures 2 and 3 color points by "
+         "country and so likewise require an actual matched facility, not just a non-null "
+         "country field, since that field can otherwise come from an old spreadsheet fallback "
+         "with no real facility behind it. Each regression is reported against two reference "
+         "groups: NAI for VAI and OAI, then VAI for OAI (so OAI vs VAI is direct, not inferred); "
+         "USA for India and China, then India for China (so China vs India is direct). A "
+         "coefficient resting on fewer than 3 observations or 2 facilities is marked UNRELIABLE "
+         "rather than reported "
          "as a finding.",
          italic=True, size=9)
 

@@ -6,8 +6,10 @@ each pooled and split by dosage form (IR / ER).
 Per John's guidance (Sept 17 2026 meeting): each figure uses whatever sample its
 own axes require, with no additional restriction beyond the standing Canada /
 Bangladesh exclusion. Figures 1 and 4 still need prior_outcome / CountryCode
-respectively and so are naturally limited to facility-linked rows; Figures 2, 3
-and S1 use every row that has the fields they plot, facility-linked or not.
+respectively and so are naturally limited to facility-linked rows. Figures 2 and 3
+color points by country, so they also require an actual matched facility (not just
+a non-null CountryCode -- that field can come from an old Q&A spreadsheet fallback
+independent of any real facility match); S1 uses every row with the fields it plots.
 
 Inputs: variants/step5_{manual,rulebased}.csv (built by running step2-step5
 with REQUIRE_REDICA_HISTORY=0 DROP_NDCS_WITHOUT_FEI=0 against each step1 map;
@@ -396,27 +398,32 @@ def fig2_3(df, outdir, log, x_col, label, fname):
     metrics = [(DMF_COL, "DMF (ng/day)", False), (NDMA_COL, "NDMA (ng/day)", False),
                (DIFF_COL, "Dissolution Difference", True)]
     for ax, (col, xlab, linear_x) in zip(axes, metrics):
-        sub = d[d[col].notna() & d[x_col].notna() & (d[x_col] > 0)]
+        # Only rows with an actual matched facility (matched_fei notna), not just
+        # a non-null CountryCode. CountryCode alone is not reliable: 28 of the
+        # 124 "known country" DMF-vs-volume rows in the rulebased/all variant
+        # have zero matched FEIs and got their country from the old Q&A
+        # spreadsheet's independent CountryCode column, not from either linkage
+        # method. Since the figure visually encodes country by color, showing
+        # those points (colored or grey) would misrepresent them as having a
+        # confirmed country when they don't.
+        sub = d[d[col].notna() & d[x_col].notna() & (d[x_col] > 0)
+                & d.CountryCode.isin(COUNTRY_ORDER) & d.matched_fei.notna()]
         if x_col == PRICE_COL:
             sub = sub[sub.get("price_outlier", 0) == 0]
         if sub.empty:
             ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
             log(f"\n[{xlab} vs {label}] n=0")
             continue
-        known = sub[sub.CountryCode.notna()]
-        unknown = sub[sub.CountryCode.isna()]
         for cc in COUNTRY_ORDER:
-            s = known[known.CountryCode == cc]
+            s = sub[sub.CountryCode == cc]
             if len(s):
                 ax.scatter(s[col], s[x_col], s=22, alpha=0.75, color=COUNTRY_COLORS[cc])
-        if len(unknown):
-            ax.scatter(unknown[col], unknown[x_col], s=22, alpha=0.5, color="#9ca3af")
         if not linear_x:
             ax.set_xscale("symlog", linthresh=1)
         ax.set_yscale("log")
         ax.set_xlabel(xlab); ax.set_ylabel(label)
         log(f"\n[{xlab} vs {label}] n={len(sub)} (NDCs={sub.NDC11.nunique()}, "
-            f"{sub.CountryCode.notna().sum()} facility-linked, {sub.CountryCode.isna().sum()} not)")
+            f"all facility-matched, country confirmed)")
         res = correlation_tests(log, sub, col, x_col)
         if res is not None:
             sig = " **" if res["p_boot"] < 0.01 else (" *" if res["p_boot"] < 0.05 else "")
