@@ -29,6 +29,13 @@ from scipy.stats import spearmanr, kruskal, mannwhitneyu
 
 warnings.filterwarnings("ignore")
 
+try:
+    import statsmodels.api as sm
+    import statsmodels.formula.api as smf
+    HAS_STATSMODELS = True
+except ImportError:
+    HAS_STATSMODELS = False
+
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 PROC = BASE / "Data/99 - Outputs - Metformin Analysis/processed"
 VDIR = PROC / "variants"
@@ -134,6 +141,122 @@ def _block_bootstrap_spearman(x, y, clusters, n_boot=2000, seed=42):
     return {"rho": rho_obs, "p_naive": p_obs, "p_boot": p_boot, "n_obs": int(mask.sum()), "n_clusters": n_cl}
 
 
+# ── Model B: RE + two-way CGM clustered SE (NDC x FEI) ────────────────────────
+# Ported verbatim from step6_graphs_july26.py, the established PRIMARY
+# specification for Figures 1 and 4 per Metformin JAMA 2026 02 27_StatTests.docx
+# (Model B there). Figures 2 and 3 keep Spearman + NDC-cluster bootstrap, which
+# that memo already validated as the appropriate test for NDC-year scatter data
+# and does not extend two-way clustering to.
+def _cgm_vcov(y, X, c1, c2, beta=None):
+    n, k = X.shape
+    b = np.asarray(beta) if beta is not None else np.linalg.lstsq(X, y, rcond=None)[0]
+    e = y - X @ b
+    bread = np.linalg.inv(X.T @ X)
+    def _v(clusters):
+        g = len(np.unique(clusters))
+        dfc = (g / (g - 1)) * (n / (n - k))
+        meat = np.zeros((k, k))
+        for c in np.unique(clusters):
+            idx = clusters == c
+            sc = X[idx].T @ e[idx]
+            meat += np.outer(sc, sc)
+        return bread @ (dfc * meat) @ bread
+    inter = np.array([f"{a}__{b}" for a, b in zip(c1, c2)])
+    return _v(c1) + _v(c2) - _v(inter)
+
+
+def _coef_table(log, names, params, se, dof, header="", group_support=None):
+    """group_support: optional {name: (n_obs, n_fei)} to flag dummies resting on
+    too few observations or too few facilities. A coefficient with e.g. one
+    China observation can still return a tiny SE and p<0.001 -- that is a
+    single-point artifact, not evidence, and must not be reported as a finding."""
+    from scipy.stats import t as t_dist
+    t_vals = params / np.where(se > 0, se, np.nan)
+    p_vals = 2 * t_dist.sf(np.abs(t_vals), df=max(dof, 1))
+    lo, hi = params - 1.96 * se, params + 1.96 * se
+    if header:
+        log(f"\n  {header}")
+    for i, name in enumerate(names):
+        if name == "const" or np.isnan(params[i]):
+            continue
+        sig = "**" if p_vals[i] < 0.01 else ("*" if p_vals[i] < 0.05 else ("." if p_vals[i] < 0.10 else ""))
+        p_str = f"p={p_vals[i]:.4f}" if p_vals[i] >= 0.001 else "p<0.001"
+        flag = ""
+        if group_support and name in group_support:
+            n_obs, n_fei = group_support[name]
+            if n_obs < 3 or n_fei < 2:
+                flag = f"  ** UNRELIABLE: only {n_obs} obs from {n_fei} facility(ies), not a real estimate **"
+        log(f"    {name}: beta={params[i]:+.3f}, SE={se[i]:.3f}, "
+            f"95% CI [{lo[i]:+.3f}, {hi[i]:+.3f}], {p_str}{sig}{flag}")
+
+
+def modelB_re_twoway(log, sub, y_col, dummy_names, ndc_col, fei_col, tag, cross_section=False):
+    """Model B (PRIMARY for Fig 1 / Fig 4): MixedLM random NDC intercept, then
+    Cameron-Gelbach-Miller (2011) two-way clustered SE on NDC x FEI.
+
+    cross_section=True (Difference Factor, 2024 only) switches to plain OLS with
+    FEI-only clustered SE, matching step6_graphs_july26.py's is_xs branch. A
+    single-year metric gives exactly one observation per NDC, so n_NDC == n_obs
+    and a random NDC intercept has no repeated-measures structure to fit -- the
+    ICC and two-way SE from that branch are not meaningful, not just noisy."""
+    if not HAS_STATSMODELS:
+        log("  statsmodels not available; Model B skipped"); return
+    sub = sub.dropna(subset=[y_col, ndc_col, fei_col] + dummy_names).copy()
+    if sub.empty:
+        log(f"  [{tag}] n=0, skipped"); return
+    y = sub[y_col].values.astype(float)
+    X = sm.add_constant(sub[dummy_names].values.astype(float))
+    n_obs, n_ndc = len(sub), sub[ndc_col].nunique()
+    n_fei = sub[fei_col].nunique()
+    dof = max(n_obs - len(dummy_names) - 1, 1)
+    log(f"  [{tag}] n_obs={n_obs}  n_NDC={n_ndc}  n_FEI={n_fei}")
+
+    group_support = {}
+    for d in dummy_names:
+        m = sub[d] == 1
+        group_support[d] = (int(m.sum()), int(sub.loc[m, fei_col].nunique()))
+
+    if cross_section:
+        log("    cross-section (single year): FEI-only clustered SE, NDC clustering N/A")
+        if n_fei < 2:
+            log("    too few FEI clusters (need >=2)"); return
+        try:
+            ols = sm.OLS(y, X).fit(cov_type="cluster", cov_kwds={"groups": sub[fei_col].values})
+            _coef_table(log, ["const"] + dummy_names, ols.params, ols.bse, dof,
+                        header=f"OLS + FEI-clustered SE -- PRIMARY (cross-section) [{tag}]:",
+                        group_support=group_support)
+        except Exception as exc:
+            log(f"    FEI-clustered error: {exc}")
+        return
+
+    if n_ndc < 2 or n_fei < 2:
+        log("    too few NDC or FEI clusters for two-way clustering (need >=2 each)"); return
+
+    beta_re = None
+    try:
+        formula = f"{y_col} ~ " + " + ".join(dummy_names)
+        mlm = smf.mixedlm(formula, data=sub, groups=sub[ndc_col]).fit(reml=True)
+        var_re = float(mlm.cov_re.iloc[0, 0]) if hasattr(mlm, "cov_re") else 0
+        var_res = float(mlm.scale)
+        icc = var_re / (var_re + var_res) if (var_re + var_res) > 0 else 0
+        log(f"    MixedLM: ICC={icc:.4f}")
+        beta_re = np.array([mlm.params.get("Intercept", np.nan)] +
+                            [mlm.params.get(d, np.nan) for d in dummy_names])
+    except Exception as exc:
+        log(f"    MixedLM error: {exc} -- falling back to OLS beta")
+
+    beta = beta_re if (beta_re is not None and not np.any(np.isnan(beta_re))) else None
+    try:
+        V2 = _cgm_vcov(y, X, sub[ndc_col].values, sub[fei_col].values, beta=beta)
+        se2 = np.sqrt(np.diag(V2))
+        used = "RE" if beta is not None else "OLS"
+        _coef_table(log, ["const"] + dummy_names, beta if beta is not None else np.linalg.lstsq(X, y, rcond=None)[0],
+                    se2, dof, header=f"{used} + TWO-WAY clustered SE (NDC x FEI) -- PRIMARY [{tag}]:",
+                    group_support=group_support)
+    except Exception as exc:
+        log(f"    CGM error: {exc}")
+
+
 def pairwise_group_tests(log, sub, val_col, group_col, order, cluster_col="NDC11", fei_col=None):
     groups = {g: sub.loc[sub[group_col] == g, val_col].dropna().values for g in order}
     kw = _kruskal_p(groups)
@@ -213,6 +336,11 @@ def fig1(df, outdir, log):
         log(f"\n[{title}] n={len(sub)}, by outcome: "
             f"{ {o: int((sub.prior_outcome==o).sum()) for o in OUTCOME_ORDER} }")
         pairwise_group_tests(log, sub, col, "prior_outcome", OUTCOME_ORDER, fei_col="prior_fei")
+        m = sub.copy()
+        m["VAI"] = (m.prior_outcome == "VAI").astype(float)
+        m["OAI"] = (m.prior_outcome == "OAI").astype(float)
+        m["_y"] = np.log(m[col].astype(float))
+        modelB_re_twoway(log, m, "_y", ["VAI", "OAI"], "NDC11", "prior_fei", f"log({title}), ref=NAI")
     fig.suptitle("Figure 1 — Price and volume by prior inspection outcome (facility-linked rows only)")
     fig.tight_layout()
     fig.savefig(outdir / "Figure1_Price_Volume_by_Outcome.png", dpi=150); plt.close(fig)
@@ -282,6 +410,12 @@ def fig4(df, outdir, log):
         log(f"\n[{ylab} by country] n={len(sub)}, by country: "
             f"{ {cc: int((sub.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
         pairwise_group_tests(log, sub, col, "CountryCode", COUNTRY_ORDER, fei_col="matched_fei")
+        m = sub.copy()
+        m["IND"] = (m.CountryCode == "IND").astype(float)
+        m["CHN"] = (m.CountryCode == "CHN").astype(float)
+        m["_y"] = np.log1p(m[col].astype(float))
+        modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei", f"log1p({ylab}), ref=USA",
+                          cross_section=(col == DIFF_COL))
     fig.suptitle("Figure 4 — Quality by country of manufacture (facility-linked rows only)")
     fig.tight_layout()
     fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150); plt.close(fig)

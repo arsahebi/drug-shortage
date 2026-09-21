@@ -87,7 +87,7 @@ def parse_log(path):
     for metric in ["DMF (ng/day)", "NDMA (ng/day)", "Difference Factor"]:
         m = re.search(rf"\[{re.escape(metric)} by country\] n=(\d+), by country: (\{{[^}}]+\}})", t)
         kw = re.search(rf"\[{re.escape(metric)} by country\].*?Kruskal-Wallis[^:]*: p=([\d.]+)", t, re.S)
-        anchor = re.search(rf"-- PRIMARY \[log1p\({re.escape(metric)}\), ref=USA\]:", t)
+        anchor = re.search(rf"-- PRIMARY[^\[]*\[log1p\({re.escape(metric)}\), ref=USA\]:", t)
         coefs = _coefs_after(anchor) if anchor else {}
         r[f"fig4_{metric}"] = {
             "n": int(m.group(1)) if m else None,
