@@ -13,8 +13,16 @@ independent of any real facility match); S1 uses every row with the fields it pl
 
 Inputs: variants/step5_{manual,rulebased}.csv (built by running step2-step5
 with REQUIRE_REDICA_HISTORY=0 DROP_NDCS_WITHOUT_FEI=0 against each step1 map;
-see the run commands in the Sept 20 2026 session). Each carries an IR_ER column
-joined from the FDA NDC directory's DOSAGEFORMNAME.
+see the run commands in the Sept 20 2026 session).
+
+Dosage form (IR/ER) comes from Valisure's own per-year testing sheets
+(Data/08 - Valisure/raw/Valisure_2024_raw_prices_20260728_f1-and-formulation_
+20260813.xlsx -- the formulation column we asked Valisure to add), joined on
+NDC11 x TestYear via _valisure_formulation_lookup(), not from the step5 CSV's
+static IR_ER column (which was a one-time NDC8 -> FDA product.csv
+DOSAGEFORMNAME join, constant across years). Checked against that static join
+before switching: 126/126 overlapping rows agreed exactly; the Valisure file
+also resolves 14 NDCs the static join couldn't match.
 
 Output: processed/outputs/variants/<map>_<dosage>/ — PNGs + a stats log.
 """
@@ -570,17 +578,52 @@ def _matched_fei_lookup(map_label):
     return m.drop_duplicates("NDC11", keep="first").set_index("NDC11")["FEI"].to_dict()
 
 
+VALISURE_FORM_FILE = BASE / "Data/08 - Valisure/raw/Valisure_2024_raw_prices_20260728_f1-and-formulation_20260813.xlsx"
+
+
+def _valisure_formulation_lookup():
+    """(NDC11, TestYear) -> 'IR'/'ER', from Valisure's own per-year testing
+    sheets (the formulation column added at our request) rather than the
+    static NDC8 -> FDA product.csv DOSAGEFORMNAME join used previously. The
+    2024 sheet's real header is on the second row. Verified before switching:
+    every NDC11 that appears in more than one year keeps the same formulation
+    (no reformulation in this data), and every row present in both the old
+    static join and this file agreed."""
+    sheets = {
+        "Copy of 2020 Testing Data": (2020, 0, "Formulation"),
+        "2022 Testing Data - Actual": (2022, 0, "Formulation"),
+        "2024 Testing Data": (2024, 1, "formulation"),
+    }
+    frames = []
+    for sheet, (year, header, col) in sheets.items():
+        d = pd.read_excel(VALISURE_FORM_FILE, sheet_name=sheet, header=header)
+        d = d[["NDC11", col]].rename(columns={col: "IR_ER"})
+        d["TestYear"] = year
+        frames.append(d)
+    out = pd.concat(frames, ignore_index=True).dropna(subset=["IR_ER"])
+    out["NDC11"] = out["NDC11"].astype(str).str.strip()
+    out = out.drop_duplicates(["NDC11", "TestYear"])
+    return {(r.NDC11, r.TestYear): r.IR_ER for r in out.itertuples()}
+
+
 _REDICA_COUNTRY_CACHE = None
+_VALISURE_FORM_CACHE = None
 
 
 def build(map_label, dosage):
-    global _REDICA_COUNTRY_CACHE
+    global _REDICA_COUNTRY_CACHE, _VALISURE_FORM_CACHE
     if _REDICA_COUNTRY_CACHE is None:
         _REDICA_COUNTRY_CACHE = _redica_country_lookup()
+    if _VALISURE_FORM_CACHE is None:
+        _VALISURE_FORM_CACHE = _valisure_formulation_lookup()
 
     df = pd.read_csv(VDIR / f"step5_{map_label}.csv")
     df = df[df[[DMF_COL, NDMA_COL, DIFF_COL]].notna().any(axis=1)]  # Valisure-tested rows only
     df["matched_fei"] = df["NDC11"].map(_matched_fei_lookup(map_label))
+    # Overwrite the step5 CSV's static IR_ER (NDC8 -> product.csv, one value
+    # per NDC, no year granularity) with Valisure's own per-year formulation.
+    df["IR_ER"] = list(zip(df["NDC11"].astype(str).str.strip(), df["TestYear"]))
+    df["IR_ER"] = df["IR_ER"].map(_VALISURE_FORM_CACHE)
     # Overwrite CountryCode with a Redica-derived-only value. The panel's own
     # CountryCode (built in step2) falls back to the Q&A spreadsheet's
     # independent CountryCode column whenever the matched FEI has no Redica
