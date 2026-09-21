@@ -123,6 +123,18 @@ def parse_log(path):
             "coefs": coefs,
         }
 
+    # Fig5: market volume by country
+    m = re.search(r"\[Market Volume \(Extended Units\) by country\] n=(\d+), by country: (\{[^}]+\})", t)
+    anchor = re.search(r"-- PRIMARY[^\[]*\[log\(Market Volume \(Extended Units\)\), ref=USA\]:", t)
+    coefs = _coefs_after(anchor) if anchor else {}
+    icc = _icc_before(anchor) if anchor else None
+    anchor2 = re.search(r"-- PRIMARY[^\[]*\[log\(Market Volume \(Extended Units\)\), ref=IND\]:", t)
+    coefs2 = _coefs_after(anchor2) if anchor2 else {}
+    if "CHN_d" in coefs2:
+        coefs["CHN_vs_IND"] = coefs2["CHN_d"]
+    r["fig5_volume"] = {"n": int(m.group(1)) if m else None, "by": eval(m.group(2)) if m else {},
+                         "icc": icc, "coefs": coefs}
+
     return r
 
 
@@ -190,6 +202,18 @@ def fig4_finding(d):
     return "Significant: " + "; ".join(sig_bits) + "."
 
 
+def fig5_finding(d):
+    sig_bits = []
+    coefs = d["fig5_volume"]["coefs"]
+    for name, who, vs in [("IND", "India", "USA"), ("CHN", "China", "USA"), ("CHN_vs_IND", "China", "India")]:
+        c = coefs.get(name)
+        if c and _is_sig(c["sig"]) and not c["unreliable"]:
+            sig_bits.append(f"Volume {who} ({'higher' if c['beta']>0 else 'lower'} than {vs})")
+    if not sig_bits:
+        return "No significant difference in market volume by country of manufacture."
+    return "Significant: " + "; ".join(sig_bits) + "."
+
+
 def fig23_finding(d, fig):
     sig_bits = []
     for metric, mlabel in [("DMF (ng/day)", "DMF"), ("NDMA (ng/day)", "NDMA"), ("Dissolution Difference", "Dissolution")]:
@@ -254,7 +278,7 @@ def build():
 
     doc.add_heading("This Document", 1)
     ds.p(doc,
-         "Six versions of Figures 1 through 4: the rule-based and manual NDC-FEI maps, each "
+         "Six versions of Figures 1 through 5: the rule-based and manual NDC-FEI maps, each "
          "pooled and split by dosage form (immediate vs. extended release). The only universal "
          "exclusion is Canada and Bangladesh.",
          size=10)
@@ -262,7 +286,7 @@ def build():
     ds.p(doc,
          "Country of origin is determined from Redica facility-inspection data, indexed by FEI. "
          "Because country appears in every figure here, either as an axis or as the point color, "
-         "all four figures are restricted to NDCs whose manufacturing facility has a Redica-"
+         "all five figures are restricted to NDCs whose manufacturing facility has a Redica-"
          "assigned FEI.",
          italic=True, size=9)
 
@@ -320,6 +344,19 @@ def build():
                  f"{coef_phrase(v['coefs'], 'CHN', 'China vs USA')}. "
                  f"{coef_phrase(v['coefs'], 'CHN_vs_IND', 'China vs India')}.", size=9)
         ds.p(doc, fig4_finding(d), bold=True, size=9)
+
+        # Figure 5
+        doc.add_heading("Figure 5, market volume by country of manufacture", 2)
+        ds.figure(doc, fig_dir / "Figure5_Volume_by_Country.png",
+                  "Points are NDC-year observations colored by prior inspection outcome; "
+                  "sample sizes shown beneath each box.", width=5.8)
+        v = d["fig5_volume"]
+        icc_str = f", ICC={v['icc']:.2f}" if v["icc"] is not None else ""
+        ds.p(doc, f"Volume: n={v['n'] or 0}{icc_str}. "
+             f"{coef_phrase(v['coefs'], 'IND', 'India vs USA')}. "
+             f"{coef_phrase(v['coefs'], 'CHN', 'China vs USA')}. "
+             f"{coef_phrase(v['coefs'], 'CHN_vs_IND', 'China vs India')}.", size=9)
+        ds.p(doc, fig5_finding(d), bold=True, size=9)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     doc.save(OUT)

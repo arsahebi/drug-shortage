@@ -516,6 +516,60 @@ def fig4(df, outdir, log):
     fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
+def fig5(df, outdir, log):
+    """Market volume by country of manufacture -- Figure 1's box-plot layout
+    with the axes swapped: x is CountryCode instead of prior_outcome, points
+    are colored by prior inspection outcome instead of country. Uses
+    matched_fei (always available once a facility is matched) rather than
+    prior_fei, matching Figure 4's clustering choice for the same reason: a
+    country figure should not additionally require inspection history."""
+    d = df[df.CountryCode.isin(COUNTRY_ORDER) & df.matched_fei.notna()
+           & df[VOL_COL].notna() & (df[VOL_COL] > 0)].copy()
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    if d.empty:
+        ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
+        log("\n[Market Volume (Extended Units) by country] n=0")
+        fig.savefig(outdir / "Figure5_Volume_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)
+        return
+    labels = [COUNTRY_FULL[cc].replace("United States of America", "USA") for cc in COUNTRY_ORDER]
+    data = [d.loc[d.CountryCode == cc, VOL_COL].values for cc in COUNTRY_ORDER]
+    ax.boxplot(data, labels=labels, showfliers=False, patch_artist=True,
+               boxprops=dict(facecolor="none", edgecolor="black"),
+               medianprops=dict(color="#f59e0b", linewidth=1.5))
+    rng = np.random.default_rng(0)
+    for i, cc in enumerate(COUNTRY_ORDER):
+        s = d[d.CountryCode == cc]
+        jitter = rng.uniform(-0.06, 0.06, len(s))
+        colors = [OUTCOME_COLORS.get(o, "#9ca3af") for o in s.prior_outcome]
+        ax.scatter(i + 1 + jitter, s[VOL_COL], s=16, alpha=0.75, color=colors, edgecolor="none")
+    ax.set_yscale("log")
+    ax.set_xlabel("Country of Manufacture")
+    ax.set_ylabel("Market Volume (Extended Units)")
+    for i, cc in enumerate(COUNTRY_ORDER):
+        _n_label(ax, i + 1, int((d.CountryCode == cc).sum()))
+    log(f"\n[Market Volume (Extended Units) by country] n={len(d)}, by country: "
+        f"{ {cc: int((d.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
+    pairwise_group_tests(log, d, VOL_COL, "CountryCode", COUNTRY_ORDER, fei_col="matched_fei")
+    m = d.copy()
+    m["IND"] = (m.CountryCode == "IND").astype(float)
+    m["CHN"] = (m.CountryCode == "CHN").astype(float)
+    m["_y"] = np.log(m[VOL_COL].astype(float))
+    modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei",
+                      "log(Market Volume (Extended Units)), ref=USA")
+    m2 = d.copy()
+    m2["USA_d"] = (m2.CountryCode == "USA").astype(float)
+    m2["CHN_d"] = (m2.CountryCode == "CHN").astype(float)
+    m2["_y"] = np.log(m2[VOL_COL].astype(float))
+    modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "matched_fei",
+                      "log(Market Volume (Extended Units)), ref=IND")
+    handles = [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor=OUTCOME_COLORS[o],
+                           markersize=7, label=o) for o in OUTCOME_ORDER]
+    fig.legend(handles=handles, loc="lower center", ncol=len(OUTCOME_ORDER), title="Prior Inspection Outcome",
+               bbox_to_anchor=(0.5, -0.06), frameon=True, fontsize=8, title_fontsize=8)
+    fig.tight_layout(rect=[0, 0.13, 1, 1])
+    fig.savefig(outdir / "Figure5_Volume_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)
+
+
 def figS1(df, outdir, log):
     d = df[df.months_since_inspection.notna() & df.prior_outcome.notna()].copy()
     if len(d) < 3:
@@ -658,6 +712,7 @@ def build(map_label, dosage):
     fig2_3(df, outdir, log, VOL_COL, "Market Volume (Extended Units)", "Figure2_Volume_vs_Quality")
     fig2_3(df, outdir, log, PRICE_COL, "Price per Unit ($)", "Figure3_Price_vs_Quality")
     fig4(df, outdir, log)
+    fig5(df, outdir, log)
     figS1(df, outdir, log)
     logpath.write_text("\n".join(lines))
     print(f"{map_label:10s} {dosage:4s}  rows={len(df):4d}  NDC11s={df.NDC11.nunique():3d}  -> {outdir}")
