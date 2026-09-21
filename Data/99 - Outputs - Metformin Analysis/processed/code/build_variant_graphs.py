@@ -379,6 +379,12 @@ def fig1(df, outdir, log):
         m["OAI"] = (m.prior_outcome == "OAI").astype(float)
         m["_y"] = np.log(m[col].astype(float))
         modelB_re_twoway(log, m, "_y", ["VAI", "OAI"], "NDC11", "prior_fei", f"log({ylab}), ref=NAI")
+        # OAI vs VAI: re-parameterize with VAI as the omitted (reference) group
+        m2 = sub.copy()
+        m2["NAI_d"] = (m2.prior_outcome == "NAI").astype(float)
+        m2["OAI_d"] = (m2.prior_outcome == "OAI").astype(float)
+        m2["_y"] = np.log(m2[col].astype(float))
+        modelB_re_twoway(log, m2, "_y", ["NAI_d", "OAI_d"], "NDC11", "prior_fei", f"log({ylab}), ref=VAI")
     _country_legend(fig, axes[0], title="Country")
     fig.tight_layout(rect=[0, 0.08, 1, 1])
     fig.savefig(outdir / "Figure1_Price_Volume_by_Outcome.png", dpi=150, bbox_inches="tight"); plt.close(fig)
@@ -466,6 +472,13 @@ def fig4(df, outdir, log):
         m["CHN"] = (m.CountryCode == "CHN").astype(float)
         m["_y"] = np.log1p(m[col].astype(float))
         modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei", f"log1p({title}), ref=USA",
+                          cross_section=(col == DIFF_COL))
+        # CHN vs IND: re-parameterize with IND as the omitted (reference) group
+        m2 = sub.copy()
+        m2["USA_d"] = (m2.CountryCode == "USA").astype(float)
+        m2["CHN_d"] = (m2.CountryCode == "CHN").astype(float)
+        m2["_y"] = np.log1p(m2[col].astype(float))
+        modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "matched_fei", f"log1p({title}), ref=IND",
                           cross_section=(col == DIFF_COL))
     fig.tight_layout()
     fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)

@@ -81,6 +81,12 @@ def parse_log(path):
         anchor = re.search(rf"-- PRIMARY \[log\({re.escape(key)}\), ref=NAI\]:", t)
         coefs = _coefs_after(anchor) if anchor else {}
         icc = _icc_before(anchor) if anchor else None
+        # OAI vs VAI, re-parameterized with VAI as reference (paper Observation 1:
+        # OAI facilities had significantly higher volume than VAI facilities)
+        anchor2 = re.search(rf"-- PRIMARY \[log\({re.escape(key)}\), ref=VAI\]:", t)
+        coefs2 = _coefs_after(anchor2) if anchor2 else {}
+        if "OAI_d" in coefs2:
+            coefs["OAI_vs_VAI"] = coefs2["OAI_d"]
         r[label] = {
             "n": int(m.group(1)) if m else None,
             "by": eval(m.group(2)) if m else {},
@@ -104,6 +110,12 @@ def parse_log(path):
         anchor = re.search(rf"-- PRIMARY[^\[]*\[log1p\({re.escape(metric)}\), ref=USA\]:", t)
         coefs = _coefs_after(anchor) if anchor else {}
         icc = _icc_before(anchor) if anchor else None
+        # China vs India, re-parameterized with India as reference (paper
+        # Observation 3: China vs India comparison)
+        anchor2 = re.search(rf"-- PRIMARY[^\[]*\[log1p\({re.escape(metric)}\), ref=IND\]:", t)
+        coefs2 = _coefs_after(anchor2) if anchor2 else {}
+        if "CHN_d" in coefs2:
+            coefs["CHN_vs_IND"] = coefs2["CHN_d"]
         r[f"fig4_{metric}"] = {
             "n": int(m.group(1)) if m else None,
             "by": eval(m.group(2)) if m else {},
@@ -121,26 +133,44 @@ def pfmt(v):
     return v if isinstance(v, str) else (f"{v:.3f}" if v >= 0.001 else "<0.001")
 
 
-def coef_phrase(coefs, name, ref):
+def _sig_tag(sig):
+    """'*'/'**' render as-is; the '.' marginal marker (p<0.10) is spelled out
+    instead of appended bare, which otherwise reads as a stray second period
+    (e.g. 'p=0.090..')."""
+    if sig in ("*", "**"):
+        return sig
+    if sig == ".":
+        return " (marginal)"
+    return ""
+
+
+def coef_phrase(coefs, name, label):
+    """label is the display text, e.g. 'VAI vs NAI' or 'China vs India'."""
     if name not in coefs:
-        return f"{name} vs {ref} n/a"
+        return f"{label} n/a"
     c = coefs[name]
     if c["unreliable"]:
-        return f"{name} vs {ref} not estimable (too few observations)"
-    return f"{name} vs {ref} beta={c['beta']:+.3f}, p={pfmt(c['p'])}{c['sig']}"
+        return f"{label} not estimable (too few observations)"
+    return f"{label} beta={c['beta']:+.3f}, p={pfmt(c['p'])}{_sig_tag(c['sig'])}"
+
+
+def _is_sig(sig):
+    """True significance only ('*'/'**'); '.' is marginal (p<0.10), not significant."""
+    return sig in ("*", "**")
 
 
 def any_significant(coefs):
-    return any(c["sig"] and not c["unreliable"] for c in coefs.values())
+    return any(_is_sig(c["sig"]) and not c["unreliable"] for c in coefs.values())
 
 
 def fig1_finding(d):
     sig_bits = []
     for label, key in [("price", "price"), ("volume", "volume")]:
-        for name in ["VAI", "OAI"]:
+        for name, vs in [("VAI", "NAI"), ("OAI", "NAI"), ("OAI_vs_VAI", "VAI")]:
             c = d[key]["coefs"].get(name)
-            if c and c["sig"] and not c["unreliable"]:
-                sig_bits.append(f"{name} {label} ({'higher' if c['beta']>0 else 'lower'} than NAI)")
+            if c and _is_sig(c["sig"]) and not c["unreliable"]:
+                who = "OAI" if name == "OAI_vs_VAI" else name
+                sig_bits.append(f"{who} {label} ({'higher' if c['beta']>0 else 'lower'} than {vs})")
     if not sig_bits:
         return "No significant relationship between prior inspection outcome and price or volume."
     return "Significant: " + "; ".join(sig_bits) + "."
@@ -150,10 +180,10 @@ def fig4_finding(d):
     sig_bits = []
     for metric, mlabel in [("DMF (ng/day)", "DMF"), ("NDMA (ng/day)", "NDMA"), ("Dissolution Difference", "Dissolution")]:
         coefs = d[f"fig4_{metric}"]["coefs"]
-        for name in ["IND", "CHN"]:
+        for name, who, vs in [("IND", "India", "USA"), ("CHN", "China", "USA"), ("CHN_vs_IND", "China", "India")]:
             c = coefs.get(name)
-            if c and c["sig"] and not c["unreliable"]:
-                sig_bits.append(f"{mlabel} {'India' if name=='IND' else 'China'} ({'higher' if c['beta']>0 else 'lower'} than USA)")
+            if c and _is_sig(c["sig"]) and not c["unreliable"]:
+                sig_bits.append(f"{mlabel} {who} ({'higher' if c['beta']>0 else 'lower'} than {vs})")
     if not sig_bits:
         return "No significant difference in quality by country of manufacture."
     return "Significant: " + "; ".join(sig_bits) + "."
@@ -163,7 +193,7 @@ def fig23_finding(d, fig):
     sig_bits = []
     for metric, mlabel in [("DMF (ng/day)", "DMF"), ("NDMA (ng/day)", "NDMA"), ("Dissolution Difference", "Dissolution")]:
         v = d.get(f"{fig}_{metric}")
-        if v and v["sig"]:
+        if v and _is_sig(v["sig"]):
             sig_bits.append(f"{mlabel} (rho={v['rho']:+.2f}, p={pfmt(v['p_boot'])})")
     if not sig_bits:
         return "No significant correlation."
@@ -185,7 +215,10 @@ def build():
          "standard errors on NDC and facility; the ICC reported alongside it documents the "
          "within-NDC correlation that justifies clustering. Difference Factor is 2024 only, so "
          "it has no ICC and uses facility-only clustering. Figures 2 and 3 report a Spearman "
-         "correlation with an NDC-cluster bootstrap, annotated directly on each panel.",
+         "correlation with an NDC-cluster bootstrap, annotated directly on each panel. Each "
+         "regression is reported against two reference groups: NAI for VAI and OAI, then VAI "
+         "for OAI (so OAI vs VAI is direct, not inferred); USA for India and China, then India "
+         "for China (so China vs India is direct).",
          italic=True, size=9)
 
     for map_label, dose in VARIANTS:
@@ -204,8 +237,9 @@ def build():
         for label, key in [("Price", "price"), ("Volume", "volume")]:
             icc_str = f", ICC={d[key]['icc']:.2f}" if d[key]["icc"] is not None else ""
             ds.p(doc, f"{label}: n={d[key]['n']}{icc_str}. "
-                 f"{coef_phrase(d[key]['coefs'], 'VAI', 'NAI')}. "
-                 f"{coef_phrase(d[key]['coefs'], 'OAI', 'NAI')}.", size=9)
+                 f"{coef_phrase(d[key]['coefs'], 'VAI', 'VAI vs NAI')}. "
+                 f"{coef_phrase(d[key]['coefs'], 'OAI', 'OAI vs NAI')}. "
+                 f"{coef_phrase(d[key]['coefs'], 'OAI_vs_VAI', 'OAI vs VAI')}.", size=9)
         ds.p(doc, fig1_finding(d), bold=True, size=9)
 
         # Figure 2 / Figure 3
@@ -228,8 +262,9 @@ def build():
             v = d[f"fig4_{metric}"]
             icc_str = f", ICC={v['icc']:.2f}" if v["icc"] is not None else ""
             ds.p(doc, f"{mlabel}: n={v['n'] or 0}{icc_str}. "
-                 f"{coef_phrase(v['coefs'], 'IND', 'USA')}. "
-                 f"{coef_phrase(v['coefs'], 'CHN', 'USA')}.", size=9)
+                 f"{coef_phrase(v['coefs'], 'IND', 'India vs USA')}. "
+                 f"{coef_phrase(v['coefs'], 'CHN', 'China vs USA')}. "
+                 f"{coef_phrase(v['coefs'], 'CHN_vs_IND', 'China vs India')}.", size=9)
         ds.p(doc, fig4_finding(d), bold=True, size=9)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
