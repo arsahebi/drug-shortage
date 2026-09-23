@@ -681,11 +681,16 @@ def build(map_label, dosage, recent_only=False):
     prior_fei, prior_score, prior_site, months_since_inspection) to rows whose
     prior inspection is within 36 months of the test year -- a row whose only
     qualifying inspection is older than that is treated the same as a row with
-    no inspection history at all. This only changes Figure 1 (grouped by
-    prior_outcome) and Figure S1 (the months_since_inspection distribution);
-    Figures 2-5 don't use prior inspection outcome or recency (2/3 plot
-    Valisure quality metrics, 4/5 group by country of manufacture via
-    matched_fei), so they are not rebuilt for this variant -- the standard
+    no inspection history at all. Rebuilds Figure 1 (grouped by prior_outcome)
+    and Figure S1 (the months_since_inspection distribution) on that basis.
+
+    Figure 4 groups by country via matched_fei, not prior_outcome, so it has
+    no recency concept of its own; here it is additionally restricted to rows
+    that have a recent qualifying inspection at all (prior_outcome notna after
+    the masking above), i.e. a country only counts as confirmed for this
+    sensitivity check if its facility was actually inspected in the last 3
+    years, not just matched to an FEI. Figures 2/3/5 don't depend on prior
+    inspection outcome or recency at all and are not rebuilt -- the standard
     {map_label}_{dosage} folder's copies already apply."""
     global _REDICA_COUNTRY_CACHE, _VALISURE_FORM_CACHE
     if _REDICA_COUNTRY_CACHE is None:
@@ -728,6 +733,10 @@ def build(map_label, dosage, recent_only=False):
                         "months_since_inspection", "prior_inspection_date",
                         "prior_event_year", "gap_test_inspection_more_than_3_years"]] = np.nan
         fig1(df, outdir, log)
+        df_recent = df[df.prior_outcome.notna()].copy()
+        lines.append(f"\nFigure 4 additionally restricted to rows with a recent qualifying "
+                      f"inspection: {len(df_recent)} of {len(df)} rows remain")
+        fig4(df_recent, outdir, log)
         figS1(df, outdir, log)
         logpath.write_text("\n".join(lines))
         print(f"{map_label:10s} {dosage:4s} recent3y  rows={len(df):4d}  "
