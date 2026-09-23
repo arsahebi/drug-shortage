@@ -358,6 +358,35 @@ def build():
              f"{coef_phrase(v['coefs'], 'CHN_vs_IND', 'China vs India')}.", size=9)
         ds.p(doc, fig5_finding(d), bold=True, size=9)
 
+    # Sensitivity check: manual map only, restricted to a recent prior
+    # inspection. Figures 2-5 don't use prior inspection outcome or recency
+    # (2/3 are Valisure quality metrics, 4/5 group by country via matched_fei,
+    # independent of inspection history), so only Figure 1 and S1 change under
+    # this restriction; they are not rebuilt here.
+    doc.add_page_break()
+    doc.add_heading("Sensitivity Check: Manual Map, Recent Inspections Only", 1)
+    ds.p(doc,
+         "Figure 1 restricted to rows whose prior inspection is within 36 months of the "
+         "product's test year; a prior inspection older than that is treated as no inspection "
+         "history (same as if none had been found). Figures 2-5 do not depend on prior "
+         "inspection outcome or its recency and are unchanged from the manual-map sections "
+         "above.", size=10)
+    for dosage in ["all", "IR", "ER"]:
+        log_path = VOUT / f"manual_{dosage}_recent3y" / "stats_log.txt"
+        fig_dir = VOUT / f"manual_{dosage}_recent3y"
+        d = parse_log(log_path)
+        doc.add_heading(f"Manual NDC-FEI map, {DOSE_LABEL[dosage]}, recent inspections only", 2)
+        ds.figure(doc, fig_dir / "Figure1_Price_Volume_by_Outcome.png",
+                  "Points are NDC-year observations colored by country of manufacture; "
+                  "sample sizes shown beneath each box.", width=5.8)
+        for label, key in [("Price", "price"), ("Volume", "volume")]:
+            icc_str = f", ICC={d[key]['icc']:.2f}" if d[key]["icc"] is not None else ""
+            ds.p(doc, f"{label}: n={d[key]['n']}{icc_str}. "
+                 f"{coef_phrase(d[key]['coefs'], 'VAI', 'VAI vs NAI')}. "
+                 f"{coef_phrase(d[key]['coefs'], 'OAI', 'OAI vs NAI')}. "
+                 f"{coef_phrase(d[key]['coefs'], 'OAI_vs_VAI', 'OAI vs VAI')}.", size=9)
+        ds.p(doc, fig1_finding(d), bold=True, size=9)
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     doc.save(OUT)
     print(f"Saved: {OUT}")

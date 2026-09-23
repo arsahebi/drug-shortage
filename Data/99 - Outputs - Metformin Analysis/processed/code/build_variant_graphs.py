@@ -676,7 +676,17 @@ _REDICA_COUNTRY_CACHE = None
 _VALISURE_FORM_CACHE = None
 
 
-def build(map_label, dosage):
+def build(map_label, dosage, recent_only=False):
+    """recent_only=True restricts the prior-inspection fields (prior_outcome,
+    prior_fei, prior_score, prior_site, months_since_inspection) to rows whose
+    prior inspection is within 36 months of the test year -- a row whose only
+    qualifying inspection is older than that is treated the same as a row with
+    no inspection history at all. This only changes Figure 1 (grouped by
+    prior_outcome) and Figure S1 (the months_since_inspection distribution);
+    Figures 2-5 don't use prior inspection outcome or recency (2/3 plot
+    Valisure quality metrics, 4/5 group by country of manufacture via
+    matched_fei), so they are not rebuilt for this variant -- the standard
+    {map_label}_{dosage} folder's copies already apply."""
     global _REDICA_COUNTRY_CACHE, _VALISURE_FORM_CACHE
     if _REDICA_COUNTRY_CACHE is None:
         _REDICA_COUNTRY_CACHE = _redica_country_lookup()
@@ -701,13 +711,28 @@ def build(map_label, dosage):
     df["CountryCode"] = df["matched_fei"].map(_REDICA_COUNTRY_CACHE)
     if dosage != "all":
         df = df[df.IR_ER == dosage]
-    outdir = OUT / f"{map_label}_{dosage}"
+    suffix = "_recent3y" if recent_only else ""
+    outdir = OUT / f"{map_label}_{dosage}{suffix}"
     outdir.mkdir(parents=True, exist_ok=True)
     logpath = outdir / "stats_log.txt"
-    lines = [f"=== {map_label} / {dosage} ===",
+    lines = [f"=== {map_label} / {dosage}{suffix} ===",
              f"rows={len(df)}  NDC11s={df.NDC11.nunique()}  "
              f"Redica-confirmed country={df.CountryCode.notna().sum()}  not={df.CountryCode.isna().sum()}"]
     def log(s): lines.append(str(s))
+    if recent_only:
+        stale = ~(df.months_since_inspection.notna() & (df.months_since_inspection <= 36))
+        n_dropped = int((stale & df.prior_outcome.notna()).sum())
+        lines.append(f"recent_only=True: {n_dropped} row(s) with a prior inspection older than "
+                      f"36 months had their inspection fields cleared (treated as no history)")
+        df.loc[stale, ["prior_outcome", "prior_fei", "prior_score", "prior_site",
+                        "months_since_inspection", "prior_inspection_date",
+                        "prior_event_year", "gap_test_inspection_more_than_3_years"]] = np.nan
+        fig1(df, outdir, log)
+        figS1(df, outdir, log)
+        logpath.write_text("\n".join(lines))
+        print(f"{map_label:10s} {dosage:4s} recent3y  rows={len(df):4d}  "
+              f"NDC11s={df.NDC11.nunique():3d}  -> {outdir}")
+        return
     fig1(df, outdir, log)
     fig2_3(df, outdir, log, VOL_COL, "Market Volume (Extended Units)", "Figure2_Volume_vs_Quality")
     fig2_3(df, outdir, log, PRICE_COL, "Price per Unit ($)", "Figure3_Price_vs_Quality")
@@ -722,4 +747,6 @@ if __name__ == "__main__":
     for m in ["rulebased", "manual"]:
         for dosage in ["all", "IR", "ER"]:
             build(m, dosage)
+    for dosage in ["all", "IR", "ER"]:
+        build("manual", dosage, recent_only=True)
 # %%
