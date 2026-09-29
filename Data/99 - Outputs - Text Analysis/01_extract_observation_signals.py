@@ -289,7 +289,9 @@ _PATIENT_RISK_RULE_OPENAI_V2 = (
     "(any dosage form). If none of the (a2) signals appear verbatim in the text, ordinary "
     "oral solid dose, topical, and other dosage forms do NOT qualify on dosage form or your "
     "own clinical judgment alone. Do NOT mark true for generic quality deviations, "
-    "investigation-failure narratives with no stated release, or where harm would require a "
+    "investigation-failure narratives with no stated release, or visible debris, rust, or "
+    "residue on the OUTSIDE of already-sealed containers or on equipment exterior surfaces "
+    "with no confirmed contamination of the product itself, or where harm would require a "
     'chain of hypotheticals. "Could affect quality" is NOT a harm pathway. Do not confuse '
     "this with severity: language like 'near-certain risk of a defect' or 'significant "
     "systemic failure' can justify Major/Critical severity_tier on its own but does NOT "
@@ -325,7 +327,9 @@ _PATIENT_RISK_RULE_ANTHROPIC_V2 = (
     "affected product; any general quality system failures; training or personnel "
     "qualification deficiencies; stability testing gaps; specification issues without a "
     "released OOS result; investigation-failure narratives that never state the affected "
-    "batch was actually distributed.\n"
+    "batch was actually distributed; visible debris, rust, or residue on the OUTSIDE of "
+    "already-sealed containers or on equipment exterior surfaces, with no confirmed "
+    "contamination of the product itself.\n"
     "  Rule of thumb: if a patient is not already at risk RIGHT NOW from something the "
     "facility already released — or from a confirmed defect in a drug class the TEXT ITSELF "
     "names as high-risk — mark false. Do not confuse this with severity_tier: language like "
@@ -657,7 +661,18 @@ confirmed sterility/cross-contamination event: microbial growth found, particula
 matter observed in product, a confirmed sterility test failure, or confirmed \
 cross-contamination detected in product (sterile OR non-sterile). Do NOT mark true for \
 a contamination-control gap where no contamination was confirmed — use \
-contamination_risk_flag_llm for that.
+contamination_risk_flag_llm for that. Two boundary cases, decided 2026-09-04 from \
+round-1 expert review: (1) a CONFIRMED microbial or particulate recovery from \
+environmental or personnel monitoring INSIDE a classified Grade A or Grade B aseptic area \
+IS a confirmed contamination event — mark this flag true, which keeps it consistent with \
+patient_risk_flag_llm scenario (a), which the same excursion already satisfies; an adverse \
+trend or an alert-level result with no confirmed recovery is NOT, and belongs to \
+contamination_risk_flag_llm. (2) visible debris, rust, residue, or particulate on the \
+OUTSIDE of already-sealed containers, or on equipment exterior surfaces, is NOT confirmed \
+contamination of the product, because nothing is documented as having entered the product \
+— mark this flag false and contamination_risk_flag_llm true. Read "particulate matter \
+observed in product" above as meaning inside the container or in the bulk material, not on \
+the outside of it.
 
 - contamination_risk_flag_llm: mark true ONLY when NO contamination is confirmed \
 ANYWHERE in this observation, and a contamination-CONTROL risk or gap is described \
@@ -673,7 +688,11 @@ moment contamination_flag_llm is true, contamination_risk_flag_llm is false, wit
 exception. If the observation ALSO shows the follow-up investigation into that confirmed \
 event was incomplete (e.g., root cause not traced, other batches not checked), that \
 belongs to investigation_flag_llm, not here — do not use unresolved follow-up on a \
-confirmed event to also justify contamination_risk_flag_llm.
+confirmed event to also justify contamination_risk_flag_llm. Debris, rust, or residue on \
+the exterior of already-sealed containers or on equipment surfaces belongs HERE, as does \
+an EM excursion that is only an adverse trend or an alert-level result. A CONFIRMED \
+recovery inside a classified Grade A/B area does NOT belong here — that is \
+contamination_flag_llm.
 
 - investigation_flag_llm: mark true ONLY for an explicit failed, missing, delayed, \
 or inadequate investigation of a concrete event (deviation, OOS/OOT, contamination event, \
@@ -907,6 +926,11 @@ OPENAI_JSON_SCHEMA_V2 = {
                 "cross-contamination event (microbial growth found, particulates observed "
                 "in product, confirmed sterility failure, confirmed cross-contamination in "
                 "product). False for a control gap with no confirmed contamination — see "
+                "contamination_risk_flag_llm. A confirmed microbial or particulate recovery "
+                "from environmental or personnel monitoring inside a classified Grade A/B "
+                "aseptic area counts as a confirmed event here. Debris, rust, or residue on "
+                "the OUTSIDE of already-sealed containers or on equipment exterior surfaces "
+                "does not — nothing entered the product, so that is "
                 "contamination_risk_flag_llm."
             ),
         },
@@ -921,7 +945,11 @@ OPENAI_JSON_SCHEMA_V2 = {
                 "exhaustive) — in any dosage form, sterile or non-sterile. Mutually "
                 "exclusive with contamination_flag_llm: always false when that flag is "
                 "true, even if the follow-up investigation on the confirmed event was "
-                "incomplete — that belongs to investigation_flag_llm instead."
+                "incomplete — that belongs to investigation_flag_llm instead. Debris, rust, "
+                "or residue on the exterior of sealed containers or on equipment surfaces "
+                "belongs here, as does an EM excursion that is only an adverse trend or "
+                "alert-level result; a confirmed recovery inside a classified Grade A/B "
+                "area does not."
             ),
         },
         "investigation_flag_llm": {
@@ -1355,7 +1383,9 @@ see above); equipment validation gaps without confirmed \
 product impact; data integrity issues without confirmed release of affected product; any \
 general quality system failures; training or personnel qualification deficiencies; stability \
 testing gaps; specification issues without a released OOS result; investigation-failure \
-narratives that never state the affected batch was actually distributed.
+narratives that never state the affected batch was actually distributed; visible debris, \
+rust, or residue on the OUTSIDE of already-sealed containers or on equipment exterior \
+surfaces, with no confirmed contamination of the product itself.
   Rule of thumb: if a patient is not already at risk RIGHT NOW from something the facility \
 already released — or from a confirmed defect in a drug class the TEXT ITSELF names as \
 high-risk — mark false.
@@ -1411,7 +1441,18 @@ recordkeeping, or inventory/storage control unless data reliability is directly 
 confirmed sterility/cross-contamination event: microbial growth found, particulate matter \
 observed in product, a confirmed sterility test failure, or confirmed cross-contamination \
 detected in product (sterile OR non-sterile). Do NOT mark true for a contamination-control \
-gap where no contamination was confirmed — use contamination_risk_flag_llm for that.
+gap where no contamination was confirmed — use contamination_risk_flag_llm for that. \
+Two boundary cases, decided 2026-09-04 from round-1 expert review: (1) a CONFIRMED \
+microbial or particulate recovery from environmental or personnel monitoring INSIDE a \
+classified Grade A or Grade B aseptic area IS a confirmed contamination event — mark this \
+flag true, which keeps it consistent with patient_risk_flag_llm scenario (a), which the \
+same excursion already satisfies; an adverse trend or an alert-level result with no \
+confirmed recovery is NOT, and belongs to contamination_risk_flag_llm. (2) visible debris, \
+rust, residue, or particulate on the OUTSIDE of already-sealed containers, or on equipment \
+exterior surfaces, is NOT confirmed contamination of the product, because nothing is \
+documented as having entered the product — mark this flag false and \
+contamination_risk_flag_llm true. Read "particulate matter observed in product" above as \
+meaning inside the container or in the bulk material, not on the outside of it.
 
 - contamination_risk_flag_llm: mark true ONLY when NO contamination is confirmed ANYWHERE \
 in this observation, and a contamination-CONTROL risk or gap is described instead: \
@@ -1423,7 +1464,10 @@ Non-sterile facilities can still have real cross-contamination risk from shared 
 or inadequate cleaning. contamination_flag_llm and contamination_risk_flag_llm are \
 MUTUALLY EXCLUSIVE — false here whenever contamination_flag_llm is true, no exception. \
 Incomplete follow-up investigation on a confirmed event belongs to investigation_flag_llm, \
-not this flag.
+not this flag. Debris, rust, or residue on the exterior of already-sealed containers or on \
+equipment surfaces belongs HERE, as does an EM excursion that is only an adverse trend or \
+an alert-level result. A CONFIRMED recovery inside a classified Grade A/B area does NOT \
+belong here — that is contamination_flag_llm.
 
 - investigation_flag_llm: mark true ONLY for an explicit failed, missing, delayed, \
 or inadequate investigation of a concrete event (deviation, OOS/OOT, contamination event, \
