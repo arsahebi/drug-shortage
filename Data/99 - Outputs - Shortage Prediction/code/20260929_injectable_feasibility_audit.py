@@ -66,6 +66,22 @@ STUDY_END = pd.Timestamp("2025-12-31")
 # back to 1996, so we report both the full history and the comparable window.
 PILOT_START_YEAR = 2012
 
+# Date of the FDA NDC Directory extract on disk. The directory is a live
+# snapshot, not an archive, so this bounds how far back supplier counts are
+# trustworthy -- see the survivorship warning in stage_b_product_universe.
+NDC_SNAPSHOT_DATE = pd.Timestamp("2025-04-20")
+
+# ProPublica uses ISO-2 country codes, the DailyMed parse yields ISO-3. Map the
+# ISO-3 codes that actually appear so the two bridges agree.
+_ISO3_TO_ISO2 = {
+    "USA": "US", "IND": "IN", "CHN": "CN", "CAN": "CA", "DEU": "DE", "TWN": "TW",
+    "NOR": "NO", "KOR": "KR", "ITA": "IT", "AUT": "AT", "CHE": "CH", "IRL": "IE",
+    "GBR": "GB", "FRA": "FR", "ESP": "ES", "JPN": "JP", "ISR": "IL", "SWE": "SE",
+    "BEL": "BE", "NLD": "NL", "DNK": "DK", "HUN": "HU", "POL": "PL", "PRI": "PR",
+    "SGP": "SG", "AUS": "AU", "BRA": "BR", "MEX": "MX", "ARG": "AR", "SVN": "SI",
+    "HRV": "HR", "CZE": "CZ", "PRT": "PT", "FIN": "FI", "GRC": "GR", "ROU": "RO",
+}
+
 
 # ==============================================================================
 # Stage A -- shortage episodes
@@ -201,8 +217,22 @@ def load_ndc_injectables() -> pd.DataFrame:
 def stage_b_product_universe(inj: pd.DataFrame) -> pd.DataFrame:
     LOG.info("Stage B: injectable product universe")
 
+    # Survivorship warning. The NDC Directory is a live snapshot: FDA drops
+    # delisted products rather than retaining them with a closing date, so a
+    # supplier who exited before the file date is invisible. Onset-date supplier
+    # counts are therefore a floor, and the bias grows the further back you go.
+    # The fix for a real study is an archived NDC snapshot per year (FDA
+    # publishes these; openFDA also exposes historical NDC records).
+    n_stale = int((inj["end_mkt"].notna() & (inj["end_mkt"] < NDC_SNAPSHOT_DATE)).sum())
+    LOG.warning("  SURVIVORSHIP: this snapshot retains %d products delisted before its "
+                "own file date, so a supplier who exited earlier is invisible and "
+                "historical supplier counts are a lower bound. Use per-year archived "
+                "NDC snapshots for the real study.", n_stale)
+
     summary = pd.DataFrame([
         {"metric": "injectable product NDCs", "value": len(inj)},
+        {"metric": "DQ: products delisted before the snapshot date, still listed",
+         "value": n_stale},
         {"metric": "distinct labelers", "value": inj["labeler"].nunique()},
         {"metric": "distinct normalized ingredients", "value": inj["ingredient_norm"].nunique()},
         {"metric": "single-ingredient products", "value": int((inj["n_ingredients"] == 1).sum())},
@@ -274,15 +304,56 @@ def load_ownership() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def load_ndc_fei() -> pd.DataFrame:
-    """DailyMed-derived NDC -> manufacturing site (FEI) bridge, with country."""
-    LOG.info("Stage C: loading NDC->FEI site bridge")
-    m = pd.read_csv(C.NDC_FEI_MAP_CSV, low_memory=False, encoding="latin-1")
-    m = m.dropna(subset=["manufacture_ndc"]).copy()
-    m["product_ndc"] = m["manufacture_ndc"].astype(str).str.strip()
-    # FEI_NUMBER arrives mixed: floats, digit strings, and whitespace-only cells.
-    m["fei"] = pd.to_numeric(m["FEI_NUMBER"], errors="coerce")
-    m["country"] = m["ADDRESS"].astype(str).str.extract(r"\(([A-Z]{3})\)\s*$")[0]
-    return m
+    """NDC -> manufacturing site (FEI), from both bridges we hold.
+
+    ProPublica's Rx Inspector release is the primary source: it reaches 50% of
+    injectable NDCs and 80% of the generic (ANDA) injectables that matter for a
+    sterile-injectable study, against 11% for the DailyMed parse. It is
+    generics-only by design, excluding brand NDAs, gases and intradermal
+    products, so the DailyMed map is unioned in rather than dropped. It still
+    contributes a few hundred NDCs ProPublica does not carry.
+
+    ProPublica's `linkage_method` is kept: SPL_DUNS_FEI links come from an
+    identifier printed on the label, ADDRESS_MATCH links come from fuzzy address
+    matching and are the weaker of the two. Anything that turns on site identity
+    should be checked both ways.
+    """
+    LOG.info("Stage C: loading NDC->FEI site bridges")
+
+    pp = pd.read_csv(C.PROPUBLICA_NDC_FEI_CSV, low_memory=False)
+    pp = pd.DataFrame({
+        "product_ndc": pp["ndc"].astype(str).str.strip(),
+        "fei": pd.to_numeric(pp["fei"], errors="coerce"),
+        "country": pp["country"].astype(str).str.strip(),
+        "linkage_method": pp["linkage_method"],
+        # ProPublica flags API-only sites; a raw-ingredient supplier is a real
+        # dependency but is not an alternative finished-dose source.
+        "api_only": pp["api_mfr"].notna(),
+        "source": "propublica",
+    })
+
+    dm = pd.read_csv(C.NDC_FEI_MAP_CSV, low_memory=False, encoding="latin-1")
+    dm = dm.dropna(subset=["manufacture_ndc"])
+    dm = pd.DataFrame({
+        "product_ndc": dm["manufacture_ndc"].astype(str).str.strip(),
+        # FEI_NUMBER arrives mixed: floats, digit strings, whitespace-only cells.
+        "fei": pd.to_numeric(dm["FEI_NUMBER"], errors="coerce"),
+        # DailyMed addresses carry a trailing ISO-3 code; fold it to ISO-2 so the
+        # two bridges do not report "US" and "USA" as different countries.
+        "country": (dm["ADDRESS"].astype(str).str.extract(r"\(([A-Z]{3})\)\s*$")[0]
+                    .map(_ISO3_TO_ISO2)),
+        "linkage_method": "SPL_DUNS_FEI",
+        "api_only": False,
+        "source": "dailymed",
+    })
+
+    both = pd.concat([pp, dm], ignore_index=True).dropna(subset=["fei"])
+    both = both.drop_duplicates(subset=["product_ndc", "fei"])
+    LOG.info("  ProPublica %d rows / %d NDCs; DailyMed %d rows / %d NDCs; "
+             "union %d NDC-FEI pairs",
+             len(pp), pp["product_ndc"].nunique(), len(dm), dm["product_ndc"].nunique(),
+             len(both))
+    return both
 
 
 def stage_c_independence_layers(inj: pd.DataFrame, std: pd.DataFrame,
@@ -312,10 +383,15 @@ def stage_c_independence_layers(inj: pd.DataFrame, std: pd.DataFrame,
     inj["firm_std"] = matched.fillna(inj["labeler"].map(firm_key))
 
     # --- site ---
-    site = (fei.dropna(subset=["fei"])
-              .groupby("product_ndc")
-              .agg(fei_list=("fei", lambda s: sorted({int(v) for v in s})),
-                   country_list=("country", lambda s: sorted(set(s.dropna())))))
+    # Finished-dose sites only. An API-only plant is a real dependency, and one
+    # worth studying, but it is not an alternative source of the product.
+    fin = fei[~fei["api_only"].fillna(False)]
+    site = (fin.groupby("product_ndc")
+               .agg(fei_list=("fei", lambda s: sorted({int(v) for v in s})),
+                    country_list=("country", lambda s: sorted(set(s.dropna()))),
+                    site_sources=("source", lambda s: sorted(set(s))),
+                    weak_link_share=("linkage_method",
+                                     lambda s: round((s == "ADDRESS_MATCH").mean(), 2))))
     inj = inj.merge(site, on="product_ndc", how="left")
     inj["has_site"] = inj["fei_list"].notna().astype(int)
 
@@ -336,24 +412,39 @@ def stage_c_independence_layers(inj: pd.DataFrame, std: pd.DataFrame,
         {"layer": "injectable firms with a parent link in the lookup",
          "covered": n_sub, "of": len(firms),
          "pct": round(100 * n_sub / len(firms), 1)},
-        {"layer": "NDC -> manufacturing site (FEI)",
-         "covered": int(inj["has_site"].sum()), "of": len(inj),
-         "pct": round(100 * inj["has_site"].mean(), 1)},
     ])
+
+    # Break the site bridge out by source, and by marketing category -- the
+    # headline coverage number is misleading on its own, because ProPublica
+    # deliberately excludes brand NDAs and the study population is generics.
+    ndcs = set(inj["product_ndc"])
+    for src, label in [("propublica", "NDC -> site, ProPublica alone"),
+                       ("dailymed", "NDC -> site, DailyMed parse alone")]:
+        s = set(fin.loc[fin["source"] == src, "product_ndc"]) & ndcs
+        cov.loc[len(cov)] = {"layer": label, "covered": len(s), "of": len(inj),
+                             "pct": round(100 * len(s) / len(inj), 1)}
+    cov.loc[len(cov)] = {"layer": "NDC -> site, both sources unioned",
+                         "covered": int(inj["has_site"].sum()), "of": len(inj),
+                         "pct": round(100 * inj["has_site"].mean(), 1)}
+    anda = inj[inj["MARKETINGCATEGORYNAME"] == "ANDA"]
+    cov.loc[len(cov)] = {"layer": "NDC -> site, generic (ANDA) injectables only",
+                         "covered": int(anda["has_site"].sum()), "of": len(anda),
+                         "pct": round(100 * anda["has_site"].mean(), 1)}
     cov.to_csv(TAB / "c_independence_layer_coverage.csv", index=False)
 
     n_fei = len({f for lst in inj["fei_list"].dropna() for f in lst})
-    ctry = (fei[fei["product_ndc"].isin(set(inj["product_ndc"]))]
-            .dropna(subset=["country"])["country"].value_counts().head(10))
-    ctry.rename_axis("country").reset_index(name="site_records").to_csv(
+    ctry = (fin[fin["product_ndc"].isin(ndcs)]
+            .drop_duplicates("fei")["country"].value_counts().head(12))
+    ctry.rename_axis("country").reset_index(name="distinct_sites").to_csv(
         TAB / "c_injectable_site_countries.csv", index=False)
 
     LOG.info("  firm-name crosswalk covers %.0f%% of injectable labels; "
-             "site bridge covers %.0f%% of NDCs (%d distinct FEIs)",
-             100 * inj["firm_std_matched"].mean(), 100 * inj["has_site"].mean(), n_fei)
-    LOG.info("  VERDICT C: ownership layer is broad; site layer is real but PARTIAL "
-             "(built for the 14-drug universe, extendable by re-running the "
-             "DailyMed parse over the full SPL archive in Data/02).")
+             "site bridge covers %.0f%% of all injectable NDCs and %.0f%% of "
+             "generic (ANDA) injectables (%d distinct plants)",
+             100 * inj["firm_std_matched"].mean(), 100 * inj["has_site"].mean(),
+             100 * anda["has_site"].mean(), n_fei)
+    LOG.info("  VERDICT C: ownership layer is broad; site layer is usable for "
+             "generic injectables via ProPublica, thin for brand NDAs by design.")
     return inj
 
 

@@ -65,6 +65,13 @@ TEXT_TIMESERIES_REDICA_CSV   = DATA / "99 - Outputs - Text Analysis" / "step02_4
 #   - FIRM_LOOKUP_XLSX: sheet "Final_table_for_lookup" holds 1,155 dated
 #     parent -> subsidiary links, so ownership can be evaluated as of a date
 #     rather than as of today (Gray/Massimino firm-name crosswalk).
+# ProPublica Rx Inspector NDC -> FEI release (Nov 2025 data, CC BY-NC 4.0).
+# Preferred over NDC_FEI_MAP_CSV: it covers 50% of injectable NDCs and 80% of
+# generic (ANDA) injectables, against 11% for our DailyMed-parsed map, and
+# resolves 385 distinct plants rather than 77. It is generics-only by design
+# (brand NDAs excluded, gases and intradermal dropped), so keep the DailyMed map
+# as a supplement rather than replacing it.
+PROPUBLICA_NDC_FEI_CSV = DATA / "26 - Propublica" / "ndc_fei.csv"
 NDC_PRODUCT_CSV     = DATA / "03 - FDA - NDC" / "product.csv"
 FIRM_STD_NAMES_XLSX = DATA / "25 - Parent Firm Name" / "std_firm_names_v7_10152020.xlsx"
 FIRM_LOOKUP_XLSX    = DATA / "25 - Parent Firm Name" / "lookup_tables_06032020.xlsx"
