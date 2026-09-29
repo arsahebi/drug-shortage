@@ -50,7 +50,7 @@ CLI OPTIONS
                dosage-form-aware patient_risk_flag_llm, contamination split
                into contamination_flag_llm (confirmed) + contamination_risk_
                flag_llm (control gap), violation_category restructured to
-               the FDA's six-system QSIT framework. Writes to a SEPARATE
+               the FDA's six-system CGMP inspection framework. Writes to a SEPARATE
                step01_*_v2.csv file — never touches the v1 file. Both prompt
                versions and both sets of results live side by side; nothing
                is overwritten either way.
@@ -159,7 +159,8 @@ LLM_FLAG_FIELDS = [
 ]
 
 # ── v2 categorical values (expert-review revision) ─────────────────────────
-# violation_category restructured to the FDA's own six-system QSIT framework
+# violation_category restructured to the FDA's own six-system CGMP framework
+# (Compliance Program 7356.002, "Drug Manufacturing Inspections Program")
 # (Quality System Inspection Technique; https://www.fda.gov/media/71023/download)
 # per Yelena Ionova's review. OrgPersonnel folds into QualitySystem;
 # RecordsReports folds into whichever system the records belong to.
@@ -551,8 +552,8 @@ directly supports your severity and root-cause classification>",
 
 Field rules:
 - violation_category: choose the single best fit for the PRIMARY violation domain, using \
-the FDA's own six-system inspection framework (QSIT — Quality System Inspection Technique; \
-see https://www.fda.gov/media/71023/download). Personnel/training issues fall under \
+the FDA's own six-system inspection framework (Compliance Program Guidance Manual 7356.002, \
+"Drug Manufacturing Inspections Program"). Personnel/training issues fall under \
 QualitySystem; records fall under whichever system they belong to (batch records -> \
 ProductionSystem, lab records -> LaboratoryControlsSystem, distribution records -> \
 MaterialsSystem, complaint/CAPA records -> QualitySystem). Definitions:
@@ -1037,7 +1038,7 @@ ANTHROPIC_TOOL_V2 = {
     "name": "extract_483_signals_v2",
     "description": (
         "Extract structured risk signals from an FDA Form 483 pharmaceutical "
-        "manufacturing observation, using the FDA six-system (QSIT) violation "
+        "manufacturing observation, using the FDA six-system CGMP violation "
         "framework and a split contamination flag. Return all required fields."
     ),
     "input_schema": _ANTHROPIC_SCHEMA_V2,
@@ -1241,8 +1242,8 @@ typically cites one or more sections of Title 21 CFR (Code of Federal Regulation
 Call the extract_483_signals_v2 tool with your analysis. Apply each rule exactly:
 
 - violation_category: choose the single best fit for the PRIMARY violation domain, using \
-the FDA's own six-system inspection framework (QSIT — Quality System Inspection Technique; \
-see https://www.fda.gov/media/71023/download). Personnel/training issues fall under \
+the FDA's own six-system inspection framework (Compliance Program Guidance Manual 7356.002, \
+"Drug Manufacturing Inspections Program"). Personnel/training issues fall under \
 QualitySystem; records fall under whichever system they belong to (batch records -> \
 ProductionSystem, lab records -> LaboratoryControlsSystem, distribution records -> \
 MaterialsSystem, complaint/CAPA records -> QualitySystem).
