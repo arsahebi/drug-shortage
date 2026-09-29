@@ -57,6 +57,18 @@ TEXT_TIMESERIES_REDICA_CSV   = DATA / "99 - Outputs - Text Analysis" / "step02_4
 # FEI→drug_norm bridge: sheet "API Only_FEI Mapping" in VALISURE_FEI (defined above)
 
 # SDUD and NDC→FEI bridge (used by utils.load_sdud_fei_volume)
+# Marketed-product universe and supplier-independence layers.
+# Used by the injectable feasibility audit (20260929_injectable_feasibility_audit.py)
+# to build "how many independent sources were marketed on date X".
+#   - NDC_PRODUCT_CSV: FDA NDC Directory product file. Latin-1 encoded, not UTF-8.
+#   - FIRM_STD_NAMES_XLSX: 31,470 raw firm names -> 13,165 standardized names.
+#   - FIRM_LOOKUP_XLSX: sheet "Final_table_for_lookup" holds 1,155 dated
+#     parent -> subsidiary links, so ownership can be evaluated as of a date
+#     rather than as of today (Gray/Massimino firm-name crosswalk).
+NDC_PRODUCT_CSV     = DATA / "03 - FDA - NDC" / "product.csv"
+FIRM_STD_NAMES_XLSX = DATA / "25 - Parent Firm Name" / "std_firm_names_v7_10152020.xlsx"
+FIRM_LOOKUP_XLSX    = DATA / "25 - Parent Firm Name" / "lookup_tables_06032020.xlsx"
+
 SDUD_MONTHLY_CSV = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDmonthly.csv"
 NDC_FEI_MAP_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
 
