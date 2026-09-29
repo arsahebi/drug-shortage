@@ -16,15 +16,22 @@ needs can actually be built from data we hold:
   A. Shortage episodes for injectables, with onset and resolution dates  (UUDIS)
   B. A marketed-product universe we can evaluate as of a date            (FDA NDC Directory)
   C. Corporate ownership, time-varying                                   (firm-name crosswalk)
-  D. The physical manufacturing site behind each NDC                     (DailyMed NDC->FEI map)
+  D. The physical manufacturing site behind each NDC                     (ProPublica Rx Inspector + DailyMed)
 
-and then demonstrates, end to end on real episodes, the gap between *nominal*
-redundancy (count the labels) and *effective* redundancy (count the independent
-owners, and the independent sites).
+and then demonstrates, end to end on real episodes, how far the independent
+owners and independent plants behind a drug fall short of the raw label count.
+
+A caution that governs how every Stage E number should be read: UUDIS carries a
+free-text drug name and nothing else, no NDC and no application number, so the
+link to the product universe is name-based and lands at ACTIVE INGREDIENT level.
+The counts are therefore an ingredient footprint and an upper bound on the true
+alternatives, not the supplier count of the product that went short. Stage D
+grades every link and records how coarse each episode's market definition is
+forced to be.
 
 Each stage prints a verdict and writes its evidence to
-`outputs/tables/injectable_feasibility/`. Stage D is deliberately reported as a
-partial-coverage finding rather than smoothed over -- see the note there.
+`outputs/tables/injectable_feasibility/`. Stages C and D are deliberately
+reported as partial findings rather than smoothed over.
 
 Run:
     python 20260929_injectable_feasibility_audit.py
@@ -463,6 +470,48 @@ _UUDIS_NOISE = {
 }
 _PAREN_RX = re.compile(r"\([^)]*\)")
 
+# Strength and container, pulled back out of the UUDIS string. These are what
+# separate "0.9% sodium chloride flush syringes" from "14.6% sodium chloride
+# injection" -- two episodes that the ingredient key alone collapses together.
+# Only about 11% of episodes carry either, which is itself the finding: for the
+# rest, the source text cannot support a market definition finer than ingredient.
+_STRENGTH_RX = re.compile(
+    r"(\d+(?:\.\d+)?\s*(?:%|mg\s*/\s*ml|mcg\s*/\s*ml|units?\s*/\s*ml|meq\s*/\s*ml|"
+    r"mg|mcg|g|units?|meq|mmol))", re.I)
+_CONTAINER_RX = re.compile(
+    r"\b(vial|syringe|bag|ampul\w*|premix\w*|pen|cartridge|bottle|"
+    r"flush|irrigation|large volume|small volume)\w*\b", re.I)
+
+
+def uudis_presentation(text: str) -> tuple[str, str, str]:
+    """Pull strength and container out of a UUDIS string, and grade it.
+
+    Returns (strength, container, granularity) where granularity is:
+      'ingredient_strength_form' -- both present, a real market definition
+      'ingredient_strength'      -- strength only
+      'ingredient_form'          -- container only
+      'ingredient_only'          -- neither; the string is a bare drug name
+
+    This does not change any join. It records how coarse each episode's market
+    definition is forced to be, so a downstream model can condition on it or
+    restrict to the rows where a finer definition is actually available.
+    """
+    if not isinstance(text, str):
+        return "", "", "ingredient_only"
+    s = _PAREN_RX.sub(" ", text)
+    strengths = sorted({m.group(1).lower().replace(" ", "") for m in _STRENGTH_RX.finditer(s)})
+    containers = sorted({m.group(1).lower() for m in _CONTAINER_RX.finditer(s)})
+    st, ct = "|".join(strengths), "|".join(containers)
+    if st and ct:
+        gran = "ingredient_strength_form"
+    elif st:
+        gran = "ingredient_strength"
+    elif ct:
+        gran = "ingredient_form"
+    else:
+        gran = "ingredient_only"
+    return st, ct, gran
+
 
 def uudis_ingredient_key(text: str) -> str:
     """Reduce a UUDIS presentation string to its lead active ingredient.
@@ -482,7 +531,24 @@ def uudis_ingredient_key(text: str) -> str:
 
 
 def stage_d_linkage(uu: pd.DataFrame, inj: pd.DataFrame) -> pd.DataFrame:
-    """Join test. This is the study's go/no-go, so report it honestly."""
+    """Join test. This is the study's go/no-go, so report it honestly.
+
+    UUDIS carries a free-text presentation string and nothing else: no NDC, no
+    ANDA, no application number. Every link to the product universe is therefore
+    name-based, and this stage grades each link rather than reporting a single
+    match rate, because a match rate says nothing about whether the matches are
+    right.
+
+    Three tiers:
+      exact          -- the normalized UUDIS ingredient equals an NDC ingredient
+      prefix         -- NDC ingredient is a prefix of it, i.e. salt-form
+                        resolution (doxycycline -> doxycycline hyclate). Sound.
+      lone_candidate -- one candidate shared the first token and it was taken on
+                        faith. This tier contains real errors: 'Calcium Acetate'
+                        resolves to calcium chloride, 'Copper injection' to
+                        copper oxodotreotide cu. It is reported and carried, but
+                        excluded from the headline and from `modelable`.
+    """
     LOG.info("Stage D: UUDIS -> NDC ingredient linkage")
 
     ing = set(inj["ingredient_norm"].dropna()) - {""}
@@ -492,52 +558,88 @@ def stage_d_linkage(uu: pd.DataFrame, inj: pd.DataFrame) -> pd.DataFrame:
     for g in ing:
         by_first.setdefault(g.split()[0], []).append(g)
 
-    def match(key: str) -> str | None:
+    def match(key: str) -> tuple[str | None, str | None]:
         if not key:
-            return None
-        if key in ing:                                   # exact
-            return key
+            return None, None
+        if key in ing:
+            return key, "exact"
         head = key.split()[0]
         cands = by_first.get(head, [])
         if not cands:
-            return None
+            return None, None
         # Prefer a candidate that is a prefix of the UUDIS key (e.g. UUDIS
         # 'sodium chloride bacteriostatic' -> NDC 'sodium chloride').
         pref = [c for c in cands if key.startswith(c)]
         if pref:
-            return max(pref, key=len)
-        return cands[0] if len(cands) == 1 else None
+            return max(pref, key=len), "prefix"
+        return (cands[0], "lone_candidate") if len(cands) == 1 else (None, None)
 
     epi = uu[uu["parenteral"] == "y"].copy()
     epi["ingredient_key"] = epi["drug_text"].map(uudis_ingredient_key)
-    epi["ingredient_matched"] = epi["ingredient_key"].map(match)
+    hits = epi["ingredient_key"].map(match)
+    epi["ingredient_matched"] = [h[0] for h in hits]
+    epi["match_method"] = [h[1] for h in hits]
     epi["matched"] = epi["ingredient_matched"].notna().astype(int)
+    # Only exact and prefix are defensible without manual review.
+    epi["match_confident"] = epi["match_method"].isin(["exact", "prefix"]).astype(int)
 
-    modelable = epi["matched"].astype(bool) & epi["date_onset"].notna() & (epi["duration_days"] >= 0)
+    # How coarse is each episode's market definition forced to be?
+    pres = epi["drug_text"].map(uudis_presentation)
+    epi["uudis_strength"] = [p[0] for p in pres]
+    epi["uudis_container"] = [p[1] for p in pres]
+    epi["granularity"] = [p[2] for p in pres]
+
+    modelable = (epi["match_confident"].astype(bool) & epi["date_onset"].notna()
+                 & (epi["duration_days"] >= 0))
     epi["modelable"] = modelable.astype(int)
 
+    n_fine = int((epi["granularity"] != "ingredient_only").sum())
     summary = pd.DataFrame([
         {"metric": "parenteral episodes", "value": len(epi)},
-        {"metric": "matched to an NDC ingredient", "value": int(epi["matched"].sum())},
-        {"metric": "match rate", "value": round(epi["matched"].mean(), 3)},
-        {"metric": f"matched AND onset {PILOT_START_YEAR}+ AND clean duration",
+        {"metric": "matched, any method", "value": int(epi["matched"].sum())},
+        {"metric": "  of which exact", "value": int((epi["match_method"] == "exact").sum())},
+        {"metric": "  of which prefix (salt-form)", "value": int((epi["match_method"] == "prefix").sum())},
+        {"metric": "  of which lone_candidate (UNVERIFIED, excluded)",
+         "value": int((epi["match_method"] == "lone_candidate").sum())},
+        {"metric": "confident match rate (exact + prefix)",
+         "value": round(epi["match_confident"].mean(), 3)},
+        {"metric": f"confident AND onset {PILOT_START_YEAR}+ AND clean duration",
          "value": int((epi["modelable"] & (epi["onset_year"] >= PILOT_START_YEAR)).sum())},
         {"metric": "distinct ingredients matched", "value": int(epi["ingredient_matched"].nunique())},
+        {"metric": "episodes whose text supports a finer market than ingredient",
+         "value": n_fine},
+        {"metric": "  share", "value": round(n_fine / len(epi), 3)},
     ])
     summary.to_csv(TAB / "d_linkage_summary.csv", index=False)
+
+    (epi["granularity"].value_counts().rename_axis("granularity")
+        .reset_index(name="episodes").to_csv(TAB / "d_market_granularity.csv", index=False))
+
+    # Write the unverified tier out in full. It is a manual-review worklist, not
+    # a rounding error: this is where the false matches live.
+    (epi.loc[epi["match_method"] == "lone_candidate",
+             ["drug_text", "ingredient_key", "ingredient_matched", "onset_year"]]
+        .drop_duplicates().sort_values("drug_text")
+        .to_csv(TAB / "d_unverified_matches_REVIEW.csv", index=False))
 
     epi.loc[epi["matched"] == 0, ["drug_text", "ingredient_key", "onset_year"]] \
        .head(200).to_csv(TAB / "d_unmatched_examples.csv", index=False)
 
-    LOG.info("  %d/%d parenteral episodes (%.0f%%) matched to an NDC ingredient",
-             epi["matched"].sum(), len(epi), 100 * epi["matched"].mean())
-    LOG.info("  VERDICT D: automated name matching carries most of the load; the "
-             "residual is a bounded manual-curation task, not a research risk.")
+    LOG.info("  %d/%d episodes matched confidently (%.0f%%); %d more matched only "
+             "by an unverified lone-candidate rule and are excluded",
+             epi["match_confident"].sum(), len(epi), 100 * epi["match_confident"].mean(),
+             int((epi["match_method"] == "lone_candidate").sum()))
+    LOG.info("  market granularity: %d/%d episodes (%.0f%%) name a strength or "
+             "container; the rest can only be defined at ingredient level",
+             n_fine, len(epi), 100 * n_fine / len(epi))
+    LOG.info("  VERDICT D: PARTLY. The link is name-only and lands at ingredient "
+             "level. Defining the market that actually went short is the study's "
+             "hardest measurement problem, not a refinement.")
     return epi
 
 
 # ==============================================================================
-# Stage E -- nominal vs effective redundancy, demonstrated
+# Stage E -- ingredient footprint at onset, demonstrated
 # ==============================================================================
 
 def owner_as_of(firm: str, onset: pd.Timestamp, links: pd.DataFrame) -> str:
@@ -553,22 +655,34 @@ def owner_as_of(firm: str, onset: pd.Timestamp, links: pd.DataFrame) -> str:
 
 
 def stage_e_redundancy(epi: pd.DataFrame, inj: pd.DataFrame, links: pd.DataFrame) -> pd.DataFrame:
-    """For each matched episode, count suppliers three ways at shortage onset.
+    """Measure the ingredient's injectable footprint at shortage onset.
 
-      nominal_ndcs      -- marketed injectable presentations of the ingredient
-      nominal_labelers  -- distinct label holders (what a market-structure study
-                           would normally use)
-      effective_owners  -- distinct corporate parents as of the onset date
-      effective_sites   -- distinct manufacturing FEIs (where the bridge covers it)
-      concurrent_short  -- other episodes on the same ingredient already in
-                           shortage on the onset date
+    READ THE NAMES LITERALLY. Because UUDIS carries only a drug name, every
+    count here is over *all injectable NDCs sharing the active ingredient*, not
+    over the product that actually went short. "0.9% sodium chloride flush
+    syringes" and "14.6% sodium chloride injection" are different markets and
+    get near-identical counts, because both roll up to sodium chloride. These
+    are an upper bound on the true alternatives, and the overcount is worst
+    exactly where it matters most, on commodity products with many
+    presentations.
 
-    Two quantities matter. The drop from nominal_labelers to effective_owners is
-    redundancy lost to common ownership. concurrent_short is redundancy lost to
-    alternatives that are themselves unavailable -- the other half of the
-    proposed construct, and the half no product database can show on its own.
+      footprint_ndcs        -- injectable NDCs of the ingredient marketed at onset
+      footprint_labelers    -- distinct label holders among them
+      footprint_owners      -- distinct corporate parents, as of the onset date
+      footprint_sites       -- distinct finished-dose plants (FEI)
+      concurrent_shortages  -- other episodes on the same ingredient already in
+                               shortage on the onset date
+
+    Only the last one is measured at the right granularity, because it comes
+    from the episode file rather than the product file. It is also the half of
+    the construct no product database can produce on its own.
+
+    Turning footprint into a real supplier count needs strength and presentation
+    matched through to the NDC, which the UUDIS text supports for roughly a
+    tenth of episodes (see `granularity` from Stage D).
     """
-    LOG.info("Stage E: nominal vs effective redundancy at onset")
+    LOG.info("Stage E: ingredient footprint at onset (see docstring: NOT a "
+             "market-level supplier count)")
 
     mat = epi[(epi["modelable"] == 1) & (epi["onset_year"] >= PILOT_START_YEAR)].copy()
 
@@ -622,10 +736,10 @@ def stage_e_redundancy(epi: pd.DataFrame, inj: pd.DataFrame, links: pd.DataFrame
             "event_observed": e["event_observed"],
             "sole_source_uudis": e["sole_source"],
             "reason": e["reason"],
-            "nominal_ndcs": len(live),
-            "nominal_labelers": live["firm_std"].nunique(),
-            "effective_owners": len(owners),
-            "effective_sites": len(sites) if sites else np.nan,
+            "footprint_ndcs": len(live),
+            "footprint_labelers": live["firm_std"].nunique(),
+            "footprint_owners": len(owners),
+            "footprint_sites": len(sites) if sites else np.nan,
             "site_coverage": round(live["has_site"].mean(), 3),
             "concurrent_shortages": concurrent,
         })
@@ -635,7 +749,7 @@ def stage_e_redundancy(epi: pd.DataFrame, inj: pd.DataFrame, links: pd.DataFrame
         LOG.warning("  no episodes survived the onset-date product join")
         return red
 
-    red["owner_gap"] = red["nominal_labelers"] - red["effective_owners"]
+    red["owner_gap"] = red["footprint_labelers"] - red["footprint_owners"]
     red["consolidated"] = (red["owner_gap"] > 0).astype(int)
 
     write_table(red, C.OUT_DATA / "injectable_redundancy_demo.parquet", LOG)
@@ -643,14 +757,14 @@ def stage_e_redundancy(epi: pd.DataFrame, inj: pd.DataFrame, links: pd.DataFrame
 
     summary = pd.DataFrame([
         {"metric": "episodes with an onset-date supplier count", "value": len(red)},
-        {"metric": "mean nominal labelers", "value": round(red["nominal_labelers"].mean(), 2)},
-        {"metric": "mean effective owners", "value": round(red["effective_owners"].mean(), 2)},
+        {"metric": "mean footprint labelers", "value": round(red["footprint_labelers"].mean(), 2)},
+        {"metric": "mean effective owners", "value": round(red["footprint_owners"].mean(), 2)},
         {"metric": "episodes where owners < labelers", "value": int(red["consolidated"].sum())},
-        {"metric": "share where nominal overstates independence",
+        {"metric": "share where the label count overstates independent ownership",
          "value": round(red["consolidated"].mean(), 3)},
         {"metric": "max labelers collapsing to one owner", "value": int(red["owner_gap"].max())},
         {"metric": "episodes with >=1 mapped manufacturing site",
-         "value": int(red["effective_sites"].notna().sum())},
+         "value": int(red["footprint_sites"].notna().sum())},
         {"metric": "episodes with >=1 alternative already in shortage",
          "value": int((red["concurrent_shortages"] > 0).sum())},
         {"metric": "share with a concurrently unavailable alternative",
@@ -666,11 +780,11 @@ def stage_e_redundancy(epi: pd.DataFrame, inj: pd.DataFrame, links: pd.DataFrame
     # which is a useful thing for the pilot to know before it starts.
     obs = red[red["event_observed"] == 1]
     if len(obs) > 30:
-        bins = pd.cut(obs["effective_owners"], [0, 1, 2, 4, np.inf],
+        bins = pd.cut(obs["footprint_owners"], [0, 1, 2, 4, np.inf],
                       labels=["1 owner", "2 owners", "3-4 owners", "5+ owners"])
         dur = (obs.groupby(bins, observed=True)["duration_days"]
                   .agg(episodes="size", median_days="median", mean_days="mean").round(1))
-        dur.to_csv(TAB / "e_duration_by_effective_owners.csv")
+        dur.to_csv(TAB / "e_duration_by_footprint_owners.csv")
         LOG.info("  median duration by effective owners:\n%s", dur.to_string())
 
         cbins = pd.cut(obs["concurrent_shortages"], [-0.1, 0, 1, 3, np.inf],
@@ -682,13 +796,15 @@ def stage_e_redundancy(epi: pd.DataFrame, inj: pd.DataFrame, links: pd.DataFrame
 
         _confounding_check(obs)
 
-    LOG.info("  nominal labelers %.2f vs effective owners %.2f; "
+    LOG.info("  footprint labelers %.2f vs independent owners %.2f; "
              "%.0f%% of episodes overstate independence via ownership; "
              "%.0f%% had an alternative already in shortage",
-             red["nominal_labelers"].mean(), red["effective_owners"].mean(),
+             red["footprint_labelers"].mean(), red["footprint_owners"].mean(),
              100 * red["consolidated"].mean(),
              100 * (red["concurrent_shortages"] > 0).mean())
-    LOG.info("  VERDICT E: the construct is constructible end to end on our data.")
+    LOG.info("  VERDICT E: the construct is constructible end to end, but at "
+             "INGREDIENT granularity. Only concurrent_shortages is measured at "
+             "the granularity of the product that actually went short.")
     return red
 
 
@@ -706,11 +822,11 @@ def _confounding_check(obs: pd.DataFrame) -> None:
     o["log_dur"] = np.log1p(o["duration_days"].clip(lower=0))
     g = o.groupby("ingredient")
     o["dur_w"] = o["log_dur"] - g["log_dur"].transform("mean")
-    o["own_w"] = o["effective_owners"] - g["effective_owners"].transform("mean")
+    o["own_w"] = o["footprint_owners"] - g["footprint_owners"].transform("mean")
     within = o[g["ingredient"].transform("size") >= 3]
 
-    raw = o[["duration_days", "effective_owners"]].corr(method="spearman").iloc[0, 1]
-    size = o[["duration_days", "nominal_ndcs"]].corr(method="spearman").iloc[0, 1]
+    raw = o[["duration_days", "footprint_owners"]].corr(method="spearman").iloc[0, 1]
+    size = o[["duration_days", "footprint_ndcs"]].corr(method="spearman").iloc[0, 1]
     wcorr = np.corrcoef(within["own_w"], within["dur_w"])[0, 1] if len(within) > 10 else np.nan
 
     out = pd.DataFrame([
@@ -787,7 +903,7 @@ def fig_km_parenteral(uu: pd.DataFrame) -> None:
     LOG.info("  figure: km_injectable_vs_oral.png (log-rank p=%.3g)", lr.p_value)
 
 
-def fig_nominal_vs_effective(red: pd.DataFrame) -> None:
+def fig_footprint_vs_owners(red: pd.DataFrame) -> None:
     """How far the ownership rollup moves the supplier count.
 
     On current lookup coverage it barely moves at all -- the points sit on the
@@ -797,39 +913,40 @@ def fig_nominal_vs_effective(red: pd.DataFrame) -> None:
     """
     if red.empty:
         return
-    agg = (red.groupby("nominal_labelers")
-              .agg(effective=("effective_owners", "mean"), episodes=("drug_text", "size"))
+    agg = (red.groupby("footprint_labelers")
+              .agg(effective=("footprint_owners", "mean"), episodes=("drug_text", "size"))
               .reset_index())
-    agg = agg[agg["nominal_labelers"] <= 15]
+    agg = agg[agg["footprint_labelers"] <= 15]
 
     fig, ax = plt.subplots(figsize=(7.5, 4.6), dpi=200)
     _style(ax)
-    lim = agg["nominal_labelers"].max() + 1
+    lim = agg["footprint_labelers"].max() + 1
     ax.plot([0, lim], [0, lim], color=GRID, lw=2, ls="--", zorder=1)
-    ax.scatter(agg["nominal_labelers"], agg["effective"],
+    ax.scatter(agg["footprint_labelers"], agg["effective"],
                s=np.clip(agg["episodes"] * 6, 40, 400), color=BLUE,
                edgecolor="white", linewidth=2, zorder=3)
 
     ax.set_xlim(0, lim)
     ax.set_ylim(0, lim)
-    ax.set_xlabel("Nominal suppliers listed at onset", color=MUTED, fontsize=10)
+    ax.set_xlabel("Labelers marketing the ingredient at onset", color=MUTED, fontsize=10)
     ax.set_ylabel("Independent corporate owners", color=MUTED, fontsize=10)
-    ax.set_title("Ownership rollup barely separates from raw supplier counts",
+    ax.set_title("Ownership rollup barely separates from raw label counts",
                  color=INK, fontsize=13, fontweight="bold", loc="left", pad=14)
-    ax.text(lim * 0.80, lim * 0.70, "every supplier independent", color=MUTED,
+    ax.text(lim * 0.80, lim * 0.70, "every labeler independent", color=MUTED,
             fontsize=8.5, rotation=45, ha="center", va="center",
             rotation_mode="anchor")
     ax.text(0, -0.2, f"{len(red):,} matched injectable episodes, onset {PILOT_START_YEAR}+. "
                      "Point size = episodes. Ownership evaluated as of the onset date.\n"
                      "Points sit on the diagonal because only a minority of injectable firms "
-                     "carry a parent link in the 2020 lookup: a coverage limit, not evidence "
-                     "these markets are unconsolidated.",
+                     "carry a parent link in the 2020 lookup: a coverage limit, not evidence\n"
+                     "these markets are unconsolidated. Counts are over all injectable NDCs of "
+                     "the ingredient, not the presentation that went short.",
             transform=ax.transAxes, color=MUTED, fontsize=8, va="top")
 
     fig.subplots_adjust(bottom=0.22)
-    fig.savefig(FIG / "nominal_vs_effective_owners.png", bbox_inches="tight", facecolor="white")
+    fig.savefig(FIG / "nominal_vs_footprint_owners.png", bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    LOG.info("  figure: nominal_vs_effective_owners.png")
+    LOG.info("  figure: nominal_vs_footprint_owners.png")
 
 
 def fig_duration_by_owners(red: pd.DataFrame) -> None:
@@ -837,7 +954,7 @@ def fig_duration_by_owners(red: pd.DataFrame) -> None:
     obs = red[red["event_observed"] == 1]
     if len(obs) < 30:
         return
-    bins = pd.cut(obs["effective_owners"], [0, 1, 2, 4, np.inf],
+    bins = pd.cut(obs["footprint_owners"], [0, 1, 2, 4, np.inf],
                   labels=["1", "2", "3-4", "5+"])
     g = obs.groupby(bins, observed=True)["duration_days"].agg(["size", "median"])
 
@@ -850,20 +967,22 @@ def fig_duration_by_owners(red: pd.DataFrame) -> None:
         ax.text(b.get_x() + b.get_width() / 2, 6, f"n={n}", ha="center",
                 color="white", fontsize=8.5)
 
-    ax.set_xlabel("Independent corporate owners at onset", color=MUTED, fontsize=10)
+    ax.set_xlabel("Independent owners of the ingredient at onset", color=MUTED, fontsize=10)
     ax.set_ylabel("Median days to resolution", color=MUTED, fontsize=10)
-    ax.set_title("More suppliers, longer shortages: the confounded result",
+    ax.set_title("A bigger ingredient footprint, longer shortages",
                  color=INK, fontsize=13, fontweight="bold", loc="left", pad=14)
-    ax.text(0, -0.22, "Resolved injectable episodes only; descriptive and unadjusted.\n"
-                      "Runs opposite to the hypothesis because commodity injectables carry both "
-                      "the most suppliers and the longest\nepisodes. Demeaned within ingredient the "
-                      "association falls to r = 0.06 (see e_confounding_check.csv).",
+    ax.text(0, -0.22, "Resolved injectable episodes only; descriptive and unadjusted. Owners are "
+                      "counted over all injectable\nNDCs of the active ingredient, not the "
+                      "presentation that went short. Runs opposite to the hypothesis\nbecause "
+                      "commodity injectables carry both the largest footprints and the longest "
+                      "episodes; demeaned\nwithin ingredient the association falls to r = 0.06 "
+                      "(see e_confounding_check.csv).",
             transform=ax.transAxes, color=MUTED, fontsize=8, va="top")
 
     fig.subplots_adjust(bottom=0.30)
-    fig.savefig(FIG / "duration_by_effective_owners.png", bbox_inches="tight", facecolor="white")
+    fig.savefig(FIG / "duration_by_footprint_owners.png", bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    LOG.info("  figure: duration_by_effective_owners.png")
+    LOG.info("  figure: duration_by_footprint_owners.png")
 
 
 # ==============================================================================
@@ -886,26 +1005,49 @@ def write_summary(uu: pd.DataFrame, inj: pd.DataFrame, epi: pd.DataFrame,
         "|---|---|---|",
         f"| A | Are injectable shortage episodes available? | YES. {n_inj:,} parenteral "
         f"episodes, {int(uu['onset_year'].min())}–{int(uu['onset_year'].max())}, pre-flagged by UUDIS |",
-        f"| B | Can we see who was marketing the drug at onset? | YES. {len(inj):,} injectable NDCs, "
-        f"{inj['labeler'].nunique():,} labelers, with marketing start/end dates |",
+        f"| B | Can we see who was marketing the drug at onset? | PARTLY. {len(inj):,} injectable "
+        f"NDCs and {inj['labeler'].nunique():,} labelers with marketing start/end dates, but only at "
+        "ACTIVE INGREDIENT level, and from a live snapshot with no delisted products |",
         f"| C | Can suppliers be resolved to owners and sites? | PARTLY. Ownership broad, "
         f"site bridge {100 * inj['has_site'].mean():.0f}% of injectable NDCs |",
-        f"| D | Can shortage episodes be joined to products? | MOSTLY. "
-        f"{100 * epi['matched'].mean():.0f}% matched automatically |",
-        f"| E | Is effective redundancy constructible? | YES. Demonstrated on "
-        f"{len(red):,} episodes |",
+        f"| D | Can shortage episodes be joined to products? | PARTLY. "
+        f"{100 * epi['match_confident'].mean():.0f}% matched confidently on name alone; "
+        f"only {100 * (epi['granularity'] != 'ingredient_only').mean():.0f}% of episodes name a "
+        "strength or container |",
+        f"| E | Is effective redundancy constructible? | YES, at ingredient granularity. "
+        f"Demonstrated on {len(red):,} episodes |",
         "",
         "## Headline numbers",
         "",
         f"- Parenteral episodes: **{n_inj:,}** of {len(uu):,} ({100 * n_inj / len(uu):.0f}%).",
         f"- Median time to resolution: **{inj_res['duration_days'].median():.0f} days** for "
         f"injectables vs {oral_res['duration_days'].median():.0f} for everything else.",
-        f"- Nominal suppliers at onset: **{red['nominal_labelers'].mean():.2f}** on average; "
-        f"independent owners: **{red['effective_owners'].mean():.2f}**.",
+        f"- Labelers marketing the ingredient at onset: **{red['footprint_labelers'].mean():.2f}** on average; "
+        f"independent owners: **{red['footprint_owners'].mean():.2f}**.",
         f"- **{100 * red['consolidated'].mean():.0f}%** of episodes had fewer independent "
-        "owners than listed suppliers (a lower bound; see limit 2).",
+        "owners than labelers (a lower bound; see limit 2).",
         f"- **{100 * (red['concurrent_shortages'] > 0).mean():.0f}%** of episodes began while "
         "another presentation of the same ingredient was already in shortage.",
+        "",
+        "## The measurement problem that governs everything above",
+        "",
+        "UUDIS carries a free-text drug name and nothing else: no NDC, no ANDA, no "
+        "application number. Every link to the product universe is therefore name-based, "
+        "and it resolves at **active ingredient** level. So the counts above are the "
+        "ingredient's injectable footprint, not the suppliers of the product that went "
+        "short. `0.9% sodium chloride flush syringes` and `14.6% sodium chloride injection` "
+        "are different markets and receive near-identical counts.",
+        "",
+        "Only 10% of episodes name a strength or a container in their text, so for the rest "
+        "the source does not support anything finer (`d_market_granularity.csv`). Of the "
+        "matches themselves, exact and salt-form matches are sound; a third tier that "
+        "guessed from a single first-token candidate is excluded from all counts and "
+        "written out for manual review (`d_unverified_matches_REVIEW.csv`) because it "
+        "contains real errors, such as Calcium Acetate resolving to calcium chloride.",
+        "",
+        "`concurrent_shortages` is the exception. It comes from the episode file rather "
+        "than the product file, so it is measured at the granularity of the thing that "
+        "actually went short.",
         "",
         "## One finding the pilot should know before it starts",
         "",
@@ -932,6 +1074,9 @@ def write_summary(uu: pd.DataFrame, inj: pd.DataFrame, epi: pd.DataFrame,
         f"4. {int((uu['duration_days'] < 0).sum())} episodes have a resolution date before "
         "the notification date and are dropped here.",
         "5. The parent rollup follows one ownership hop. Multi-hop chains are untested.",
+        "6. The FDA NDC Directory is a live snapshot, not an archive: no already-delisted "
+        "product is retained, so a supplier who exited before the extract date is invisible "
+        "and every historical count is a floor. Archived per-year NDC snapshots are the fix.",
         "",
         "## Outputs",
         "",
@@ -962,7 +1107,7 @@ def main() -> int:
 
     LOG.info("Figures")
     fig_km_parenteral(uu)
-    fig_nominal_vs_effective(red)
+    fig_footprint_vs_owners(red)
     fig_duration_by_owners(red)
 
     write_summary(uu, inj, epi, red)
