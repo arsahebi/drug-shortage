@@ -93,6 +93,151 @@ HUMAN_COLS = [
 ]
 
 
+# ── workbook styling: copied from round 1's labeling_template_v2.xlsx ──────
+# Round 1 was usable because every judgment column was a dropdown and the
+# input columns were visibly shaded. Rebuilding that here by hand, since
+# pandas.to_excel writes a bare grid. The spec below was read back off the
+# round-1 file with openpyxl, so round 2 looks identical to the annotator.
+
+COL_WIDTHS = {
+    "A": 12, "B": 12, "C": 12, "D":  9, "E": 14, "F": 70, "G": 26,
+    "H": 16, "I": 18, "J": 16, "K": 18, "L": 14, "M": 16, "N": 40,
+    "O": 18, "P": 22, "Q": 40, "R": 16, "S": 18, "T": 14, "U": 40,
+}
+
+# column letter -> allowed values. Columns N, Q, U are free text.
+DROPDOWNS = {
+    "G": "QualitySystem,ProductionSystem,MaterialsSystem,FacilitiesEquipmentSystem,"
+         "LaboratoryControlsSystem,PackagingLabelingSystem,Other",
+    "H": "Critical,Major,Moderate,Minor",
+    "I": "SingleBatch,MultipleProducts,FacilityWide,Unclear",
+    "J": "Capital,Cultural,Mixed,Unclear",
+    "K": "Strong,Partial,Weak,None",
+    "L": "TRUE,FALSE",
+    "M": "TRUE,FALSE",
+    "O": "TRUE,FALSE",
+    "P": "TRUE,FALSE",
+    "R": "TRUE,FALSE",
+    "S": "TRUE,FALSE",
+    "T": "1,2,3,4,5",
+}
+
+FIRST_INPUT_COL = "G"      # A-F are read-only context
+HEADER_FILL     = "00D9D9D9"
+INPUT_FILL      = "00FFF9E6"
+
+INSTRUCTIONS = [
+    "483 Observation Labeling -- Instructions (ROUND 2)",
+    "",
+    "What this is: real FDA Form 483 observations from our facility inspection "
+    "dataset. Assign the same 11 labels a domain expert would, using ONLY the "
+    "observation text -- do not look up the facility, drug, or any outside "
+    "information.",
+    "",
+    "Two things that are different from round 1:",
+    "",
+    "  1. The rules have been amended since you labeled round 1. Data integrity now "
+    "includes testing or retesting into compliance. A confirmed environmental "
+    "monitoring excursion inside a classified Grade A/B area counts as confirmed "
+    "contamination for patient risk. A market complaint naming a batch counts as "
+    "evidence that batch was distributed. Please work from the attached "
+    "483_Labeling_Rules_v2.docx, which is the current version.",
+    "",
+    "  2. Please label every row from scratch, using only the text in front of you. "
+    "Do not open or consult your round-1 file while you work. Some rows may look "
+    "familiar; label them as you read them now rather than trying to match what you "
+    "said before. This is deliberate and it is how we measure the consistency of the "
+    "labeling itself.",
+    "",
+    "Full field definitions, valid values, and worked examples are in "
+    "483_Labeling_Rules_v2.docx. Read that first -- these are the exact same "
+    "definitions our LLM pipeline uses, so your labels are directly comparable to "
+    "its output.",
+    "",
+    "How to fill this in:",
+    "  1. Work in the 'Labeling' tab. Columns A-F are read-only context (do not edit).",
+    "  2. Columns with a pale yellow fill are yours to complete. Most are dropdown "
+    "lists -- click the cell and choose from the arrow.",
+    "  3. human_patient_risk_why: a short sentence on WHY you set the patient-risk "
+    "flag the way you did. Required whenever the flag is TRUE.",
+    "  4. human_contamination_why: a short sentence on WHY you set "
+    "human_contamination_flag and human_contamination_risk_flag the way you did -- "
+    "this is the newest, subtlest distinction in the rules (confirmed event vs. "
+    "control-risk gap), so we want to see your reasoning even when you're confident.",
+    "  5. human_confidence_1to5: how confident you are in your own labels for that "
+    "row (1 = guessing, 5 = certain).",
+    "  6. notes: anything ambiguous, anything you'd flag for discussion, or where the "
+    "text itself seems incomplete/redacted in a way that affects your answer.",
+    "",
+    "Please work independently and do not discuss individual rows with anyone until "
+    "you're done -- this keeps the comparison clean. If a row is genuinely ambiguous "
+    "even after reading the rules, label it your best judgment and flag it in 'notes' "
+    "rather than skipping it.",
+    "",
+    "When you're done, save the file and send it back -- do not change the file name "
+    "or sheet names, and do not add/remove/reorder columns.",
+]
+
+
+def _write_styled_workbook(out: pd.DataFrame) -> None:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import column_index_from_string
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = "Instructions"
+    ws.column_dimensions["A"].width = 100
+    for i, line in enumerate(INSTRUCTIONS, start=1):
+        c = ws.cell(row=i, column=1, value=line)
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        c.font = Font(size=11, bold=(i == 1))
+    ws.row_dimensions[1].height = 24
+    ws.row_dimensions[2].height = 8
+
+    lab = wb.create_sheet("Labeling")
+    lab.append(list(out.columns))
+    for row in out.itertuples(index=False):
+        lab.append(list(row))
+
+    n_rows = len(out)
+    last_row = n_rows + 1
+    first_input = column_index_from_string(FIRST_INPUT_COL)
+
+    for letter, width in COL_WIDTHS.items():
+        lab.column_dimensions[letter].width = width
+
+    header_fill = PatternFill("solid", fgColor=HEADER_FILL)
+    for c in lab[1]:
+        c.font = Font(bold=True, size=10)
+        c.fill = header_fill
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+    lab.row_dimensions[1].height = 28
+
+    input_fill = PatternFill("solid", fgColor=INPUT_FILL)
+    for r in range(2, last_row + 1):
+        lab.row_dimensions[r].height = 90
+        for ci in range(1, len(out.columns) + 1):
+            c = lab.cell(row=r, column=ci)
+            c.font = Font(size=10)
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+            if ci >= first_input:
+                c.fill = input_fill
+
+    for letter, allowed in DROPDOWNS.items():
+        dv = DataValidation(type="list", formula1=f'"{allowed}"', allow_blank=True)
+        lab.add_data_validation(dv)
+        dv.add(f"{letter}2:{letter}{last_row}")
+
+    lab.freeze_panes = "G2"
+
+    wb.save(OUT_XLS)
+    print(f"  styled: {len(COL_WIDTHS)} columns, {n_rows} data rows, "
+          f"{len(DROPDOWNS)} dropdowns, frozen at G2")
+
+
 def _key(df):
     return (df["fei"].astype(str).str.strip() + "|"
             + df["insp_date"].astype(str).str.strip() + "|"
@@ -164,30 +309,8 @@ def main() -> None:
     for c in HUMAN_COLS:
         out[c] = ""
 
-    instructions = pd.read_excel(ROUND1_XLS, sheet_name="Instructions", header=None)
-    note = pd.DataFrame({0: [
-        "ROUND 2",
-        "",
-        "Same task and same fields as round 1. Two things to know:",
-        "",
-        "1. The labeling rules have been updated since round 1 (data integrity now "
-        "includes testing/retesting into compliance; a confirmed EM excursion inside a "
-        "classified Grade A/B area counts as confirmed contamination for patient risk; a "
-        "market complaint naming a batch counts as evidence that batch was distributed). "
-        "Please work from the current 483_Labeling_Rules_v2.docx, not from memory of round 1.",
-        "",
-        "2. Please label every row independently, using only the observation text in front "
-        "of you. Do not look back at your round-1 answers.",
-        "",
-        "-" * 60,
-        "",
-    ]})
-    instructions = pd.concat([note, instructions], ignore_index=True)
-
     OUT_XLS.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(OUT_XLS, engine="openpyxl") as xw:
-        instructions.to_excel(xw, sheet_name="Instructions", index=False, header=False)
-        out.to_excel(xw, sheet_name="Labeling", index=False)
+    _write_styled_workbook(out)
     print(f"Saved annotator file -> {OUT_XLS}")
 
     OUT_KEY.parent.mkdir(parents=True, exist_ok=True)
