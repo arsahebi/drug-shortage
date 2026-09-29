@@ -100,6 +100,13 @@ PROVIDER         = "anthropic"                 # "openai" or "anthropic"
 MODEL_NAME       = "gpt-5-mini"               # OpenAI model
 ANTHROPIC_MODEL  = "claude-haiku-4-5-20251001" # Anthropic model (cheapest/fastest)
 MAX_TOKENS       = 4000
+# Deterministic decoding. Left unset, the Anthropic default of 1.0 produced only
+# 72-96% self-agreement when the identical prompt was re-run on the identical 50
+# observations (eval/results_and_notes/20260902_human_eval_round1_findings_and_fixes.md),
+# swinging accuracy-vs-human by 12-16 points on some fields with no prompt change.
+# Not applied to the OpenAI path: gpt-5-mini is a reasoning model and the Responses
+# API rejects temperature for it.
+TEMPERATURE      = 0.0
 RATE_LIMIT_RETRIES = 4    # retries per request on RateLimitError
 RATE_LIMIT_SLEEP   = 65   # seconds; grows linearly per attempt
 SAVE_EVERY = 50      # write partial results every N observations
@@ -1804,6 +1811,7 @@ def _call_anthropic(client, obs_row: pd.Series, version: str = "v1") -> tuple[di
                 response = client.messages.create(
                     model=ANTHROPIC_MODEL,
                     max_tokens=MAX_TOKENS,
+                    temperature=TEMPERATURE,
                     system=[{
                         "type": "text",
                         "text": (
