@@ -120,7 +120,10 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
 **Result tables (authoritative, regenerated 2026-09-30)**
 - `.../eval/results_and_notes/claude_vs_gpt_agreement.csv`
 - `.../eval/results_and_notes/semantic_lift_vs_regex.csv`
-- `.../eval/results_and_notes/extraction_reproducibility_anthropic.csv`
+- `.../eval/results_and_notes/extraction_reproducibility_anthropic.csv` (Claude, 3 passes)
+- `.../eval/results_and_notes/extraction_reproducibility_openai.csv` (GPT, 3 passes)
+- `.../eval/results_and_notes/reproducibility_vs_crossmodel.csv` (the combined table that
+  separates systematic model disagreement from each model's own instability)
 - `.../eval/results_and_notes/models_vs_human_agreement.csv`
 - `.../vai_signal_validation/outputs/models/ablation_metrics_anda.csv` and
   `ablation_metrics.csv`
