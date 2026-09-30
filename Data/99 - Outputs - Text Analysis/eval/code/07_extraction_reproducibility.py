@@ -62,7 +62,7 @@ DATA = EVAL_ROOT.parent
 EXTRACT_PY = DATA / "01_extract_observation_signals.py"
 REDICA_OBS = DATA / "step00_redica_483_observations.csv"
 ROUND1_XLS = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
-OUT_CSV = EVAL_ROOT / "results_and_notes" / "extraction_reproducibility.csv"
+OUT_DIR = EVAL_ROOT / "results_and_notes"
 
 # the fields Abdul labels and the paper reports; rationale/quote free text is
 # excluded because it is expected to vary in wording without varying in meaning
@@ -135,13 +135,8 @@ def _load_constants() -> dict:
                 _patch_subscript(target, _eval(node.value, out), out)
         except Exception:
             pass
-    needed = [
-        "_ANTHROPIC_PROMPT_FIXED_V2", "_ANTHROPIC_PROMPT_VARIABLE_TEMPLATE",
-        "ANTHROPIC_TOOL_V2", "MAX_TOKENS",
-    ]
-    missing = [n for n in needed if n not in out]
-    if missing:
-        sys.exit(f"Could not read {missing} from {EXTRACT_PY.name}")
+    if "MAX_TOKENS" not in out:
+        sys.exit(f"Could not read MAX_TOKENS from {EXTRACT_PY.name}")
     return out
 
 
@@ -159,6 +154,34 @@ def _round1_rows() -> pd.DataFrame:
     if len(rows) != len(r1):
         print(f"  WARNING: matched {len(rows)} of {len(r1)} round-1 rows")
     return rows.sort_values("key").reset_index(drop=True)
+
+
+def _extract_one_openai(client, C: dict, text: str, cfr, model: str) -> dict:
+    """Same v2 prompt and schema the pipeline sends, via the Responses API."""
+    import json
+    cfr_str = str(cfr).strip() if pd.notna(cfr) and str(cfr).strip() else "not specified"
+    prompt = C["_PROMPT_TEMPLATE_V2"].format(
+        obs_text_clean=text.strip(), cfr_codes=cfr_str,
+        patient_risk_rule=C["_PATIENT_RISK_RULE_OPENAI_V2"])
+    resp = client.responses.create(
+        model=model,
+        input=[
+            {"role": "system",
+             "content": ("You extract structured risk signals from FDA Form 483 "
+                         "observations. Return only schema-valid JSON.")},
+            {"role": "user", "content": prompt},
+        ],
+        max_output_tokens=C["MAX_TOKENS"],
+        text={"format": {"type": "json_schema",
+                         "name": "form_483_observation_signal",
+                         "strict": True,
+                         "schema": C["OPENAI_JSON_SCHEMA_V2"]}},
+    )
+    txt = getattr(resp, "output_text", "") or ""
+    try:
+        return json.loads(txt)
+    except Exception:
+        return {}
 
 
 def _extract_one(client, C: dict, text: str, cfr, model: str) -> dict:
@@ -189,26 +212,42 @@ def _extract_one(client, C: dict, text: str, cfr, model: str) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=2, help="number of identical passes")
-    ap.add_argument("--model", default="claude-sonnet-5")
+    ap.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic")
+    ap.add_argument("--model", default=None,
+                    help="default: claude-sonnet-5 / gpt-5-mini for the chosen provider")
     args = ap.parse_args()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("ANTHROPIC_API_KEY is not set.")
-    from anthropic import Anthropic
+    model = args.model or ("claude-sonnet-5" if args.provider == "anthropic" else "gpt-5-mini")
+    if args.provider == "anthropic":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            sys.exit("ANTHROPIC_API_KEY is not set.")
+        from anthropic import Anthropic
+        client, call = Anthropic(), _extract_one
+        needed = ["_ANTHROPIC_PROMPT_FIXED_V2", "_ANTHROPIC_PROMPT_VARIABLE_TEMPLATE",
+                  "ANTHROPIC_TOOL_V2"]
+    else:
+        if not os.environ.get("OPENAI_API_KEY"):
+            sys.exit("OPENAI_API_KEY is not set.")
+        from openai import OpenAI
+        client, call = OpenAI(), _extract_one_openai
+        needed = ["_PROMPT_TEMPLATE_V2", "_PATIENT_RISK_RULE_OPENAI_V2",
+                  "OPENAI_JSON_SCHEMA_V2"]
 
     C = _load_constants()
+    missing = [n for n in needed if n not in C]
+    if missing:
+        sys.exit(f"Could not read {missing} from {EXTRACT_PY.name}")
     rows = _round1_rows()
     print(f"round-1 observations recovered      : {len(rows)}")
-    print(f"model                               : {args.model}")
+    print(f"provider / model                    : {args.provider} / {model}")
     print(f"passes                              : {args.runs}\n")
 
-    client = Anthropic()
     runs = []
     for r in range(args.runs):
         recs = []
         t0 = time.time()
         for i, obs in rows.iterrows():
-            res = _extract_one(client, C, str(obs["obs_text"]), obs.get("cfr_codes", ""), args.model)
+            res = call(client, C, str(obs["obs_text"]), obs.get("cfr_codes", ""), model)
             res["key"] = obs["key"]
             recs.append(res)
             if (i + 1) % 10 == 0:
@@ -239,9 +278,10 @@ def main() -> None:
     print("\nSelf-agreement (identical prompt, identical input, default decoding):")
     print(res.to_string(index=False))
 
-    OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    res.to_csv(OUT_CSV, index=False)
-    print(f"\nSaved -> {OUT_CSV}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_csv = OUT_DIR / f"extraction_reproducibility_{args.provider}.csv"
+    res.to_csv(out_csv, index=False)
+    print(f"\nSaved -> {out_csv}")
 
     worst = res["pairwise_self_agreement_pct"].min()
     print()
