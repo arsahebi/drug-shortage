@@ -63,9 +63,17 @@ FDA_INSP_XLSX   = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.
 SDUD_PARQ    = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDcanonical.parquet"
 NDC_FEI_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
 ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae_counts_quarterly.csv"
+# 2026-09-30 alternative: ProPublica-linked ANDA counts on the expanded drug
+# list, restricted to NDCs with exactly one FEI and one ANDA so every adverse
+# event traces to a single facility. Built by
+# 08 - Valisure/processed/20260930_build_propublica_anda_faers.py
+PROPUBLICA_AE_QTR_CSV = (DATA / "08 - Valisure" / "processed" /
+                         "propublica_fei_ae_quarterly_single.csv")
+ANDA_SOURCE = "valisure"   # overridden by --anda-source
 
 OUT_PANEL_INSP      = OUT / "fei_ae_panel_inspection_centered.parquet"
 OUT_PANEL_INSP_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
+OUT_PANEL_INSP_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 
 # v2 schema: 2 renames from the original (v1) feature list, rest unchanged.
 # severity_majmod_share (Major+Moderate collapsed), not severity_critmajor_share
@@ -159,7 +167,10 @@ def _faers_quarterly(joined: pd.DataFrame) -> pd.DataFrame:
 
 
 def _load_anda_ae_quarterly() -> pd.DataFrame:
-    df = pd.read_csv(ANDA_AE_QTR_CSV, low_memory=False)
+    path = (PROPUBLICA_AE_QTR_CSV if ANDA_SOURCE == "propublica"
+            else ANDA_AE_QTR_CSV)
+    print(f"  ANDA AE source: {path.name}")
+    df = pd.read_csv(path, low_memory=False)
     df["fei"] = pd.to_numeric(df["fei"], errors="coerce").astype("Int64")
     df = df.dropna(subset=["fei", "period", "n_ae_serious"])
     df["ae_year"] = df["period"].str[:4].astype(int)
@@ -379,7 +390,11 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame,
     print(f"  OAI inspections: {panel['any_oai'].sum()} ({panel['any_oai'].mean():.1%})")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_PANEL_INSP_ANDA if use_anda_ae else OUT_PANEL_INSP
+    if use_anda_ae:
+        out_path = (OUT_PANEL_INSP_PP if ANDA_SOURCE == "propublica"
+                    else OUT_PANEL_INSP_ANDA)
+    else:
+        out_path = OUT_PANEL_INSP
     panel.to_parquet(out_path, index=False)
     print(f"\nSaved -> {out_path}")
 
@@ -390,7 +405,14 @@ def main() -> None:
         "--anda-ae", action="store_true",
         help="Use ANDA-specific FAERS AE counts instead of drug-level counts.",
     )
+    parser.add_argument(
+        "--anda-source", choices=["valisure", "propublica"], default="valisure",
+        help="'valisure' = hand-built March 2026 mapping, 14 APIs. "
+             "'propublica' = ProPublica linkage on the expanded list, "
+             "restricted to one-FEI one-ANDA NDCs so attribution is unambiguous.",
+    )
     args = parser.parse_args()
+    globals()["ANDA_SOURCE"] = args.anda_source
 
     print("Loading text timeseries...")
     ts = _load_text_timeseries()

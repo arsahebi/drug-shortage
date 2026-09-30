@@ -67,6 +67,7 @@ OUT_FIGS  = OUT / "figures"
 OUT_MOD   = OUT / "models"
 PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
+PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 
 # v2 schema: same 2 renames as 01_build_inspection_panel.py.
 # severity_majmod_share (Major+Moderate collapsed), not severity_critmajor_share
@@ -236,6 +237,9 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path, outcome_label: str 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VAI-only text-signal AE prediction, rerun with current data")
+    parser.add_argument("--anda-source", choices=["valisure", "propublica"],
+                        default="valisure",
+                        help="'propublica' uses the clean one-FEI one-ANDA panel")
     parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
                         help="Use ANDA-specific AE panel instead of drug-level panel")
     parser.add_argument("--outcome", choices=["global", "relative"], default="relative",
@@ -244,7 +248,10 @@ def main() -> None:
                              "per-facility pre-vs-post comparison, the 2026-09-16 fix "
                              "(default).")
     args = parser.parse_args()
-    panel_path = PANEL_ANDA if args.anda_ae else PANEL
+    if args.anda_ae:
+        panel_path = PANEL_PP if args.anda_source == 'propublica' else PANEL_ANDA
+    else:
+        panel_path = PANEL
 
     if not panel_path.exists():
         raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_inspection_panel.py first.")
@@ -316,7 +323,9 @@ def main() -> None:
     OUT_TABS.mkdir(parents=True, exist_ok=True)
     OUT_FIGS.mkdir(parents=True, exist_ok=True)
 
-    suffix = ("_anda" if args.anda_ae else "") + ("" if args.outcome == "relative" else "_global")
+    suffix = (("_anda" if args.anda_ae else "")
+              + ("_pp" if args.anda_ae and args.anda_source == "propublica" else "")
+              + ("" if args.outcome == "relative" else "_global"))
     metrics.to_csv(OUT_MOD / f"ablation_metrics{suffix}.csv", index=False)
     print(f"\nResults:\n{metrics[['config','model','auc','p_vs_0.5','n_folds','n']].to_string(index=False)}")
 
