@@ -76,13 +76,21 @@ OUT_PANEL_INSP_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 OUT_PANEL_INSP_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 
 # v2 schema: 2 renames from the original (v1) feature list, rest unchanged.
-# severity_majmod_share (Major+Moderate collapsed), not severity_critmajor_share
-# (Critical+Major collapsed): human-eval accuracy (eval/results_and_notes/
-# 20260916_LLM_Extraction_Validation_Report.docx, Section 2) is 90-94% for the
-# Major/Moderate collapse vs. 66-68% for the raw 4-tier -- the extraction's real
-# confusion is at the Major/Moderate boundary, not Critical/Major.
+#
+# severity_critmajor_share (Critical+Major), NOT severity_majmod_share.
+# Corrected 2026-09-30. majmod was chosen because human-eval accuracy is 90-94%
+# for a Major/Moderate collapse against 66-68% for the raw 4-tier, the
+# extraction's real confusion being at the Major/Moderate boundary. That reasoning
+# was about measurement noise and missed a construct problem: (Major+Moderate)/total
+# goes DOWN as an inspection gets worse, because Critical observations sit outside
+# the numerator. Measured correlation with severity_critical_share is -0.842, and
+# 54.5% of snapshots sit at exactly 1.0, so the feature was both inverted and
+# saturated. critmajor collapses the same noisy Major boundary while staying
+# ordered by severity. Swapping it in moved text-only RF AUC from 0.619 (p=0.077)
+# to 0.648 (p=0.032) on the clean attribution panel, and lifted the VAI-only
+# subgroup from 0.415 (below chance) to 0.508.
 TEXT_FEATURES = [
-    "severity_majmod_share",
+    "severity_critmajor_share",
     "contamination_llm_share",
     "data_integrity_llm_share",
     "patient_risk_llm_share",

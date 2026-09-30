@@ -70,13 +70,13 @@ PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 
 # v2 schema: same 2 renames as 01_build_inspection_panel.py.
-# severity_majmod_share (Major+Moderate collapsed), not severity_critmajor_share
-# (Critical+Major collapsed): human-eval accuracy (eval/results_and_notes/
-# 20260916_LLM_Extraction_Validation_Report.docx, Section 2) is 90-94% for the
-# Major/Moderate collapse vs. 66-68% for the raw 4-tier -- the extraction's real
-# confusion is at the Major/Moderate boundary, not Critical/Major.
+# severity_critmajor_share (Critical+Major), NOT severity_majmod_share.
+# Corrected 2026-09-30; see the long note in 01_build_inspection_panel.py.
+# (Major+Moderate)/total falls as an inspection gets worse because Critical sits
+# outside the numerator: correlation with severity_critical_share is -0.842 and
+# 54.5% of snapshots were pinned at 1.0.
 TEXT_FEATURES = [
-    "severity_majmod_share",
+    "severity_critmajor_share",
     "contamination_llm_share",
     "data_integrity_llm_share",
     "patient_risk_llm_share",
