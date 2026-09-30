@@ -28,10 +28,24 @@ choice, and this script implements all three rather than burying one:
           Preserves the national total. Assumes equal production share, which
           is certainly wrong per facility but is unbiased in aggregate.
   single  keep only ANDAs mapped to exactly ONE facility. Attribution is then
-          unambiguous. Smaller sample; the honest sensitivity check.
+          unambiguous. THIS IS THE DEFAULT.
 
-Report all three in the paper. If they agree, the attribution choice does not
-drive the result, which is the thing a reviewer actually wants to know.
+Why single is the default
+─────────────────────────
+We want, per facility, the adverse events caused by THAT facility's production.
+For a shared ANDA that quantity does not exist in FAERS: the reports are a
+mixture across every site approved under the application, and nothing in the
+data separates them. Splitting equally invents a number; full attribution
+assigns one site's harm to the others. So the only construction that answers
+the question is to keep applications with a single manufacturing site.
+
+Diagnosed 2026-09-30: of 37 shared ANDAs, 27 are one firm running several
+plants, 7 are contract manufacturing within a country, and 3 look like an API
+supplier plus a finisher. So multi-site approval is genuine FDA practice, not a
+linkage error, and no better matching would fix it.
+
+Report full and split as sensitivity checks. If all three agree, the
+attribution choice is not carrying the result.
 
 Caveats recorded for the write-up
 ─────────────────────────────────
@@ -76,7 +90,8 @@ SERIOUS = {
 }
 
 
-def load_anda_fei(text_only: bool, drop_api_mfr: bool) -> pd.DataFrame:
+def load_anda_fei(text_only: bool, drop_api_mfr: bool,
+                  clean_ndcs: bool = True) -> pd.DataFrame:
     """ProPublica crosswalk -> one row per (appl_no, fei), with sharing counts."""
     # ndc9 carries leading zeros; pandas will silently make it an int otherwise
     x = pd.read_csv(XWALK, low_memory=False, dtype={"ndc9": str})
@@ -99,6 +114,16 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool) -> pd.DataFrame:
     x = x.dropna(subset=["appl_no", "fei"])
     x["fei"] = x["fei"].astype(int)
     x["appl_no"] = x["appl_no"].astype(int)
+
+    if clean_ndcs:
+        # a product that lists several facilities cannot be attributed either
+        n_fei = x.groupby("ndc9")["fei"].nunique()
+        n_anda = x.groupby("ndc9")["appl_no"].nunique()
+        keep = (x["ndc9"].map(n_fei) == 1) & (x["ndc9"].map(n_anda) == 1)
+        print(f"  NDCs before clean filter: {x['ndc9'].nunique()}")
+        x = x[keep]
+        print(f"  NDCs with exactly 1 facility and 1 ANDA: {x['ndc9'].nunique()}"
+              f"  ({x['fei'].nunique()} FEIs, {x['appl_no'].nunique()} ANDAs)")
 
     m = x[["appl_no", "fei", "api", "labeler", "registrant", "country",
            "in_redica_text", "in_redica_history"]].drop_duplicates(["appl_no", "fei"])
@@ -181,7 +206,14 @@ def attribute(ae: pd.DataFrame, m: pd.DataFrame, scheme: str) -> pd.DataFrame:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scheme", choices=["full", "split", "single", "all"],
-                    default="all", help="attribution scheme (default: write all three)")
+                    default="all",
+                    help="attribution scheme; 'all' writes all three and is the "
+                         "default so the sensitivity checks stay available. "
+                         "single is the one to report.")
+    ap.add_argument("--no-clean-ndcs", dest="clean_ndcs", action="store_false",
+                    default=True,
+                    help="keep NDCs that map to several facilities or several "
+                         "ANDAs (default: drop them)")
     ap.add_argument("--text-only", action="store_true", default=True,
                     help="restrict to facilities whose 483 text we hold (default)")
     ap.add_argument("--all-facilities", dest="text_only", action="store_false",
@@ -190,7 +222,7 @@ def main() -> None:
                     help="drop rows ProPublica flags as API-only manufacturers")
     args = ap.parse_args()
 
-    m = load_anda_fei(args.text_only, args.drop_api_mfr)
+    m = load_anda_fei(args.text_only, args.drop_api_mfr, args.clean_ndcs)
     m.to_csv(OUT_MAP, index=False)
     print(f"Saved -> {OUT_MAP.name}")
 
@@ -203,8 +235,8 @@ def main() -> None:
         out.to_csv(p, index=False)
         print(f"Saved -> {p.name}\n")
 
-    print("Compare the three before reporting anything. If they agree, the "
-          "attribution choice does not drive the result.")
+    print("Report 'single': every event traces to exactly one facility. Use "
+          "'full' and 'split' as sensitivity checks only.")
 
 
 if __name__ == "__main__":
