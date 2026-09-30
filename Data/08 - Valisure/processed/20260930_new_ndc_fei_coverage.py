@@ -30,10 +30,34 @@ segments only.
 Run:
   python 20260930_new_ndc_fei_coverage.py
 
+Reading the two coverage numbers
+────────────────────────────────
+Per API we report BOTH:
+  pct_ndc_with_history  share of NDCs whose facility appears in Redica's
+                        inspection history (dates, classification, 483 counts)
+  pct_ndc_with_text     share of NDCs whose facility has actual 483
+                        observation text, which is what the LLM features need
+
+The gap between them is NOT missing data. A facility can appear in the history
+file with no 483 text because its inspections closed without a 483 being
+issued. That is a clean regulatory record, and it is informative. Judge an API
+on both numbers: low history coverage means we genuinely lack the facility,
+whereas high history but low text means the facility exists and was inspected
+without findings.
+
+Caveat on the request scope: Redica's pull was built from the March 2026
+NDC-FEI mapping, i.e. the original 14 APIs. Anything outside that request is
+absent by construction, not because the facility has a clean record. Redica is
+expected to extend the pull against the new NDC list.
+
 Outputs (written next to this script):
   new_ndc_fei_crosswalk.csv          one row per (ndc9, fei) with API + labeler
   new_ndc_fei_coverage_by_api.csv    per-API coverage summary
   new_ndc_unmatched.csv              NDCs with no ProPublica facility
+
+NOTE for consumers: ndc9 carries leading zeros. Read it with
+pd.read_csv(..., dtype={"ndc9": str}) or pandas will parse it as an integer and
+silently drop them, which makes every join against it fail.
 """
 
 from pathlib import Path
@@ -45,6 +69,11 @@ DATA = HERE.parents[1]
 VALISURE_NEW = DATA / "08 - Valisure" / "raw" / "DoD Testing Overview NEW_081026_NDCs.xlsx"
 PROPUBLICA   = DATA / "26 - Propublica" / "raw" / "ndc_fei.csv"
 REDICA       = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
+# The BINDING constraint. Redica gave us two different things: inspection history
+# for 127 FEIs (dates, classification, 483 counts) and actual 483 observation TEXT
+# for only 98 of them. Text is what the LLM features are built from, so coverage
+# must be measured against this file, not the history file.
+REDICA_TEXT  = DATA / "99 - Outputs - Text Analysis" / "step00_redica_483_observations.csv"
 FDA_INSP     = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 
 OUT_XWALK    = HERE / "new_ndc_fei_crosswalk.csv"
@@ -112,17 +141,23 @@ def main() -> None:
 
     # ── Redica coverage (the 483-text constraint) ────────────────────────────
     r = pd.read_csv(REDICA, low_memory=False)
-    r_fei = set(pd.to_numeric(r["FEI"], errors="coerce").dropna().astype(int))
+    hist_fei = set(pd.to_numeric(r["FEI"], errors="coerce").dropna().astype(int))
+    t = pd.read_csv(REDICA_TEXT, low_memory=False)
+    r_fei = set(pd.to_numeric(t["fei"], errors="coerce").dropna().astype(int))
     print("\n" + "=" * 74)
     print("STEP 2 — which of those FEIs do we have Redica inspection history for?")
     print("=" * 74)
-    print(f"  FEIs in Redica file    : {len(r_fei):,}")
-    print(f"  new-list FEIs          : {len(feis_new):,}")
-    print(f"    already in Redica    : {len(feis_new & r_fei):,} "
-          f"({100*len(feis_new & r_fei)/len(feis_new):.1f}%)")
-    print(f"    NOT in Redica        : {len(feis_new - r_fei):,}  "
-          f"<- no 483 text possible until Redica extends the pull")
-    print(f"  Redica FEIs not reached by the new list: {len(r_fei - feis_new):,}")
+    print(f"  Redica inspection HISTORY : {len(hist_fei):,} FEIs")
+    print(f"  Redica 483 TEXT           : {len(r_fei):,} FEIs  "
+          f"<- {len(hist_fei - r_fei)} have history but no text")
+    print(f"  new-list FEIs             : {len(feis_new):,}")
+    print(f"    with Redica history     : {len(feis_new & hist_fei):,} "
+          f"({100*len(feis_new & hist_fei)/len(feis_new):.1f}%)")
+    print(f"    with 483 TEXT           : {len(feis_new & r_fei):,} "
+          f"({100*len(feis_new & r_fei)/len(feis_new):.1f}%)  <- the binding number")
+    print(f"    NO text                 : {len(feis_new - r_fei):,}  "
+          f"<- no text features possible until Redica extends the pull")
+    print(f"  text FEIs not reached by the new list: {len(r_fei - feis_new):,}")
 
     # ── FDA dashboard coverage (non-text inspection features) ───────────────
     fda_fei: set[int] = set()
@@ -151,39 +186,48 @@ def main() -> None:
         n_all = g["ndc9"].nunique()
         n_lk = gm["ndc9"].nunique()
         f_all = set(gm["fei"].unique())
-        f_red = f_all & r_fei
-        n_red_ndc = gm[gm["fei"].isin(r_fei)]["ndc9"].nunique()
+        f_hist = f_all & hist_fei
+        f_text = f_all & r_fei
+        n_hist_ndc = gm[gm["fei"].isin(hist_fei)]["ndc9"].nunique()
+        n_text_ndc = gm[gm["fei"].isin(r_fei)]["ndc9"].nunique()
         rows.append({
             "api": api,
             "n_ndc": n_all,
             "n_ndc_linked": n_lk,
             "pct_ndc_linked": round(100 * n_lk / n_all, 1) if n_all else 0.0,
             "n_fei": len(f_all),
-            "n_fei_in_redica": len(f_red),
-            "pct_fei_in_redica": round(100 * len(f_red) / len(f_all), 1) if f_all else 0.0,
-            "n_ndc_with_redica_fei": n_red_ndc,
-            "pct_ndc_with_text": round(100 * n_red_ndc / n_all, 1) if n_all else 0.0,
+            "n_fei_with_history": len(f_hist),
+            "n_fei_with_text": len(f_text),
+            "n_ndc_with_history": n_hist_ndc,
+            "pct_ndc_with_history": round(100 * n_hist_ndc / n_all, 1) if n_all else 0.0,
+            "n_ndc_with_text": n_text_ndc,
+            "pct_ndc_with_text": round(100 * n_text_ndc / n_all, 1) if n_all else 0.0,
+            "history_minus_text_pp": round(100 * (n_hist_ndc - n_text_ndc) / n_all, 1) if n_all else 0.0,
         })
-    by_api = pd.DataFrame(rows).sort_values("pct_ndc_with_text", ascending=False)
+    by_api = pd.DataFrame(rows).sort_values(
+        ["pct_ndc_with_history", "pct_ndc_with_text"], ascending=False)
 
     print("\n" + "=" * 74)
-    print("STEP 4 — per-API completeness  (pct_ndc_with_text is the binding one)")
+    print("STEP 4 — per-API completeness: history coverage AND text coverage")
     print("=" * 74)
-    print(by_api.to_string(index=False))
+    show = ["api", "n_ndc", "pct_ndc_linked", "n_fei",
+            "pct_ndc_with_history", "pct_ndc_with_text", "history_minus_text_pp"]
+    print(by_api[show].to_string(index=False))
+    print("\n  history_minus_text_pp = facility is in Redica but issued no 483.")
+    print("  A clean inspection record, not a data gap.")
 
-    complete = by_api[by_api.pct_ndc_with_text >= 80]
-    partial = by_api[(by_api.pct_ndc_with_text >= 20) & (by_api.pct_ndc_with_text < 80)]
-    none_ = by_api[by_api.pct_ndc_with_text < 20]
-    print(f"\n  APIs >=80% NDCs text-capable : {len(complete)}  "
-          f"{sorted(complete.api.tolist())}")
-    print(f"  APIs 20-80%                  : {len(partial)}  "
-          f"{sorted(partial.api.tolist())}")
-    print(f"  APIs <20%                    : {len(none_)}  "
-          f"{sorted(none_.api.tolist())}")
+    for lbl, col in [("HISTORY", "pct_ndc_with_history"), ("TEXT", "pct_ndc_with_text")]:
+        hi = by_api[by_api[col] >= 80]
+        mid = by_api[(by_api[col] >= 20) & (by_api[col] < 80)]
+        lo = by_api[by_api[col] < 20]
+        print(f"\n  by {lbl} coverage:  >=80%: {len(hi)}   20-80%: {len(mid)}   <20%: {len(lo)}")
+        print(f"    >=80%: {sorted(hi.api.tolist())}")
+        print(f"    <20% : {sorted(lo.api.tolist())}")
 
     # ── save ────────────────────────────────────────────────────────────────
     out = matched.drop_duplicates(["api", "ndc9", "fei"]).copy()
-    out["in_redica"] = out["fei"].isin(r_fei)
+    out["in_redica_text"] = out["fei"].isin(r_fei)
+    out["in_redica_history"] = out["fei"].isin(hist_fei)
     if fda_fei:
         out["in_fda_dashboard"] = out["fei"].isin(fda_fei)
     out.to_csv(OUT_XWALK, index=False)
