@@ -198,6 +198,39 @@ investigation 93.3% (0.85), data_integrity 92.8% (0.76), patient_risk 86.0% (0.6
 violation_category 83.4% (0.79), contamination_risk 81.7% (0.64), severity 4-class 76.4% (0.63),
 scope 70.7% (0.54), **root_cause 55.5% (0.37)**, remediation 48.2% (0.16, n=141).
 
+**GPT self-agreement (3 passes, same 50 observations, measured 2026-09-30):** root_cause 73%,
+severity_tier 89%, contamination_risk 90%, remediation 91%, scope 93%, patient_risk 95%,
+investigation 95%, violation_category 96%, contamination_flag 98%, data_integrity 98%, repeat
+100%. GPT is less stable than Claude on every field except scope and contamination_flag.
+
+**Separating systematic disagreement from instability.** See
+`.../eval/results_and_notes/reproducibility_vs_crossmodel.csv`. If two models were estimating the
+same underlying label and differed only by independent noise, their agreement would be roughly
+the product of their two self-agreements. Treat that product as a rough benchmark, not a formal
+test, and say so. Fields falling far below it disagree systematically:
+
+| Field | Claude self | GPT self | Cross-model | Expected if noise only | Gap |
+|---|---|---|---|---|---|
+| remediation (n=141) | 94 | 91 | 48.2 | 85.5 | -37.3 |
+| scope | 90 | 93 | 70.7 | 83.7 | -13.0 |
+| severity_tier | 100 | 89 | 76.4 | 89.0 | -12.6 |
+| violation_category | 100 | 96 | 83.4 | 96.0 | -12.6 |
+| root_cause_type | 93 | 73 | 55.5 | 67.9 | -12.4 |
+| patient_risk | 100 | 95 | 86.0 | 95.0 | -9.0 |
+| data_integrity | 98 | 98 | 92.8 | 96.0 | -3.2 |
+| contamination_risk | 94 | 90 | 81.7 | 84.6 | -2.9 |
+| investigation | 100 | 95 | 93.2 | 95.0 | -1.8 |
+| repeat | 100 | 100 | 99.4 | 100.0 | -0.6 |
+| contamination_flag | 96 | 98 | 95.4 | 94.1 | +1.3 |
+
+**This is the sharper version of the finding, and it should be the framing.** Binary
+presence-or-absence flags (repeat, contamination, investigation, data integrity) transfer across
+models: their cross-model agreement is about what each model's own instability predicts. Graded
+and categorical judgments (remediation, scope, severity, violation category, root cause) do not:
+they disagree well beyond noise. The implication for the field is that an LLM-coded *flag* is
+reasonably portable, while an LLM-coded *category or grade* is model-dependent and should not be
+treated as a property of the text.
+
 This is a genuine finding and should be prominent. Root cause is the field the qualitative
 literature cares most about, and two competent models disagree on nearly half of observations.
 It is not sampling noise: Claude's self-agreement on that same field is 93%, far above the 55.5%
