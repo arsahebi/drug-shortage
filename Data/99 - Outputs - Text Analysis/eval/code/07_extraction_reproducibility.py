@@ -211,12 +211,15 @@ def _extract_one(client, C: dict, text: str, cfr, model: str) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", type=int, default=2, help="number of identical passes")
+    ap.add_argument("--runs", type=int, default=2,
+                    help="number of identical passes; must be >= 2 to measure anything")
     ap.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic")
     ap.add_argument("--model", default=None,
                     help="default: claude-sonnet-5 / gpt-5-mini for the chosen provider")
     args = ap.parse_args()
 
+    if args.runs < 2:
+        sys.exit("--runs must be at least 2: self-agreement needs two passes to compare.")
     model = args.model or ("claude-sonnet-5" if args.provider == "anthropic" else "gpt-5-mini")
     if args.provider == "anthropic":
         if not os.environ.get("ANTHROPIC_API_KEY"):

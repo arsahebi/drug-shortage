@@ -22,6 +22,21 @@ The LLM pipeline is the instrument that makes 483 text measurable and comparable
 facilities. **It is not the contribution by itself.** The contribution is what the measured text
 tells us about regulatory signal quality. Keep that framing throughout.
 
+### The headline claim (decided; do not substitute your own)
+
+Lead with: **FDA's categorical inspection outcome carries little predictive signal about
+downstream patient harm, while the underlying inspection text carries more.**
+
+Do NOT lead with "483 text predicts patient harm better than FDA's grade." That stronger claim
+rests on a single classifier in a single subsample (random forest, ANDA-restricted, AUC 0.626)
+and does not survive a switch to logistic regression or to the drug-level sample. A reviewer will
+find that in our own table.
+
+The claim above is chosen because the OAI-only model never exceeds chance in ANY specification we
+ran (AUC 0.457, p=0.99). That is the most robust result in the study. The text advantage then
+supports the claim rather than carrying it alone, and the predictive fragility becomes a stated
+caveat instead of a hole in the main argument.
+
 ## 2. The exemplar to follow
 
 `Paper/Text Analysis/s41746-026-02353-7.pdf` — Li et al., *npj Digital Medicine* 2026;9:221,
@@ -111,6 +126,46 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
   `ablation_metrics.csv`
 - `.../vai_signal_validation/outputs/tables/gap_trajectory.csv`,
   `silent_problem_groups.csv`, `lag_correlation_table.csv`
+
+**Prompt development history (how the signals were derived)**
+- `Paper/Text Analysis/20260629_483_LLM_Prompts_Expert_Review_YI.docx` and
+  `20260629_483_LLM_Prompts_Expert_Review.docx` — **the pharmacist expert review by Yelena
+  Ionova that produced the v2 schema.** This is where the field definitions come from. The v1
+  blanket exclusion of oral solid dose was found to miss real risk for narrow-therapeutic-index
+  drugs, oral oncology, and nitrosamine products, which is why patient-risk scenario (a2) exists.
+  Cite this as expert validation of the schema and describe it in Methods. Do not present the
+  categories as if we invented them unaided.
+- `Paper/Text Analysis/20260805_v2_prompt_calibration_and_model_comparison.docx` — v2 calibration
+  and the first Claude/GPT comparison.
+- `Meeting/ALison & Yelena - Redica - 07-07-2025.docx` — Redica data provenance.
+- `Data/99 - Outputs - Text Analysis/eval/prompt_debug_reruns/*.csv` — eleven re-run files
+  documenting each prompt iteration on the same 50 observations (original, SEVFIX, SEVFIX2,
+  FINAL, and repeated runs of each). These are the evidence that prompt changes, not chance,
+  produced the improvements. Use them if you need to show the development trajectory.
+- `Data/99 - Outputs - Text Analysis/eval/results_and_notes/human_eval_metrics_v2.md` — round-1
+  per-field metrics.
+- `Data/99 - Outputs - Text Analysis/eval/sent_to_abdul/483_Background_Reference_Guide.docx` and
+  `483_Worked_Example_FEI3003342394_obs3.docx` — annotator onboarding materials.
+- `Data/99 - Outputs - Text Analysis/eval/sent_to_abdul/20260903_Question_for_Abdul_data_integrity_rule.docx`
+  — the escalation that produced the testing-into-compliance rule.
+- `Data/99 - Outputs - Text Analysis/README.md` — pipeline overview.
+
+**How the signals connect to patient harm (read before writing Methods)**
+- `Data/99 - Outputs - Text Analysis/vai_signal_validation/01_build_inspection_panel.py` — the
+  linkage. Read this closely; see §5a below on what it does and does not establish.
+- `Data/15 - FDA - Adverse Event/processed/code/*.py` — FAERS preparation, including
+  `2026-05-12-faers_valisure_filter_and_eda.py`.
+- `Data/15 - FDA - Adverse Event/raw/FEARS Summary.docx` — FAERS structure and caveats.
+- `Data/08 - Valisure/raw/FEIs_March 2026.xlsx`, sheet `API Only_FEI Mapping` — the
+  facility-to-ingredient map, 129 FEIs.
+- `Data/17 - NDC, FEI Mapping/ndc_fei_from_labels.csv` — NDC to FEI crosswalk.
+- `Data/14 - FDA - Inspection/raw/Inspections Details.xlsx` — primary OAI/VAI/NAI source.
+- `Data/07 - Redica/processed/redica_all_drugs_combined.csv` — fallback classification source.
+
+**Figures already generated** (regenerate from code, do not re-plot by hand)
+- `.../vai_signal_validation/outputs/figures/ablation_auc_bar_anda.png` (headline),
+  `ablation_auc_bar.png`, plus `_global` variants, `lag_correlation_heatmap.png`, and 14
+  per-facility `trend_<FEI>.png` files.
 
 Git history on `Data/99 - Outputs - Text Analysis/` records why each prompt rule exists. Use
 `git log` on the extraction script when a Methods claim needs justification.
@@ -206,6 +261,70 @@ a hypothesis, and note the supporting work is unpublished.
 association with subsequent adverse events: Spearman r 0.15–0.18, p<0.02, sustained from the
 inspection quarter through four quarters after. No other feature reaches significance. Do not
 present the correlation heatmap as if many cells were meaningful.
+
+## 5a. How adverse events attach to facilities, and what that limits (audited 2026-09-30)
+
+Read `vai_signal_validation/01_build_inspection_panel.py` before writing any Methods sentence
+about the outcome. The linkage was audited and these are its actual properties. They must be
+stated in Methods and Limitations, not discovered by a reviewer.
+
+**There are two outcome constructions, and they are not equally attributable.**
+
+*Drug-level* (`_load_faers_raw`, default run). Serious FAERS reports are matched to a facility by
+active ingredient alone, via the Valisure `API Only_FEI Mapping` sheet. Every facility making
+metformin is assigned every serious metformin adverse event nationally. The median facility
+quarter carries 413 serious events, which is not a plausible facility-attributable harm count.
+Across facilities sharing an ingredient and inspected in the same year, the counts are frequently
+identical. **This construction cannot support a causal or facility-specific claim.** Report it as
+a sensitivity analysis only, and say plainly that it is ingredient-level exposure, not facility
+attribution.
+
+*ANDA-specific* (`_load_anda_ae_quarterly`, the `--anda-ae` run; **this is the headline**). Events
+are matched through ANDA numbers to specific products, from
+`Data/08 - Valisure/processed/valisure_anda_faers_ae_counts_quarterly.csv`. The median facility
+quarter carries 15 serious events, which is consistent with genuine product-level attribution.
+This is why the headline model uses it.
+
+**The cost of that specificity is coverage.** Of 246 inspection events, 95 have no ANDA-linked AE
+count at the inspection quarter and 101 have none four quarters prior; only 131 have both. The
+modelling sample of n=156 is therefore a subset of inspections with usable ANDA-linked outcome
+data, not the full corpus. **State the 156-of-246 figure and its cause explicitly**, and address
+whether facilities with ANDA linkage differ systematically from those without. That is a
+selection concern a reviewer will raise.
+
+**Two minor issues found in the audit. Mention the first, fix or flag the second.**
+
+1. Ingredient keys are matched on the first whitespace-delimited token, so `Ampicillin` and
+   `Ampicillin; Sulbactam` collapse to one key. This is arguably correct for a facility that
+   makes ampicillin products, but it is an unintended merge and should be noted.
+2. In the drug-level path, `_faers_quarterly` counts `primaryid` rather than counting distinct
+   `primaryid`. A single report matching two ingredients made by the same facility is counted
+   twice. Measured inflation is 24,479 of 2,848,865 joined rows, **0.9%**. It does not change any
+   conclusion, but the correct aggregation is `nunique`. Fix it and note the size, or flag it.
+
+**Other linkage facts worth stating in Methods.** Serious outcomes only (Death, Hospitalization,
+Life-threatening, Disability, Congenital anomaly, Required intervention, Other serious); non-
+serious reports are excluded. OAI/VAI/NAI comes from FDA `Inspections Details.xlsx` matched
+exact-date, with Redica as first fallback and an FDA plus-or-minus-30-day match as second; 40 of
+246 inspections resolved to neither and defaulted to 0, which should be reported. Text features
+use the Major/Moderate severity collapse rather than the raw four tiers, because human-eval
+accuracy is 90-94% for that collapse against 66-68% for four tiers; this choice is deliberate and
+justified in the validation report.
+
+## 5b. MarketScan: future work, not a pending result
+
+The author is awaiting Truven MarketScan commercial claims data, intended as a second and more
+direct outcome variable than FAERS. Timing is unknown and it will not be in this paper.
+
+Treat this as a Discussion and future-work item, framed around why it matters: FAERS is a
+voluntary, passive surveillance system with well-known reporting bias and no denominator, whereas
+claims data would give observed utilization and outcomes with a population at risk. Say that the
+present adverse-event outcome is a proxy whose limitations are inherent to spontaneous reporting,
+and that a claims-based replication is the natural next step. See
+`Data/20 - Market Scan/20260917_MarketScan_Data_Request.docx` for scope.
+
+Do not speculate about what MarketScan would show, and do not state or imply that it would
+improve model performance. Write it as a design improvement, not a predicted result.
 
 ## 6. Structure to produce
 
