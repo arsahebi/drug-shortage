@@ -20,9 +20,8 @@ Output workbook: valisure_ndc_fei_linkage.xlsx
 The Redica request is the WHOLE first column of fei_union, all 226 FEIs, not only
 the ones we lack. Redica has sent history for some of them before, but their
 holdings may have grown since, so re-requesting costs nothing and may return
-richer data on facilities we already cover. The have_redica_history, have_483_text
-and not_yet_covered flags are there for group clarity about what we already hold, not
-to narrow the request.
+richer data on facilities we already cover. The already_shared_by_redica flag is
+there for group clarity about what we already hold, not to narrow the request.
 
 NDC matching
 ────────────
@@ -143,14 +142,14 @@ def build_union(dm: pd.DataFrame, pp: pd.DataFrame) -> pd.DataFrame:
                              errors="coerce").dropna().astype(int))
     text = set(pd.to_numeric(pd.read_csv(REDICA_TEXT, low_memory=False)["fei"],
                              errors="coerce").dropna().astype(int))
-    u["have_redica_history"] = u["fei"].isin(hist)
-    u["have_483_text"] = u["fei"].isin(text)
-    u["not_yet_covered"] = ~u["have_redica_history"]   # informational, not a filter
+    # TRUE means Redica has already sent history for this FEI. Informational only:
+    # we request the whole column regardless, since their holdings may have grown.
+    u["already_shared_by_redica"] = u["fei"].isin(hist)
+    _have_text = u["fei"].isin(text)   # reported below, not kept as a column
 
-    u = u.sort_values(["not_yet_covered", "n_ndcs"], ascending=[False, False])
+    u = u.sort_values(["already_shared_by_redica", "n_ndcs"], ascending=[True, False])
     u = u[["fei", "registrant", "n_ndcs", "n_apis", "apis",
-           "in_enhanced_rule_based", "in_propublica",
-           "have_redica_history", "have_483_text", "not_yet_covered"]]
+           "in_enhanced_rule_based", "in_propublica", "already_shared_by_redica"]]
 
     print(f"\n=== FEI union: send this whole column to Redica ===")
     print(f"  distinct FEIs to request    : {len(u):,}")
@@ -158,9 +157,9 @@ def build_union(dm: pd.DataFrame, pp: pd.DataFrame) -> pd.DataFrame:
     print(f"    enhanced rule-based only  : {int((u.in_enhanced_rule_based & ~u.in_propublica).sum()):,}")
     print(f"    ProPublica only           : {int((~u.in_enhanced_rule_based & u.in_propublica).sum()):,}")
     print(f"  for group clarity only:")
-    print(f"    already have history      : {int(u.have_redica_history.sum()):,}")
-    print(f"    already have 483 text     : {int(u.have_483_text.sum()):,}")
-    print(f"    not yet covered           : {int(u.not_yet_covered.sum()):,}")
+    print(f"    already shared by Redica  : {int(u.already_shared_by_redica.sum()):,}")
+    print(f"    of those, with 483 text   : {int(_have_text.sum()):,}")
+    print(f"    never shared              : {int((~u.already_shared_by_redica).sum()):,}")
     print(f"  Ask for all {len(u):,}. Redica may hold more on the covered ones than")
     print(f"  they sent the first time, and re-requesting costs nothing.")
     return u
