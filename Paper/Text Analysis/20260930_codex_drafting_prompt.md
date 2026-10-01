@@ -258,8 +258,11 @@ amendments, so scoring the final pipeline against it is circular. Say this expli
 is the held-out set. If its results are not in the repository when you draft, mark those cells
 clearly as pending rather than guessing.
 
-**Predictive models.** Outcome is a per-facility relative change in FAERS adverse event counts
-around each inspection, not a raw count (see the AE confound document). Five-fold CV, AUC.
+**Predictive models. SUPERSEDED, see §5c below for the numbers to use.** Outcome is a
+per-facility relative change in FAERS adverse event counts around each inspection, not a raw
+count (see the AE confound document). Five-fold CV, AUC. The tables immediately below were
+built on the old shared-ANDA attribution and the inverted severity feature; keep them only as
+a record of what changed.
 
 ANDA-specific AE counts, n=156 facility-inspections:
 
@@ -361,6 +364,96 @@ and that a claims-based replication is the natural next step. See
 
 Do not speculate about what MarketScan would show, and do not state or imply that it would
 improve model performance. Write it as a design improvement, not a predicted result.
+
+## 5c. Outcome construction and the predictive results (SUPERSEDES the tables in §5)
+
+Everything in this section replaces the earlier predictive numbers. Dated 2026-09-30.
+
+### The sample
+
+Facility-level serious FAERS events, attributed through ANDA, restricted to NDCs with
+**exactly one facility and one ANDA** so every event traces to a single site:
+**510 NDCs, 79 facilities, 208 ANDAs, 38 of 40 drugs.** Median 9 serious events per
+facility-quarter. Built by
+`Data/08 - Valisure/processed/20260930_build_propublica_anda_faers.py`, outputs
+`propublica_fei_ae_quarterly_{full,split,single}.csv`. Report `single`; the other two are
+sensitivity checks and after the filter all three give the same totals.
+
+Why this restriction, which must be in Methods: FAERS records an application number, not a
+manufacturing site. For an ANDA approved at several sites the per-facility count does not
+exist in the data. Of 37 shared ANDAs, 27 are one firm running several plants, 7 contract
+manufacturing, 3 an API supplier plus a finisher, so multi-site approval is genuine FDA
+practice and no better record linkage would fix it. The old construction gave every facility
+making a drug that drug's entire national event count, a median of 413 per facility-quarter.
+
+State the funnel: 733 text-covered NDCs with an ANDA, 582 after requiring one facility and
+one ANDA, 559 after requiring the ANDA be unused elsewhere, 510 after requiring it appear in
+FAERS. Also state that the loss is uneven: Sertraline retains 3 NDCs and Lisinopril 2, so
+those two drugs are nominal rather than analysable.
+
+### A feature bug that was suppressing the result, and must be described
+
+`severity_majmod_share`, the severity feature the facility panel used, is **ordered
+backwards**. (Major+Moderate)/total falls as an inspection gets worse because Critical
+observations sit outside the numerator. Correlation with `severity_critical_share` is
+**-0.842**, and 54.5% of snapshots were pinned at exactly 1.0, so it was inverted and
+saturated at once. It had been chosen because human agreement is 90-94% on a Major/Moderate
+collapse against 66-68% on four tiers, which is a sound point about measurement noise that
+missed the construct problem. Replaced with `severity_critmajor_share`, which collapses the
+same noisy boundary while staying monotonic. Effect, n=143: text-only RF 0.619 (p=0.077) to
+**0.648 (p=0.032)**; VAI-only 0.415 (below chance) to 0.508. Commit `657b02e`.
+
+This belongs in the paper as a methods note, not hidden. A reader should know the severity
+measure is Critical+Major and why.
+
+### The fair comparison against FDA's classification (lead with this)
+
+The original ablation gave FDA a single binary `any_oai`, which pools NAI with VAI and coded
+the 40 inspections with no classification on file as "not OAI" when they are unknown. The
+corrected test, on the **123 inspections where the classification is known**, from
+`vai_signal_validation/outputs/tables/three_class_baseline.csv`:
+
+| Features | LR AUC | p | RF AUC | p |
+|---|---|---|---|---|
+| FDA, binary any_oai | 0.530 | 0.197 | 0.530 | 0.197 |
+| FDA, three-class dummies | 0.527 | 0.226 | 0.527 | 0.226 |
+| FDA, ordinal NAI<VAI<OAI | 0.482 | 0.671 | 0.538 | 0.131 |
+| **483 text** | **0.592** | **0.007** | 0.565 | 0.040 |
+| Text + three-class FDA | 0.589 | 0.007 | 0.596 | 0.006 |
+
+Three points to make explicitly. Giving FDA all three grades does not help it, so the weak
+baseline is not an artifact of binary encoding. The text is significant under both
+classifiers, which resolves the earlier LR/RF inconsistency. And adding FDA's classification
+to the text moves the AUC by 0.00, so the grade carries no information the text lacks.
+
+Also report the full-sample ablation (n=143, 40 unknowns retained as in the original design)
+from `ablation_metrics_anda_pp.csv` as a robustness row: text RF 0.648 (p=0.032), OAI flag
+0.521 (p=0.259).
+
+### The VAI subgroup: a group-level finding and an individual-level null
+
+Do NOT repeat the INFORMS claim that text separates risk within VAI. It does not survive.
+
+Group level, which does hold and should be reported: adverse events rose after 59.8% of VAI
+inspections (n=87) against 50.0% of OAI (n=26) and 50.0% of NAI (n=10). Facilities FDA graded
+VAI fared worse than those it graded OAI.
+
+Individual level, which does not: within those 87, from
+`outputs/tables/vai_within_group_probe.csv`, 2 of 12 features reach p<0.05 uncorrected,
+`investigation_llm_share` (Spearman -0.227, p=0.034) and `patient_risk_llm_share` (-0.220,
+p=0.040), **both negative**, and neither survives a Bonferroni threshold of 0.0042.
+Multivariate AUC 0.537 with a permutation p of 0.420 over 200 shuffles.
+
+Frame this as a power limitation, not a refutation, and give the number: at n=87 the
+detectable effect at 80% power is about AUC 0.63, so the data rule out a large effect and are
+uninformative about a modest one. Note the two marginal associations point the wrong way and
+that we treat them as noise given 12 tests and no Bonferroni survivor.
+
+### Analyses not yet run, do not invent results for them
+
+Lag correlations, gap trajectory and the silent-problem grouping have not been re-run on the
+clean attribution panel. The figures under `vai_signal_validation/outputs/` for those three
+still reflect the old shared-ANDA outcome. Either exclude them or mark them clearly.
 
 ## 6. Structure to produce
 
