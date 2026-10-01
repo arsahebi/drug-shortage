@@ -475,6 +475,42 @@ correction, and it connects to the data-integrity rule that the human-annotation
 to write (see the round-1 findings document and §5a). Do not present the full heatmap as though
 many cells mattered; 61 of 64 do not.
 
+### Restricting to product-proximate text (REPORT THIS as a robustness result)
+
+Tests a suggestion from Anthony Liu, met at INFORMS Healthcare 2026: a 483 covers staff
+protocol, site sanitation and management as well as the drug, so restricting to the text that is
+actually about the product may concentrate the signal. Implemented AFTER extraction using the
+FDA six-system category already assigned to each observation, not inside the prompt, so nothing
+is re-run and the dropped share stays measurable. Run with
+`02_aggregate_fei_features.py --systems product`, then the panel and model with
+`--systems product`; metrics land in `ablation_metrics_anda_pp_prodsys.csv`.
+
+Kept: production, laboratory controls, materials, packaging and labeling. Dropped: quality
+system, facilities and equipment, other. That is **501 of 1,067 observations (47%)**, 91 of 98
+facilities, 199 of 246 snapshots, and n falls from 143 to 119 inspections.
+
+| Config (RF, clean panel, relative outcome) | All text | Product only |
+|---|---|---|
+| Text only, AUC | 0.648 | 0.639 |
+| Text only, fold SD | 0.116 | **0.073** |
+| Text only, p | 0.032 | **0.009** |
+| Text + OAI, fold SD | 0.117 | **0.062** |
+| OAI-ever subgroup, fold SD | 0.208 | **0.040** |
+
+Interpret it as written: discarding 53% of observations left accuracy essentially unchanged and
+cut fold-to-fold variance by a third to a half, so the p-values improved on a SMALLER sample.
+That is the signature of removing noise rather than information. Say explicitly that the gain
+comes from stability and not from more data, since n fell.
+
+Two things to report honestly alongside it. The benefit is specific to the random forest;
+logistic regression became slightly less stable (fold SD 0.074 to 0.092). And this converges
+with the lag correlations above, where laboratory and data-integrity features survive correction
+while quality-system, cultural-root-cause and scope features do not. Two independent analyses
+agreeing that the predictive content is laboratory and record-keeping rather than governance is
+worth stating as such.
+
+Credit the suggestion in the acknowledgements.
+
 ### Two analyses deliberately excluded. Do not report them.
 
 **Gap trajectory** (`outputs/tables/gap_trajectory_anda_pp.csv`). On the clean panel the
