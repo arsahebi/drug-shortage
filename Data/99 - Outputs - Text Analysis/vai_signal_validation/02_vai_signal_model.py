@@ -237,6 +237,8 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path, outcome_label: str 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VAI-only text-signal AE prediction, rerun with current data")
+    parser.add_argument("--systems", choices=["all", "product"], default="all",
+                        help="'product' uses the product-proximate panel")
     parser.add_argument("--anda-source", choices=["valisure", "propublica"],
                         default="valisure",
                         help="'propublica' uses the clean one-FEI one-ANDA panel")
@@ -252,6 +254,8 @@ def main() -> None:
         panel_path = PANEL_PP if args.anda_source == 'propublica' else PANEL_ANDA
     else:
         panel_path = PANEL
+    if args.systems == "product":
+        panel_path = panel_path.with_name(panel_path.stem + "_prodsys" + panel_path.suffix)
 
     if not panel_path.exists():
         raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_inspection_panel.py first.")
@@ -325,6 +329,7 @@ def main() -> None:
 
     suffix = (("_anda" if args.anda_ae else "")
               + ("_pp" if args.anda_ae and args.anda_source == "propublica" else "")
+              + ("_prodsys" if args.systems == "product" else "")
               + ("" if args.outcome == "relative" else "_global"))
     metrics.to_csv(OUT_MOD / f"ablation_metrics{suffix}.csv", index=False)
     print(f"\nResults:\n{metrics[['config','model','auc','p_vs_0.5','n_folds','n']].to_string(index=False)}")

@@ -56,6 +56,8 @@ OUT    = HERE / "outputs"
 
 # Current validated redica v2 text timeseries (Claude Sonnet 5).
 TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
+TEXT_TS_PRODSYS = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2_prodsys.csv"
+SYSTEMS = "all"   # overridden by --systems
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
 REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
@@ -113,7 +115,9 @@ TEXT_FEATURES = [
 # ── Text timeseries ───────────────────────────────────────────────────────────
 
 def _load_text_timeseries() -> pd.DataFrame:
-    ts = pd.read_csv(TEXT_TS_CSV, low_memory=False)
+    src = TEXT_TS_PRODSYS if SYSTEMS == "product" else TEXT_TS_CSV
+    print(f"  text features: {src.name}")
+    ts = pd.read_csv(src, low_memory=False)
     ts["snapshot_date"] = pd.to_datetime(ts["snapshot_date"])
     ts["fei"] = pd.to_numeric(ts["fei"], errors="coerce").astype("Int64")
     ts = ts.dropna(subset=["fei"])
@@ -403,6 +407,8 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame,
                     else OUT_PANEL_INSP_ANDA)
     else:
         out_path = OUT_PANEL_INSP
+    if SYSTEMS == "product":
+        out_path = out_path.with_name(out_path.stem + "_prodsys" + out_path.suffix)
     panel.to_parquet(out_path, index=False)
     print(f"\nSaved -> {out_path}")
 
@@ -414,6 +420,11 @@ def main() -> None:
         help="Use ANDA-specific FAERS AE counts instead of drug-level counts.",
     )
     parser.add_argument(
+        "--systems", choices=["all", "product"], default="all",
+        help="'product' uses the product-proximate text features only "
+             "(02_aggregate --systems product).",
+    )
+    parser.add_argument(
         "--anda-source", choices=["valisure", "propublica"], default="valisure",
         help="'valisure' = hand-built March 2026 mapping, 14 APIs. "
              "'propublica' = ProPublica linkage on the expanded list, "
@@ -421,6 +432,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     globals()["ANDA_SOURCE"] = args.anda_source
+    globals()["SYSTEMS"] = args.systems
 
     print("Loading text timeseries...")
     ts = _load_text_timeseries()

@@ -132,6 +132,23 @@ def _versioned(path: Path, version: str, model: str | None = None) -> Path:
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
+# ── product-proximate system filter (--systems product) ────────────────────
+# Tests a suggestion from Anthony Liu (INFORMS Healthcare 2026): a 483 covers
+# staff protocol, site sanitation and management as well as the drug, so
+# restricting to the text that is actually about the product may concentrate the
+# signal. Implemented AFTER extraction rather than inside the prompt, using the
+# FDA six-system category we already assign, so nothing has to be re-run and the
+# dropped share stays measurable.
+#   kept:    ProductionSystem (making it), LaboratoryControlsSystem (testing it),
+#            MaterialsSystem (components, containers, closures),
+#            PackagingLabelingSystem (the finished product)
+#   dropped: QualitySystem (management, training, CAPA governance),
+#            FacilitiesEquipmentSystem (building, HVAC, utilities), Other
+PRODUCT_SYSTEMS = {
+    "ProductionSystem", "LaboratoryControlsSystem",
+    "MaterialsSystem", "PackagingLabelingSystem",
+}
+
 # ── violation_category sets by prompt version ───────────────────────────────
 # v1: original 8-category scheme. v2: FDA six-system (QSIT) framework, see
 # 01_extract_observation_signals.py VALID_VIOLATION_CATEGORY_V2.
@@ -602,6 +619,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--systems", choices=["all", "product"], default="all",
+        help="'product' keeps only observations in the production, laboratory, "
+             "materials and packaging systems, dropping quality-system and "
+             "facilities/equipment observations before aggregating. Writes to a "
+             "_prodsys output file.",
+    )
+    parser.add_argument(
         "--model", type=str, default=None,
         help=(
             "Model tag to look for in the step01 filename, matching whatever "
@@ -632,6 +656,14 @@ def main() -> None:
         df = pd.read_csv(signals_csv)
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
+        if args.systems == "product":
+            before, before_fei = len(df), df["fei"].nunique()
+            df = df[df["violation_category"].isin(PRODUCT_SYSTEMS)]
+            print(f"  --systems product: kept {len(df):,} of {before:,} observations "
+                  f"({100*len(df)/before:.1f}%), {df['fei'].nunique()} of {before_fei} FEIs")
+            print(f"    dropped categories: "
+                  f"{sorted(set(pd.read_csv(signals_csv)['violation_category'].dropna().unique()) - PRODUCT_SYSTEMS)}")
+            out_csv = out_csv.with_name(out_csv.stem + "_prodsys" + out_csv.suffix)
         default_model_desc = "claude-haiku" if provider == "anthropic" else "gpt-5-mini"
         label = f"Redica pipeline ({provider}, {model or default_model_desc}, 98 FEIs, prompt {version})"
         _run_aggregation(df, out_csv, label=label, version=version)
