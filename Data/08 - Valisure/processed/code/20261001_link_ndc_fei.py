@@ -1,5 +1,5 @@
 """
-20261001_link_ndc_fei_dailymed.py
+20261001_link_ndc_fei.py
 ─────────────────────────────────────────────────────────────────────────────
 Assign manufacturing facilities (FEIs) to every NDC on Valisure's new drug list,
 using two independent linkages, and produce the combined FEI list to request
@@ -33,7 +33,7 @@ of 4-4, 5-3 and 5-4, so padding is required there or two thirds of the file woul
 silently fail to match.
 
 Run:
-  python 20261001_link_ndc_fei_dailymed.py
+  python 20261001_link_ndc_fei.py
 """
 
 from pathlib import Path
