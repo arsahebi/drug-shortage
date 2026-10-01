@@ -49,6 +49,7 @@ OUT_TABS = OUT / "tables"
 OUT_FIGS = OUT / "figures"
 PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
+PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 
 # v2 schema: severity_majmod_share replaces severity_critmajor_share (the
 # INFORMS-era feature); vc_laboratorycontrolssystem_share and
@@ -201,10 +202,18 @@ def plot_heatmap(corr_tbl: pd.DataFrame, out_path: Path, top_n: int = 12, n_labe
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--anda-source", choices=["valisure", "propublica"],
+                        default="valisure",
+                        help="'propublica' = clean one-FEI one-ANDA attribution")
     parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
                         help="Use ANDA-specific AE panel (matches the INFORMS slide's n=148 caption).")
     args = parser.parse_args()
-    panel_path = PANEL_ANDA if args.anda_ae else PANEL
+    if args.anda_ae:
+        panel_path = PANEL_PP if args.anda_source == "propublica" else PANEL_ANDA
+    else:
+        panel_path = PANEL
+    _sfx = (("_anda" if args.anda_ae else "")
+            + ("_pp" if args.anda_ae and args.anda_source == "propublica" else ""))
 
     if not panel_path.exists():
         raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_inspection_panel.py first.")
@@ -217,7 +226,7 @@ def main() -> None:
     corr_tbl = build_correlation_table(df, TEXT_FEATURES)
 
     OUT_TABS.mkdir(parents=True, exist_ok=True)
-    corr_tbl.to_csv(OUT_TABS / "lag_correlation_table.csv", index=False)
+    corr_tbl.to_csv(OUT_TABS / f"lag_correlation_table{_sfx}.csv", index=False)
     print(f"  Saved -> {OUT_TABS / 'lag_correlation_table.csv'}")
 
     print("\nCorrelations at Q+4 / 1-year-after (sorted by |rho|):")
@@ -228,7 +237,7 @@ def main() -> None:
 
     OUT_FIGS.mkdir(parents=True, exist_ok=True)
     n_obs = int(corr_tbl["n"].median())
-    plot_heatmap(corr_tbl, OUT_FIGS / "lag_correlation_heatmap.png", n_label=str(n_obs))
+    plot_heatmap(corr_tbl, OUT_FIGS / f"lag_correlation_heatmap{_sfx}.png", n_label=str(n_obs))
 
     print("\nDone.")
 

@@ -59,6 +59,7 @@ OUT      = HERE / "outputs"
 OUT_TABS = OUT / "tables"
 PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
+PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
 
 TECH_FEATURES = [
@@ -163,10 +164,18 @@ def _map_fei_to_labeler_api(feis: list[int]) -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--anda-source", choices=["valisure", "propublica"],
+                        default="valisure",
+                        help="'propublica' = clean one-FEI one-ANDA attribution")
     parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
                         help="Use ANDA-specific AE panel (matches the original INFORMS slide).")
     args = parser.parse_args()
-    panel_path = PANEL_ANDA if args.anda_ae else PANEL
+    if args.anda_ae:
+        panel_path = PANEL_PP if args.anda_source == "propublica" else PANEL_ANDA
+    else:
+        panel_path = PANEL
+    _sfx = (("_anda" if args.anda_ae else "")
+            + ("_pp" if args.anda_ae and args.anda_source == "propublica" else ""))
 
     if not panel_path.exists():
         raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_inspection_panel.py first.")
@@ -184,13 +193,13 @@ def main() -> None:
     print(f"\nGroups:\n{traj_df.to_string(index=False)}")
 
     OUT_TABS.mkdir(parents=True, exist_ok=True)
-    traj_df.to_csv(OUT_TABS / "silent_problem_groups.csv", index=False)
+    traj_df.to_csv(OUT_TABS / f"silent_problem_groups{_sfx}.csv", index=False)
     print(f"\nSaved -> {OUT_TABS / 'silent_problem_groups.csv'}")
 
     if not flagged.empty:
         names = _map_fei_to_labeler_api(flagged["fei"].astype(int).tolist())
         flagged = flagged.merge(names, on="fei", how="left")
-        flagged.to_csv(OUT_TABS / "silent_problem_flagged_facilities.csv", index=False)
+        flagged.to_csv(OUT_TABS / f"silent_problem_flagged_facilities{_sfx}.csv", index=False)
         print(f"\nHigh-signal VAI facilities, ranked by AE persistence (Q+4/Q0):")
         print(flagged[["fei", "labeler", "api", "mean_ae_t0", "mean_ae_tp4",
                         "persist_tp4_t0", "n_inspections"]].to_string(index=False))

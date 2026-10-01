@@ -37,7 +37,7 @@ Usage
 
 Outputs
 -------
-  outputs/tables/gap_trajectory.csv
+  outputs/tables/gap_trajectory{_anda}{_pp}.csv  (suffix records which panel)
 """
 
 from __future__ import annotations
@@ -54,6 +54,7 @@ OUT      = HERE / "outputs"
 OUT_TABS = OUT / "tables"
 PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
+PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 
 REDICA_XLSX = DATA / "07 - Redica" / "raw" / "Valisure14_Sites_Red_Flag_Events.xlsx"
 SITE_LIST   = DATA / "07 - Redica" / "raw" / "Valisure14_Site_List.xlsx"
@@ -83,10 +84,18 @@ def _compute_gap_years() -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--anda-source", choices=["valisure", "propublica"],
+                        default="valisure",
+                        help="'propublica' = clean one-FEI one-ANDA attribution")
     parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
                         help="Use ANDA-specific AE panel instead of drug-level panel.")
     args = parser.parse_args()
-    panel_path = PANEL_ANDA if args.anda_ae else PANEL
+    if args.anda_ae:
+        panel_path = PANEL_PP if args.anda_source == "propublica" else PANEL_ANDA
+    else:
+        panel_path = PANEL
+    _sfx = (("_anda" if args.anda_ae else "")
+            + ("_pp" if args.anda_ae and args.anda_source == "propublica" else ""))
 
     if not panel_path.exists():
         raise FileNotFoundError(f"Panel not found: {panel_path}\nRun 01_build_inspection_panel.py first.")
@@ -119,7 +128,7 @@ def main() -> None:
     print(grp.to_string())
 
     OUT_TABS.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_TABS / ("gap_trajectory_anda.csv" if args.anda_ae else "gap_trajectory.csv")
+    out_path = OUT_TABS / f"gap_trajectory{_sfx}.csv"
     grp.to_csv(out_path)
     print(f"\nSaved -> {out_path}")
 
