@@ -449,34 +449,50 @@ detectable effect at 80% power is about AUC 0.63, so the data rule out a large e
 uninformative about a modest one. Note the two marginal associations point the wrong way and
 that we treat them as noise given 12 tests and no Bonferroni survivor.
 
-### Lag correlations, gap trajectory and the silent-problem grouping (re-run 2026-09-30)
+### Which text signals predict harm, and when (REPORT THIS, it is a main result)
 
-All three now run on the clean attribution panel. **Every output filename carries a suffix
-recording the panel it came from**: `_anda_pp` means the clean one-FEI one-ANDA attribution and
-is the one to cite. Files with no suffix or `_anda` only no longer exist; do not look for them.
+`outputs/tables/lag_correlation_table_anda_pp.csv`. Spearman correlations between each
+facility-level text feature at an inspection and serious adverse events in the inspection
+quarter and the following four quarters, on the clean attribution panel. The grid is 16 features
+by 4 lags, **64 tests**, so apply Bonferroni at p < 0.00078 and say so. Three survive:
 
-**Gap trajectory** (`outputs/tables/gap_trajectory_anda_pp.csv`). Adverse events at the
-inspection quarter relative to four quarters prior, by time since the previous inspection:
-under 1 year **1.879** (n=60), 1-2 years **1.274** (n=87), 2-3.5 years **1.030** (n=57), over
-3.5 years **0.847** (n=33). This is monotonic and it was not before: the old shared-ANDA panel
-gave 1.145 / 1.266 / 1.090 / 1.031 with no ordering. Clean attribution produced a gradient
-where there had been noise. Keep the project's agreed framing: this reflects FDA's Site
-Selection Model working as designed, risk signals drawing the inspection, and is not evidence
-FDA is late.
+| Feature | Lag | Spearman r | p | n |
+|---|---|---|---|---|
+| **Data integrity flag** | inspection quarter | **0.315** | **0.0002** | 135 |
+| **Data integrity flag** | 0 to 3 months after | **0.299** | **0.0005** | 131 |
+| Laboratory controls, observation count | 0 to 3 months after | 0.294 | 0.0006 | 131 |
 
-**Lag correlations** (`outputs/tables/lag_correlation_table_anda_pp.csv`). The laboratory
-controls observation count is the only feature with a sustained significant association, and it
-strengthened: Spearman 0.182 (p=0.035) at the inspection quarter, **0.294 (p=0.0006)** one
-quarter after, 0.255 (p=0.004) at two quarters, 0.245 (p=0.005) at four. Up from 0.176
-(p=0.0065) on the old panel. Nothing else reaches significance, so do not present the heatmap as
-though many cells mattered.
+Also report that 18 of 64 tests clear an uncorrected p<0.05 against 3.2 expected by chance, which
+is evidence of real signal in the grid rather than scattered luck. Other features reaching
+uncorrected significance but NOT surviving correction include the lab-controls and data-integrity
+joint feature (p=0.0008 to 0.0020) and the investigation-failure flag (p=0.0027); mention them as
+suggestive at most.
 
-**Silent-problem grouping** (`outputs/tables/silent_problem_groups_anda_pp.csv`).
-**The ordering inverted and this is no longer reportable.** Low-signal VAI now shows the largest
-pre-inspection rise at 1.258 (38 facilities, 79 inspections), ahead of high-signal VAI at 1.200
-(13 facilities, 22 inspections) and OAI-ever at 1.114 (22 facilities, 63 inspections). On the
-old panel high-signal VAI led. With 22 inspections in the high-signal cell this is consistent
-with the within-VAI null above. Mention it only as a limitation, or leave it out.
+**Give this finding more prominence than the AUC.** An AUC of 0.59 tells a reader the text helps.
+This names which signal and on what horizon: data-integrity findings in a 483 track serious
+adverse events in the same and the following quarter. It is interpretable, it survives strict
+correction, and it connects to the data-integrity rule that the human-annotation round forced us
+to write (see the round-1 findings document and §5a). Do not present the full heatmap as though
+many cells mattered; 61 of 64 do not.
+
+### Two analyses deliberately excluded. Do not report them.
+
+**Gap trajectory** (`outputs/tables/gap_trajectory_anda_pp.csv`). On the clean panel the
+pre-inspection adverse-event ratio is monotonic in time since the previous inspection: 1.879
+under a year (n=60), 1.274 at 1-2 years (n=87), 1.030 at 2-3.5 (n=57), 0.847 beyond (n=33). It
+was flat and unordered on the old shared-ANDA panel, so clean attribution produced the gradient.
+Excluded because it is a finding about FDA's inspection *scheduling*, not about the text, and
+under the project's agreed Site Selection Model framing it says the SSM works as designed rather
+than that FDA is late. Reporting it invites a question the framing explicitly denies. If a
+reviewer asks whether adverse events precede inspections, this is the answer, but it does not
+belong in the results as written.
+
+**Silent-problem grouping** (`outputs/tables/silent_problem_groups_anda_pp.csv`). Excluded. The
+ordering inverted on the clean panel: low-signal VAI now shows the largest pre-inspection rise at
+1.258 (38 facilities, 79 inspections) ahead of high-signal VAI at 1.200 (13 facilities, 22
+inspections) and OAI-ever at 1.114. High-signal VAI led on the old panel. With 22 inspections in
+the high-signal cell, and given the within-VAI null above, there is nothing here. Do not revive
+the INFORMS framing from it.
 
 ## 6. Structure to produce
 
