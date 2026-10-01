@@ -1,24 +1,33 @@
 """
 20261001_link_ndc_fei_dailymed.py
 ─────────────────────────────────────────────────────────────────────────────
-Assign a manufacturing facility (FEI) to each NDC on Valisure's new drug list,
-using Amir's DailyMed-based NDC-FEI linkage instead of ProPublica.
+Assign manufacturing facilities (FEIs) to every NDC on Valisure's new drug list,
+using two independent linkages, and produce the combined FEI list to request
+inspection history for from Redica.
 
-Only `opr_type == "manufacture"` rows are used. "api manufacture" is EXCLUDED:
-an API supplier is not the plant that made the finished product, and mixing the
-two is what muddied the earlier ProPublica linkage. Change KEEP_OPR_TYPES below
-if you want them included.
+An NDC having several manufacturing FEIs is expected, not an error: a product can
+genuinely be made at more than one registered site. Those rows are kept as-is, one
+row per (NDC, FEI) pair.
 
-Both sides are already in 5-4 format (Valisure writes 5-4-2, so its first two
-segments are the labeler and product codes; the DailyMed file's `ndc` column is
-5-4 throughout), so the join is a direct string match with no padding needed.
+Output workbook: valisure_ndc_fei_linkage.xlsx
+  Sheet "dailymed"    our rule-based linkage (Data/27, Amir). opr_type ==
+                      "manufacture" only; "api manufacture" excluded, since an
+                      API supplier is not the plant that made the finished dose.
+  Sheet "propublica"  ProPublica Rx Inspector linkage (Data/26), for comparison.
+  Sheet "fei_union"   every distinct FEI either method found, flagged by source
+                      and by whether we already hold Redica history or 483 text.
+                      This is the list to send Redica.
+
+NDC matching
+────────────
+Both linkages are joined on a padded 5-4 product NDC (5-digit labeler, 4-digit
+product). Valisure writes 5-4-2 so its first two segments are used directly.
+DailyMed is already 5-4. ProPublica preserves each product's native width, a mix
+of 4-4, 5-3 and 5-4, so padding is required there or two thirds of the file would
+silently fail to match.
 
 Run:
   python 20261001_link_ndc_fei_dailymed.py
-
-Outputs (written to the parent processed/ folder):
-  valisure_ndc_fei_dailymed.csv        one row per (ndc, fei) with API + labeler
-  valisure_ndc_fei_dailymed_unmatched.csv   NDCs with no manufacturing facility
 """
 
 from pathlib import Path
@@ -31,67 +40,134 @@ DATA = HERE.parents[2]                          # .../Data
 VALISURE = DATA / "08 - Valisure" / "raw" / "DoD Testing Overview NEW_081026_NDCs.xlsx"
 # folder name has a trailing space on disk, so glob rather than hard-code it
 DAILYMED = next(DATA.glob("27 - Our NDC-FEI Linkage*/all_daily_med.csv"))
+PROPUBLICA = DATA / "26 - Propublica" / "raw" / "ndc_fei.csv"
+REDICA_HISTORY = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
+REDICA_TEXT = DATA / "99 - Outputs - Text Analysis" / "step00_redica_483_observations.csv"
 
-OUT = PROCESSED / "valisure_ndc_fei_dailymed.csv"
-OUT_UNMATCHED = PROCESSED / "valisure_ndc_fei_dailymed_unmatched.csv"
+OUT_XLSX = PROCESSED / "valisure_ndc_fei_linkage.xlsx"
 
 KEEP_OPR_TYPES = ["manufacture"]
 
 
 def ndc54(s: pd.Series) -> pd.Series:
-    """Keep the first two NDC segments: 60687-0662-91 -> 60687-0662."""
+    """Any product NDC -> padded 5-4. 0228-3090 -> 00228-3090."""
     parts = s.astype(str).str.strip().str.split("-")
-    return parts.str[0] + "-" + parts.str[1]
+    ok = parts.str.len() >= 2
+    lab = parts.str[0].where(ok).str.zfill(5)
+    prd = parts.str[1].where(ok).str.zfill(4)
+    return (lab + "-" + prd).where(ok)
 
 
-def main() -> None:
-    # ── Valisure's new NDC list ──────────────────────────────────────────────
+def load_valisure() -> pd.DataFrame:
     v = pd.read_excel(VALISURE).rename(
         columns={"API": "api", "Labeler": "labeler", "NDC": "ndc_raw"})
     v = v[["api", "labeler", "ndc_raw"]].dropna(subset=["ndc_raw"])
     v["ndc"] = ndc54(v["ndc_raw"])
-    v = v.drop_duplicates(subset=["api", "ndc"])
+    v = v.dropna(subset=["ndc"]).drop_duplicates(subset=["api", "ndc"])
     print(f"Valisure list: {len(v):,} rows, {v['ndc'].nunique():,} NDCs, "
           f"{v['api'].nunique()} APIs")
+    return v
 
-    # ── DailyMed linkage, manufacturing sites only ───────────────────────────
+
+def link_dailymed(v: pd.DataFrame) -> pd.DataFrame:
     d = pd.read_csv(DAILYMED, low_memory=False)
-    print(f"\nDailyMed linkage: {len(d):,} rows")
-    d = d[d["opr_type"].isin(KEEP_OPR_TYPES)]
-    print(f"  opr_type in {KEEP_OPR_TYPES}: {len(d):,} rows")
-    d = d.dropna(subset=["FEI"])
+    print(f"\nDailyMed: {len(d):,} rows")
+    d = d[d["opr_type"].isin(KEEP_OPR_TYPES)].dropna(subset=["FEI"])
     d["fei"] = d["FEI"].astype(int)
-    print(f"  with an FEI: {len(d):,} rows, {d['fei'].nunique():,} facilities")
+    d["ndc"] = ndc54(d["ndc"])
+    print(f"  manufacture rows with an FEI: {len(d):,}, "
+          f"{d['fei'].nunique():,} facilities")
 
-    link = d[["ndc", "fei", "name", "link_type"]].drop_duplicates(["ndc", "fei"])
+    link = (d[["ndc", "fei", "name", "link_type", "source_ndc"]]
+            .drop_duplicates(["ndc", "fei"])
+            .rename(columns={"name": "registrant"}))
+    out = v.merge(link, on="ndc", how="inner")
+    _report("dailymed", v, out)
+    return out
 
-    # ── join ────────────────────────────────────────────────────────────────
-    merged = v.merge(link, on="ndc", how="left")
-    matched = merged[merged["fei"].notna()].copy()
-    matched["fei"] = matched["fei"].astype(int)
 
-    n_all = v["ndc"].nunique()
-    n_hit = matched["ndc"].nunique()
-    print(f"\nMatched: {n_hit:,} of {n_all:,} NDCs ({100 * n_hit / n_all:.1f}%)")
-    print(f"  facilities found : {matched['fei'].nunique():,}")
-    print(f"  (ndc, fei) pairs : {len(matched):,}")
-    print(f"  NDCs with >1 facility: "
-          f"{int((matched.groupby('ndc')['fei'].nunique() > 1).sum()):,}")
+def link_propublica(v: pd.DataFrame) -> pd.DataFrame:
+    p = pd.read_csv(PROPUBLICA, low_memory=False)
+    p["ndc"] = ndc54(p["ndc"])
+    p = p.dropna(subset=["ndc", "fei"])
+    p["fei"] = p["fei"].astype(int)
+    print(f"\nProPublica: {len(p):,} rows, {p['fei'].nunique():,} facilities")
 
-    print("\nPer-API match rate:")
-    per_api = (v.groupby("api")["ndc"].nunique().rename("ndcs")
-               .to_frame()
-               .join(matched.groupby("api")["ndc"].nunique().rename("matched"))
-               .fillna({"matched": 0}))
-    per_api["matched"] = per_api["matched"].astype(int)
-    per_api["pct"] = (100 * per_api["matched"] / per_api["ndcs"]).round(1)
-    print(per_api.sort_values("pct", ascending=False).to_string())
+    link = (p[["ndc", "fei", "registrant", "country", "anda", "nda",
+               "linkage_method", "api_mfr"]]
+            .drop_duplicates(["ndc", "fei"]))
+    out = v.merge(link, on="ndc", how="inner")
+    _report("propublica", v, out)
+    return out
 
-    matched.to_csv(OUT, index=False)
-    merged[merged["fei"].isna()][["api", "labeler", "ndc_raw", "ndc"]] \
-        .drop_duplicates().to_csv(OUT_UNMATCHED, index=False)
-    print(f"\nSaved -> {OUT.name}")
-    print(f"Saved -> {OUT_UNMATCHED.name}")
+
+def _report(label: str, v: pd.DataFrame, out: pd.DataFrame) -> None:
+    n_all, n_hit = v["ndc"].nunique(), out["ndc"].nunique()
+    nf = out.groupby("ndc")["fei"].nunique()
+    print(f"  [{label}] matched {n_hit:,} of {n_all:,} NDCs "
+          f"({100 * n_hit / n_all:.1f}%), {out['fei'].nunique():,} facilities, "
+          f"{len(out):,} (NDC, FEI) rows")
+    print(f"  [{label}] facilities per NDC: {nf.value_counts().sort_index().to_dict()}")
+
+
+def build_union(dm: pd.DataFrame, pp: pd.DataFrame) -> pd.DataFrame:
+    """One row per FEI, flagged by source and by what Redica already sent us."""
+    def per_fei(df, src):
+        g = (df.groupby("fei")
+               .agg(n_ndcs=("ndc", "nunique"),
+                    n_apis=("api", "nunique"),
+                    apis=("api", lambda s: ", ".join(sorted(set(s)))),
+                    registrant=("registrant", "first"))
+               .reset_index())
+        g["source"] = src
+        return g
+
+    both = pd.concat([per_fei(dm, "dailymed"), per_fei(pp, "propublica")])
+    u = (both.groupby("fei")
+             .agg(n_ndcs=("n_ndcs", "max"),
+                  n_apis=("n_apis", "max"),
+                  apis=("apis", lambda s: ", ".join(sorted({a.strip()
+                        for x in s for a in x.split(",")}))),
+                  registrant=("registrant", "first"))
+             .reset_index())
+    u["in_dailymed"] = u["fei"].isin(set(dm["fei"]))
+    u["in_propublica"] = u["fei"].isin(set(pp["fei"]))
+
+    hist = set(pd.to_numeric(pd.read_csv(REDICA_HISTORY, low_memory=False)["FEI"],
+                             errors="coerce").dropna().astype(int))
+    text = set(pd.to_numeric(pd.read_csv(REDICA_TEXT, low_memory=False)["fei"],
+                             errors="coerce").dropna().astype(int))
+    u["have_redica_history"] = u["fei"].isin(hist)
+    u["have_483_text"] = u["fei"].isin(text)
+    u["need_from_redica"] = ~u["have_redica_history"]
+
+    u = u.sort_values(["need_from_redica", "n_ndcs"], ascending=[False, False])
+    u = u[["fei", "registrant", "n_ndcs", "n_apis", "apis",
+           "in_dailymed", "in_propublica",
+           "have_redica_history", "have_483_text", "need_from_redica"]]
+
+    print(f"\n=== FEI union (the Redica request list) ===")
+    print(f"  distinct FEIs            : {len(u):,}")
+    print(f"    found by both methods  : {int((u.in_dailymed & u.in_propublica).sum()):,}")
+    print(f"    DailyMed only          : {int((u.in_dailymed & ~u.in_propublica).sum()):,}")
+    print(f"    ProPublica only        : {int((~u.in_dailymed & u.in_propublica).sum()):,}")
+    print(f"  already have history     : {int(u.have_redica_history.sum()):,}")
+    print(f"  already have 483 text    : {int(u.have_483_text.sum()):,}")
+    print(f"  NEED to request          : {int(u.need_from_redica.sum()):,}")
+    return u
+
+
+def main() -> None:
+    v = load_valisure()
+    dm = link_dailymed(v)
+    pp = link_propublica(v)
+    u = build_union(dm, pp)
+
+    with pd.ExcelWriter(OUT_XLSX, engine="openpyxl") as xw:
+        dm.to_excel(xw, sheet_name="dailymed", index=False)
+        pp.to_excel(xw, sheet_name="propublica", index=False)
+        u.to_excel(xw, sheet_name="fei_union", index=False)
+    print(f"\nSaved -> {OUT_XLSX.name}  (sheets: dailymed, propublica, fei_union)")
 
 
 if __name__ == "__main__":
