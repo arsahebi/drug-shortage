@@ -449,11 +449,34 @@ detectable effect at 80% power is about AUC 0.63, so the data rule out a large e
 uninformative about a modest one. Note the two marginal associations point the wrong way and
 that we treat them as noise given 12 tests and no Bonferroni survivor.
 
-### Analyses not yet run, do not invent results for them
+### Lag correlations, gap trajectory and the silent-problem grouping (re-run 2026-09-30)
 
-Lag correlations, gap trajectory and the silent-problem grouping have not been re-run on the
-clean attribution panel. The figures under `vai_signal_validation/outputs/` for those three
-still reflect the old shared-ANDA outcome. Either exclude them or mark them clearly.
+All three now run on the clean attribution panel. **Every output filename carries a suffix
+recording the panel it came from**: `_anda_pp` means the clean one-FEI one-ANDA attribution and
+is the one to cite. Files with no suffix or `_anda` only no longer exist; do not look for them.
+
+**Gap trajectory** (`outputs/tables/gap_trajectory_anda_pp.csv`). Adverse events at the
+inspection quarter relative to four quarters prior, by time since the previous inspection:
+under 1 year **1.879** (n=60), 1-2 years **1.274** (n=87), 2-3.5 years **1.030** (n=57), over
+3.5 years **0.847** (n=33). This is monotonic and it was not before: the old shared-ANDA panel
+gave 1.145 / 1.266 / 1.090 / 1.031 with no ordering. Clean attribution produced a gradient
+where there had been noise. Keep the project's agreed framing: this reflects FDA's Site
+Selection Model working as designed, risk signals drawing the inspection, and is not evidence
+FDA is late.
+
+**Lag correlations** (`outputs/tables/lag_correlation_table_anda_pp.csv`). The laboratory
+controls observation count is the only feature with a sustained significant association, and it
+strengthened: Spearman 0.182 (p=0.035) at the inspection quarter, **0.294 (p=0.0006)** one
+quarter after, 0.255 (p=0.004) at two quarters, 0.245 (p=0.005) at four. Up from 0.176
+(p=0.0065) on the old panel. Nothing else reaches significance, so do not present the heatmap as
+though many cells mattered.
+
+**Silent-problem grouping** (`outputs/tables/silent_problem_groups_anda_pp.csv`).
+**The ordering inverted and this is no longer reportable.** Low-signal VAI now shows the largest
+pre-inspection rise at 1.258 (38 facilities, 79 inspections), ahead of high-signal VAI at 1.200
+(13 facilities, 22 inspections) and OAI-ever at 1.114 (22 facilities, 63 inspections). On the
+old panel high-signal VAI led. With 22 inspections in the high-signal cell this is consistent
+with the within-VAI null above. Mention it only as a limitation, or leave it out.
 
 ## 6. Structure to produce
 
