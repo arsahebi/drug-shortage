@@ -10,13 +10,19 @@ genuinely be made at more than one registered site. Those rows are kept as-is, o
 row per (NDC, FEI) pair.
 
 Output workbook: valisure_ndc_fei_linkage.xlsx
-  Sheet "dailymed"    our rule-based linkage (Data/27, Amir). opr_type ==
-                      "manufacture" only; "api manufacture" excluded, since an
-                      API supplier is not the plant that made the finished dose.
+  Sheet "enhanced_rule_based"  our enhanced rule-based linkage (Data/27, Amir).
+                      opr_type == "manufacture" only; "api manufacture" excluded,
+                      since an API supplier is not the plant that made the
+                      finished dose.
   Sheet "propublica"  ProPublica Rx Inspector linkage (Data/26), for comparison.
-  Sheet "fei_union"   every distinct FEI either method found, flagged by source
-                      and by whether we already hold Redica history or 483 text.
-                      This is the list to send Redica.
+  Sheet "fei_union"   every distinct FEI either method found.
+
+The Redica request is the WHOLE first column of fei_union, all 226 FEIs, not only
+the ones we lack. Redica has sent history for some of them before, but their
+holdings may have grown since, so re-requesting costs nothing and may return
+richer data on facilities we already cover. The have_redica_history, have_483_text
+and not_yet_covered flags are there for group clarity about what we already hold, not
+to narrow the request.
 
 NDC matching
 ────────────
@@ -69,9 +75,9 @@ def load_valisure() -> pd.DataFrame:
     return v
 
 
-def link_dailymed(v: pd.DataFrame) -> pd.DataFrame:
+def link_enhanced_rule_based(v: pd.DataFrame) -> pd.DataFrame:
     d = pd.read_csv(DAILYMED, low_memory=False)
-    print(f"\nDailyMed: {len(d):,} rows")
+    print(f"\nEnhanced rule-based linkage: {len(d):,} rows")
     d = d[d["opr_type"].isin(KEEP_OPR_TYPES)].dropna(subset=["FEI"])
     d["fei"] = d["FEI"].astype(int)
     d["ndc"] = ndc54(d["ndc"])
@@ -82,7 +88,7 @@ def link_dailymed(v: pd.DataFrame) -> pd.DataFrame:
             .drop_duplicates(["ndc", "fei"])
             .rename(columns={"name": "registrant"}))
     out = v.merge(link, on="ndc", how="inner")
-    _report("dailymed", v, out)
+    _report("enhanced_rule_based", v, out)
     return out
 
 
@@ -122,7 +128,7 @@ def build_union(dm: pd.DataFrame, pp: pd.DataFrame) -> pd.DataFrame:
         g["source"] = src
         return g
 
-    both = pd.concat([per_fei(dm, "dailymed"), per_fei(pp, "propublica")])
+    both = pd.concat([per_fei(dm, "enhanced_rule_based"), per_fei(pp, "propublica")])
     u = (both.groupby("fei")
              .agg(n_ndcs=("n_ndcs", "max"),
                   n_apis=("n_apis", "max"),
@@ -130,7 +136,7 @@ def build_union(dm: pd.DataFrame, pp: pd.DataFrame) -> pd.DataFrame:
                         for x in s for a in x.split(",")}))),
                   registrant=("registrant", "first"))
              .reset_index())
-    u["in_dailymed"] = u["fei"].isin(set(dm["fei"]))
+    u["in_enhanced_rule_based"] = u["fei"].isin(set(dm["fei"]))
     u["in_propublica"] = u["fei"].isin(set(pp["fei"]))
 
     hist = set(pd.to_numeric(pd.read_csv(REDICA_HISTORY, low_memory=False)["FEI"],
@@ -139,35 +145,39 @@ def build_union(dm: pd.DataFrame, pp: pd.DataFrame) -> pd.DataFrame:
                              errors="coerce").dropna().astype(int))
     u["have_redica_history"] = u["fei"].isin(hist)
     u["have_483_text"] = u["fei"].isin(text)
-    u["need_from_redica"] = ~u["have_redica_history"]
+    u["not_yet_covered"] = ~u["have_redica_history"]   # informational, not a filter
 
-    u = u.sort_values(["need_from_redica", "n_ndcs"], ascending=[False, False])
+    u = u.sort_values(["not_yet_covered", "n_ndcs"], ascending=[False, False])
     u = u[["fei", "registrant", "n_ndcs", "n_apis", "apis",
-           "in_dailymed", "in_propublica",
-           "have_redica_history", "have_483_text", "need_from_redica"]]
+           "in_enhanced_rule_based", "in_propublica",
+           "have_redica_history", "have_483_text", "not_yet_covered"]]
 
-    print(f"\n=== FEI union (the Redica request list) ===")
-    print(f"  distinct FEIs            : {len(u):,}")
-    print(f"    found by both methods  : {int((u.in_dailymed & u.in_propublica).sum()):,}")
-    print(f"    DailyMed only          : {int((u.in_dailymed & ~u.in_propublica).sum()):,}")
-    print(f"    ProPublica only        : {int((~u.in_dailymed & u.in_propublica).sum()):,}")
-    print(f"  already have history     : {int(u.have_redica_history.sum()):,}")
-    print(f"  already have 483 text    : {int(u.have_483_text.sum()):,}")
-    print(f"  NEED to request          : {int(u.need_from_redica.sum()):,}")
+    print(f"\n=== FEI union: send this whole column to Redica ===")
+    print(f"  distinct FEIs to request    : {len(u):,}")
+    print(f"    found by both methods     : {int((u.in_enhanced_rule_based & u.in_propublica).sum()):,}")
+    print(f"    enhanced rule-based only  : {int((u.in_enhanced_rule_based & ~u.in_propublica).sum()):,}")
+    print(f"    ProPublica only           : {int((~u.in_enhanced_rule_based & u.in_propublica).sum()):,}")
+    print(f"  for group clarity only:")
+    print(f"    already have history      : {int(u.have_redica_history.sum()):,}")
+    print(f"    already have 483 text     : {int(u.have_483_text.sum()):,}")
+    print(f"    not yet covered           : {int(u.not_yet_covered.sum()):,}")
+    print(f"  Ask for all {len(u):,}. Redica may hold more on the covered ones than")
+    print(f"  they sent the first time, and re-requesting costs nothing.")
     return u
 
 
 def main() -> None:
     v = load_valisure()
-    dm = link_dailymed(v)
+    dm = link_enhanced_rule_based(v)
     pp = link_propublica(v)
     u = build_union(dm, pp)
 
     with pd.ExcelWriter(OUT_XLSX, engine="openpyxl") as xw:
-        dm.to_excel(xw, sheet_name="dailymed", index=False)
+        dm.to_excel(xw, sheet_name="enhanced_rule_based", index=False)
         pp.to_excel(xw, sheet_name="propublica", index=False)
         u.to_excel(xw, sheet_name="fei_union", index=False)
-    print(f"\nSaved -> {OUT_XLSX.name}  (sheets: dailymed, propublica, fei_union)")
+    print(f"\nSaved -> {OUT_XLSX.name}  "
+          f"(sheets: enhanced_rule_based, propublica, fei_union)")
 
 
 if __name__ == "__main__":
