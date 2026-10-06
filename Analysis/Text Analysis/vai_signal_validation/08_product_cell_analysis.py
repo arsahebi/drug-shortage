@@ -67,10 +67,20 @@ Results (first run 2026-10-06; see outputs/tables/product_cell_results.md)
   only weakly stable over time (cell percentile rho 0.10-0.29 between
   periods), and H1/H2 were picked after a first look at the main window.
 
+All 17 fixed features (added 2026-10-06)
+  The same model run for every step02 feature (the list 02 and
+  valisure_validation use), in the main window, its two halves, and three
+  7-quarter CCAE windows including 2023Q1-2024Q3. Diagnostics: cross-cohort
+  agreement at plant vs cell level, period stability of the cell percentile,
+  and CCAE abandonment by quarter.
+
 Outputs
   outputs/product_cell_panel.parquet
   outputs/tables/product_cell_results.csv
   outputs/tables/product_cell_results.md
+  outputs/tables/product_cell_all17.csv / .md
+  outputs/tables/product_cell_diagnostics.csv
+  outputs/tables/marketscan_ccae_quarterly_abandonment.csv
 """
 
 from __future__ import annotations
@@ -108,6 +118,13 @@ STERILE_RE = (r"steril|aseptic|inject|parenteral|\bvials?\b|lyophili|media fill|
               r"endotoxin|iso 5|cleanroom|grade a\b|bioburden|ophthalmic")
 ORAL_RE = r"tablet|capsule|oral solid|compress|granulat|blend|coating|encapsul"
 PRODUCT_TEST_RE = r"dissolution|\bassay\b|potency|content uniformity|impurit"
+
+TEXT_TS = ROOT / "Analysis" / "Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
+# The 17 fixed step02 features used by 02 and by valisure_validation (same list, same order).
+_spec02 = importlib.util.spec_from_file_location("m02", HERE / "02_vai_signal_model.py")
+m02 = importlib.util.module_from_spec(_spec02)
+_spec02.loader.exec_module(m02)
+FIXED17 = list(m02.TEXT_FEATURES)
 
 HYPOTHESES = ["lab_share", "di_share", "product_test_share"]
 COMPARATORS = ["critmajor_share", "any_oai"]
@@ -232,6 +249,85 @@ def _holm(p: pd.Series) -> pd.Series:
     return adj
 
 
+def _expo17(year_min: int, year_max: int) -> pd.DataFrame:
+    """Plant mean of the 17 fixed step02 features over its inspections in the
+    window (all observations, no route filter, matching the Valisure matrix),
+    plus the plant's any-OAI flag in the same window."""
+    ts = pd.read_csv(TEXT_TS, parse_dates=["snapshot_date"])
+    yr = ts["snapshot_date"].dt.year
+    ts = ts[(yr >= year_min) & (yr <= year_max)].copy()
+    ts["fei"] = ts["fei"].astype("int64").astype(str)
+    e = ts.groupby("fei")[FIXED17].mean()
+    p = pd.read_parquet(PANEL, columns=["fei", "insp_date", "any_oai"])
+    yr = pd.to_datetime(p["insp_date"]).dt.year
+    p = p[(yr >= year_min) & (yr <= year_max)]
+    e["any_oai"] = (p.groupby(p["fei"].astype("int64").astype(str))["any_oai"].max()
+                    .reindex(e.index).fillna(0))
+    return e
+
+
+def _all17_rows(cells: pd.DataFrame, expo: pd.DataFrame, frame: str, window: str) -> list[dict]:
+    f = _build_panel(cells, expo)[frame]
+    rows = [{"window": window, "outcome": frame, "feature": x, **_fit(f, x)}
+            for x in FIXED17 + ["any_oai"]]
+    t = pd.DataFrame(rows)
+    k = (t["feature"] != "any_oai") & t["p"].notna()
+    t.loc[k, "p_holm17"] = _holm(t.loc[k, "p"])
+    return t.to_dict("records")
+
+
+def _diagnostics() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Outcome-quality checks behind the design and the 2023-24 replication.
+
+    1. Cross-cohort agreement (CCAE vs MDCR, 2016Q3-2022Q4) at two units:
+       plant-pooled standardized abandonment ratio (observed / peer-expected
+       stops, plants with >= 1,000 switches in each cohort) and the
+       within-product percentile of labeler x exact-product cells.
+    2. Period stability of the CCAE cell percentile across three windows.
+    3. CCAE abandonment and coverage-loss share by quarter (oral, non-acute,
+       all labelers), which shows the 2023Q3-Q4 drop.
+    """
+    rows = []
+    xws = ms01b._load_crosswalks()
+    sar = {}
+    for c in COHORTS:
+        agg, _ = ms01b._load_cohort(c, xws)
+        a = agg.reset_index()
+        a = a[(a["qi"] >= FIRST_QI) & (a["qi"] <= LAST_QI)].groupby("fei")[
+            ["adj_stops_peer", "expected_stops", "n_switches"]].sum()
+        a = a[a["n_switches"] >= 1000]
+        sar[c] = a["adj_stops_peer"] / a["expected_stops"]
+    j = pd.concat(sar, axis=1, join="inner")
+    rho, pv = spearmanr(j["CCAE"], j["MDCR"])
+    rows.append({"check": "CCAE vs MDCR agreement, plant-pooled SAR", "n": len(j), "rho": rho, "p": pv})
+
+    cells = _load_cells()
+    key = ["manufacturer_labeler_code"] + PRODUCT_KEY
+    w = cells.pivot_table(index=key, columns="cohort", values="ab_pct").dropna()
+    rho, pv = spearmanr(w["CCAE"], w["MDCR"])
+    rows.append({"check": "CCAE vs MDCR agreement, cell within-product percentile", "n": len(w), "rho": rho, "p": pv})
+
+    periods = [("2016Q3-2019Q4", 2016 * 4 + 3, 2019 * 4 + 4), ("2020Q1-2022Q4", 2020 * 4 + 1, 2022 * 4 + 4),
+               ("2023Q1-2024Q3", 2023 * 4 + 1, 2024 * 4 + 3)]
+    pc = {n: _load_cells(["CCAE"], a, b).set_index(key)["ab_pct"] for n, a, b in periods}
+    names = [n for n, _, _ in periods]
+    for i in range(3):
+        for k in range(i + 1, 3):
+            x = pd.concat([pc[names[i]], pc[names[k]]], axis=1, join="inner")
+            rho, pv = spearmanr(x.iloc[:, 0], x.iloc[:, 1])
+            rows.append({"check": f"CCAE cell percentile stability, {names[i]} vs {names[k]}",
+                         "n": len(x), "rho": rho, "p": pv})
+
+    d = pd.read_csv(ms01b.MS_DIR / "manufacturer_product_quarter_CCAE.csv")
+    d = d[~d["ingredient"].str.startswith(ms01b.ACUTE_PREFIXES) & d["form"].isin(ORAL_FORMS)].copy()
+    d["adj"] = d["n_stops"] - d["n_stops_dose_change"] - d["n_coverage_ended"]
+    q = d.groupby("quarter").agg(n_switches=("n_switches", "sum"), adj_stops=("adj", "sum"),
+                                 n_stops=("n_stops", "sum"), n_coverage_ended=("n_coverage_ended", "sum"))
+    q["abandonment"] = q["adj_stops"] / q["n_switches"]
+    q["coverage_share_of_stops"] = q["n_coverage_ended"] / q["n_stops"]
+    return pd.DataFrame(rows), q.reset_index()
+
+
 def main() -> None:
     print("Building labeler x exact-product cells...")
     cells = _load_cells()
@@ -291,6 +387,41 @@ def main() -> None:
     (TABS / "product_cell_results.md").write_text("\n".join(md))
     print("\n".join(md))
     print(f"\nSaved -> {TABS / 'product_cell_results.csv'}")
+
+    # ── All 17 fixed features (added 2026-10-06, same family as the Valisure
+    # matrix; Holm over 17 within each window). Exploratory: these windows
+    # reuse data already examined.
+    print("\nAll 17 fixed features...")
+    e1822 = _expo17(2018, 2022)
+    a17 = []
+    a17 += _all17_rows(cells, e1822, "abandonment (CCAE+MDCR)", "main 2016Q3-2022Q4, both cohorts")
+    for name, a, b in [("half A 2016Q3-2019Q4, both cohorts", 2016 * 4 + 3, 2019 * 4 + 4),
+                       ("half B 2020Q1-2022Q4, both cohorts", 2020 * 4 + 1, 2022 * 4 + 4)]:
+        a17 += _all17_rows(_load_cells(COHORTS, a, b), e1822, "abandonment (CCAE+MDCR)", name)
+    for name, a, b in [("CCAE 7q 2019Q1-2020Q3", 2019 * 4 + 1, 2020 * 4 + 3),
+                       ("CCAE 7q 2021Q1-2022Q3", 2021 * 4 + 1, 2022 * 4 + 3),
+                       ("CCAE 7q 2023Q1-2024Q3 (replication)", 2023 * 4 + 1, 2024 * 4 + 3)]:
+        a17 += _all17_rows(_load_cells(["CCAE"], a, b), e1822, "abandonment (CCAE only)", name)
+    a17 = pd.DataFrame(a17)
+    a17.to_csv(TABS / "product_cell_all17.csv", index=False)
+
+    diag, quarters = _diagnostics()
+    diag.to_csv(TABS / "product_cell_diagnostics.csv", index=False)
+    quarters.to_csv(TABS / "marketscan_ccae_quarterly_abandonment.csv", index=False)
+
+    md = ["# Product-cell analysis: all 17 fixed text features", "",
+          "Plant mean of the 17 step02 features over 2018-2022 inspections (all observations). Same",
+          "unit, outcome and model as product_cell_results.md. Holm over the 17 within each window.", ""]
+    s17 = ["feature", "n_cells", "n_plants", "beta_pct_pts", "ci_lo", "ci_hi", "p", "p_holm17", "plant_rho"]
+    for w in a17["window"].unique():
+        md += [f"## {w}", "", a17.loc[a17["window"] == w, s17]
+               .to_string(index=False, float_format=lambda v: f"{v:.3f}"), ""]
+    md += ["## Diagnostics", "", diag.to_string(index=False, float_format=lambda v: f"{v:.3f}"), "",
+           "## CCAE quarterly abandonment (oral, non-acute, all labelers)", "",
+           quarters.to_string(index=False, float_format=lambda v: f"{v:.4f}"), ""]
+    (TABS / "product_cell_all17.md").write_text("\n".join(md))
+    print("\n".join(md))
+    print(f"\nSaved -> {TABS / 'product_cell_all17.csv'}")
 
 
 if __name__ == "__main__":
