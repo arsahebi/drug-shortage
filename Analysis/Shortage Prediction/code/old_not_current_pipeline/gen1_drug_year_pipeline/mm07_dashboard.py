@@ -44,7 +44,7 @@ def _j(o) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 INSP_XLSX  = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
-TS_CSV     = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
+TS_CSV     = DATA.parent / "Analysis" / "Text Analysis" / "483_fei_text_features_timeseries.csv"
 CASE_FEI   = 3002809586   # best case study: 7 snaps, 58% coverage, 5/7 OAI
 
 

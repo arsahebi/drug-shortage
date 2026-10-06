@@ -17,8 +17,8 @@ The project started with Metformin as a case study but the current focus is **14
 ## Project Root Structure
 ```
 Project - Drug Shortage/
-├── Data/                          ← data sources only (numbered folders); remaining 99 - Outputs folders are being moved out to Analysis/
-├── Analysis/                      ← analysis pipelines and their outputs (MQRI, Dashboards, Metformin Paper, Shortage Prediction so far)
+├── Data/                          ← data sources only (numbered folders + their processed/code)
+├── Analysis/                      ← analysis pipelines and their outputs (Text Analysis, Shortage Prediction, MQRI, Metformin Paper, Dashboards)
 ├── Code/                          ← standalone R/Python scripts (EDA, early Metformin work)
 ├── Paper/                         ← manuscript drafts
 ├── Presentation/                  ← slides
@@ -71,13 +71,13 @@ Each numbered folder = one data source. Raw data files stay in Drive; processed 
 |--------|---------|
 | `Analysis/MQRI/` | Manufacturing Quality Risk Index pipeline |
 | `Analysis/Dashboards/` | EDA dashboards (Redica + IQVIA) and `fei_inspection_explorer/` |
-| `Data/99 - Outputs - Text Analysis/` | FDA 483 text extraction pipeline (LLM-based); to move to Analysis/ |
+| `Analysis/Text Analysis/` | FDA 483 text extraction pipeline (LLM-based) |
 | `Analysis/Shortage Prediction/` | Full shortage prediction ML pipeline (m01–m10 modules) |
 | `Analysis/Metformin Paper/` | Metformin paper (Health Affairs Scholar) pipeline: `processed/code/` steps 1-6, `raw/qa_derived/` Q&A inputs, `ha_revision/` SDUD audit + review-response notebooks, `legacy_2025/` early work |
 
 ## Key Pipelines
 
-### Text Analysis Pipeline (`99 - Outputs - Text Analysis/`)
+### Text Analysis Pipeline (`Analysis/Text Analysis/`)
 Extracts structured signals from FDA 483 observation text.
 ```
 01_build_combined_dataset.py      ← combine 483 + inspection data

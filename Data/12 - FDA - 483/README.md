@@ -81,7 +81,7 @@ Important columns include:
 This is the 483 feature table currently read by:
 
 ```text
-Data/99 - Outputs - Text Analysis/01_build_combined_dataset.py
+Analysis/Text Analysis/01_build_combined_dataset.py
 ```
 
 `01_build_combined_dataset.py` also reads `483_pdf_inventory.csv`; it does not

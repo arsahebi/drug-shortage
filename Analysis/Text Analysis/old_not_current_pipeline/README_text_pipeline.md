@@ -29,7 +29,7 @@ Scripts `04`, `06`, `07`, and `03` do **not** require an API key.
 
 ## Run Order
 
-Run from the `Data/99 - Outputs - Text Analysis/` directory, or use absolute paths.
+Run from the `Analysis/Text Analysis/` directory, or use absolute paths.
 
 ```
 # Must exist first (run once if not already done):

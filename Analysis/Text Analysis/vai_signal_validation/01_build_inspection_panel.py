@@ -55,8 +55,8 @@ DATA   = ROOT / "Data"
 OUT    = HERE / "outputs"
 
 # Current validated redica v2 text timeseries (Claude Sonnet 5).
-TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
-TEXT_TS_PRODSYS = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2_prodsys.csv"
+TEXT_TS_CSV  = DATA.parent / "Analysis" / "Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
+TEXT_TS_PRODSYS = DATA.parent / "Analysis" / "Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2_prodsys.csv"
 SYSTEMS = "all"   # overridden by --systems
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"

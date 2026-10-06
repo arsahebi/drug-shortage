@@ -51,7 +51,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 HERE    = Path(__file__).resolve().parent   # eval/
-PARENT  = HERE.parent                       # 99 - Outputs - Text Analysis/
+PARENT  = HERE.parent                       # Analysis/Text Analysis/
 
 LLM_PDF_CSV    = PARENT / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
 LLM_REDICA_CSV = PARENT / "step01_redica_483_obs_llm_signals_anthropic.csv"

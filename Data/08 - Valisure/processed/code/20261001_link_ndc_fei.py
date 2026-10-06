@@ -46,7 +46,7 @@ VALISURE = DATA / "08 - Valisure" / "raw" / "DoD Testing Overview NEW_081026_NDC
 DAILYMED = DATA / "17 - NDC-FEI Linkage" / "processed" / "all_daily_med.csv"
 PROPUBLICA = DATA / "19 - ProPublica" / "raw" / "ndc_fei.csv"
 REDICA_HISTORY = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
-REDICA_TEXT = DATA / "99 - Outputs - Text Analysis" / "step00_redica_483_observations.csv"
+REDICA_TEXT = DATA.parent / "Analysis" / "Text Analysis" / "step00_redica_483_observations.csv"
 
 OUT_XLSX = PROCESSED / "valisure_ndc_fei_linkage.xlsx"
 

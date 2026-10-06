@@ -12,7 +12,7 @@ structured, facility-level quality-risk signals for a paper (UMich Ross + INFORM
 Healthcare). The behavioral question is whether manufacturing-violation text predicts
 downstream supply-chain risk (recalls, import refusals, drug shortages).
 
-**What already exists** — in `Data/99 - Outputs - Text Analysis/`:
+**What already exists** — in `Analysis/Text Analysis/`:
 
 - `01_build_combined_dataset.py` — merges five FDA sources (Inspections, Form 483s,
   Warning Letters, Recalls, Import Refusals) into:
@@ -54,7 +54,7 @@ Then: Aggregate → Score → Persist, and finally wire the result into the dash
 
 ## Hard constraints
 
-- **Do NOT rename the folder** `Data/99 - Outputs - Text Analysis/`. Keep all new
+- **Do NOT rename the folder** `Analysis/Text Analysis/`. Keep all new
   scripts there, following the existing `NN_name.py` numbering convention.
 - **Do NOT break existing outputs.** `01`–`03` and their CSV/JSON/HTML outputs must
   still run and produce identical results. New scripts are additive.

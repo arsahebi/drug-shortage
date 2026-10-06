@@ -38,7 +38,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from config import DATA, OUT_DATA, OUT_TABS, REDICA_CSV, VALISURE_FEI  # noqa: E402
 
-TIMESERIES_CSV = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
+TIMESERIES_CSV = DATA.parent / "Analysis" / "Text Analysis" / "483_fei_text_features_timeseries.csv"
 RECALL_XLSX = DATA / "22 - FDA - Recall" / "raw" / "Recall Data.xlsx"
 
 HORIZONS = [12, 24, 36]

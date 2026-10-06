@@ -3,7 +3,7 @@
 Shared Word styling for the Metformin analysis documents.
 
 Black-and-white academic style matching
-Data/99 - Outputs - Text Analysis/eval/483_Worked_Example_FEI3003342394_obs3.docx:
+Analysis/Text Analysis/eval/483_Worked_Example_FEI3003342394_obs3.docx:
 Times New Roman, no accent colours, thin ruled tables with a grey header row,
 shaded single-cell callout boxes.
 

@@ -7,7 +7,7 @@ Last updated: 2026-09-16
 
 Takes the quality/regulatory signals built elsewhere in the project (Redica inspection
 events, FDA recalls, FAERS adverse events, the 483-text LLM signals from
-`99 - Outputs - Text Analysis/`) and models their **aggregated impact**: do these
+`Analysis/Text Analysis/`) and models their **aggregated impact**: do these
 signals predict recall, adverse-event, or shortage risk at the facility level. This is
 the "impact" layer — `fei_inspection_explorer/` (in `Analysis/Dashboards/`) is the
 *history/exploration* layer for the same underlying facilities and drugs; this folder

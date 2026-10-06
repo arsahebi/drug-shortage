@@ -52,7 +52,7 @@ from pathlib import Path
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
-DATA = HERE.parent  # Data/
+DATA = HERE.parent.parent / "Data"
 
 REDICA_OBS_XLSX = DATA / "07 - Redica" / "Raw" / "Valisure14_FDA_483_Observations_WL_Deficiencies_OSU.xlsx"
 SITE_LIST_XLSX  = DATA / "07 - Redica" / "Raw" / "Valisure14_Site_List.xlsx"

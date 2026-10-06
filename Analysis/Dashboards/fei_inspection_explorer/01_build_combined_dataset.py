@@ -19,7 +19,7 @@ INPUTS (all read-only — this script does not modify source files)
   Data/08 - Valisure/raw/FEIs_March 2026.xlsx   → 129 reference FEIs
   Data/14 - FDA - Inspection/raw/Inspections Details.xlsx
   Data/14 - FDA - Inspection/raw/Inspections Citations Details.xlsx
-  Data/99 - Outputs - Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
+  Analysis/Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
     → 483 observations (98/129 FEIs), grouped by (fei, insp_date) into one "483"
     event per inspection, with regex flags aggregated per inspection date.
   Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv
@@ -53,9 +53,9 @@ VALISURE   = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
 INSP_RAW   = BASE / "Data/14 - FDA - Inspection/raw/Inspections Details.xlsx"
 CIT_RAW    = BASE / "Data/14 - FDA - Inspection/raw/Inspections Citations Details.xlsx"
 # 483 observations: Redica (98/129 FEIs), not the PDF inventory (38/129 FEIs) —
-# see Data/99 - Outputs - Text Analysis/README.md. One row per observation;
+# see Analysis/Text Analysis/README.md. One row per observation;
 # grouped by (fei, insp_date) below to form one "483" event per inspection.
-REDICA_483 = BASE / "Data/99 - Outputs - Text Analysis" / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
+REDICA_483 = BASE / "Analysis/Text Analysis" / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
 WL_REC     = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv"
 WL_NET     = BASE / "Data/21 - FDA - Warning Letter/processed/wl_fei_network.csv"
 REC_FILT   = BASE / "Data/22 - FDA - Recall/processed/recall_filtered.csv"

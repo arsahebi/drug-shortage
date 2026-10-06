@@ -73,7 +73,7 @@ REDICA       = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.c
 # for 127 FEIs (dates, classification, 483 counts) and actual 483 observation TEXT
 # for only 98 of them. Text is what the LLM features are built from, so coverage
 # must be measured against this file, not the history file.
-REDICA_TEXT  = DATA / "99 - Outputs - Text Analysis" / "step00_redica_483_observations.csv"
+REDICA_TEXT  = DATA.parent / "Analysis" / "Text Analysis" / "step00_redica_483_observations.csv"
 FDA_INSP     = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 
 OUT_XWALK    = HERE / "new_ndc_fei_crosswalk.csv"

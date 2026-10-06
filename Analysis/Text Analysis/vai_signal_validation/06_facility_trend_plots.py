@@ -46,7 +46,7 @@ OUT_TABS = OUT / "tables"
 
 ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae_counts_quarterly.csv"
 FDA_INSP_XLSX   = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
-TEXT_TS_CSV     = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
+TEXT_TS_CSV     = DATA.parent / "Analysis" / "Text Analysis" / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
 FLAGGED_CSV     = OUT_TABS / "silent_problem_flagged_facilities.csv"
 
 _CLASS_COLOR = {"OAI": "#dc2626", "VAI": "#d97706", "NAI": "#059669"}

@@ -87,26 +87,26 @@ epistemic standard, not the prose.
 Do not write from the numbers alone. The reasoning matters and much of it is only in these files.
 
 **Pipeline code**
-- `Data/99 - Outputs - Text Analysis/01_extract_observation_signals.py` — extraction. Contains
+- `Analysis/Text Analysis/01_extract_observation_signals.py` — extraction. Contains
   both v1 and v2 prompts for both providers, plus the tool schemas. The v2 Anthropic prompt
   (`_ANTHROPIC_PROMPT_FIXED_V2`) is what produced the reported data. Read the field rules; the
   Methods section must describe them accurately.
-- `Data/99 - Outputs - Text Analysis/02_aggregate_fei_features.py` — aggregation to
+- `Analysis/Text Analysis/02_aggregate_fei_features.py` — aggregation to
   facility × inspection-date snapshots.
-- `Data/99 - Outputs - Text Analysis/vai_signal_validation/*.py` — panel construction, the
+- `Analysis/Text Analysis/vai_signal_validation/*.py` — panel construction, the
   ablation models, lag correlations, gap trajectory, the silent-problem analysis.
-- `Data/99 - Outputs - Text Analysis/eval/code/03_score_cross_model_agreement.py`,
+- `Analysis/Text Analysis/eval/code/03_score_cross_model_agreement.py`,
   `05_semantic_lift_vs_regex.py`, `07_extraction_reproducibility.py`.
 
 **Analytical narrative and decisions**
-- `Data/99 - Outputs - Text Analysis/eval/results_and_notes/20260902_human_eval_round1_findings_and_fixes.md`
+- `Analysis/Text Analysis/eval/results_and_notes/20260902_human_eval_round1_findings_and_fixes.md`
   — the single most important document. Round-1 human validation, the bugs it found, the prompt
   fixes, the self-agreement discovery, and why scaling up human labeling was rejected.
-- `Data/99 - Outputs - Text Analysis/eval/results_and_notes/20260916_LLM_Extraction_Validation_Report.docx`
-- `Data/99 - Outputs - Text Analysis/eval/results_and_notes/20260917_AE_Outcome_Confound_and_Fix.docx`
+- `Analysis/Text Analysis/eval/results_and_notes/20260916_LLM_Extraction_Validation_Report.docx`
+- `Analysis/Text Analysis/eval/results_and_notes/20260917_AE_Outcome_Confound_and_Fix.docx`
   — why the outcome is a per-facility relative change rather than a raw count. 88.6% of AE
   variance is between-facility; this fix is essential to the Methods.
-- `Data/99 - Outputs - Text Analysis/eval/results_and_notes/20260909_session_handoff.md`
+- `Analysis/Text Analysis/eval/results_and_notes/20260909_session_handoff.md`
 - `Paper/Text Analysis/20260929_Exemplar_Paper_Analysis.docx` — structural comparison against
   the exemplar, including where we match and where we fall short.
 - `Paper/Text Analysis/20260928_Draft_Completion_Plan.docx`
@@ -114,7 +114,7 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
 - `Paper/Text Analysis/20260805_v2_prompt_calibration_and_model_comparison.docx`
 - `Paper/Text Analysis/20260629_483_LLM_Prompts_Expert_Review_YI.docx` — pharmacist expert review
   that drove the v2 prompt. Cite this as expert validation of the schema.
-- `Data/99 - Outputs - Text Analysis/eval/sent_to_abdul/483_Labeling_Rules_v2.docx` — the human
+- `Analysis/Text Analysis/eval/sent_to_abdul/483_Labeling_Rules_v2.docx` — the human
   annotation protocol, identical in content to the LLM prompt. Appendix material.
 
 **Result tables (authoritative, regenerated 2026-09-30)**
@@ -141,20 +141,20 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
 - `Paper/Text Analysis/20260805_v2_prompt_calibration_and_model_comparison.docx` — v2 calibration
   and the first Claude/GPT comparison.
 - `Meeting/ALison & Yelena - Redica - 07-07-2025.docx` — Redica data provenance.
-- `Data/99 - Outputs - Text Analysis/eval/prompt_debug_reruns/*.csv` — eleven re-run files
+- `Analysis/Text Analysis/eval/prompt_debug_reruns/*.csv` — eleven re-run files
   documenting each prompt iteration on the same 50 observations (original, SEVFIX, SEVFIX2,
   FINAL, and repeated runs of each). These are the evidence that prompt changes, not chance,
   produced the improvements. Use them if you need to show the development trajectory.
-- `Data/99 - Outputs - Text Analysis/eval/results_and_notes/human_eval_metrics_v2.md` — round-1
+- `Analysis/Text Analysis/eval/results_and_notes/human_eval_metrics_v2.md` — round-1
   per-field metrics.
-- `Data/99 - Outputs - Text Analysis/eval/sent_to_abdul/483_Background_Reference_Guide.docx` and
+- `Analysis/Text Analysis/eval/sent_to_abdul/483_Background_Reference_Guide.docx` and
   `483_Worked_Example_FEI3003342394_obs3.docx` — annotator onboarding materials.
-- `Data/99 - Outputs - Text Analysis/eval/sent_to_abdul/20260903_Question_for_Abdul_data_integrity_rule.docx`
+- `Analysis/Text Analysis/eval/sent_to_abdul/20260903_Question_for_Abdul_data_integrity_rule.docx`
   — the escalation that produced the testing-into-compliance rule.
-- `Data/99 - Outputs - Text Analysis/README.md` — pipeline overview.
+- `Analysis/Text Analysis/README.md` — pipeline overview.
 
 **How the signals connect to patient harm (read before writing Methods)**
-- `Data/99 - Outputs - Text Analysis/vai_signal_validation/01_build_inspection_panel.py` — the
+- `Analysis/Text Analysis/vai_signal_validation/01_build_inspection_panel.py` — the
   linkage. Read this closely; see §5a below on what it does and does not establish.
 - `Data/15 - FDA - Adverse Event/processed/code/*.py` — FAERS preparation, including
   `2026-05-12-faers_valisure_filter_and_eda.py`.
@@ -170,7 +170,7 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
   `ablation_auc_bar.png`, plus `_global` variants, `lag_correlation_heatmap.png`, and 14
   per-facility `trend_<FEI>.png` files.
 
-Git history on `Data/99 - Outputs - Text Analysis/` records why each prompt rule exists. Use
+Git history on `Analysis/Text Analysis/` records why each prompt rule exists. Use
 `git log` on the extraction script when a Methods claim needs justification.
 
 ## 5. The numbers (use these; verify against the CSVs; do not invent)

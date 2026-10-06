@@ -80,7 +80,7 @@ import pandas as pd
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 HERE       = Path(__file__).parent
-DATA       = HERE.parent                             # .../Data/
+DATA       = HERE.parent.parent / "Data"              # .../Data/
 OBS_CSV    = DATA / "12 - FDA - 483" / "processed" / "483_observations.csv"
 _PDF_SIGNALS_CSV_ANTHROPIC = HERE / "step01_fdapdf_483_obs_llm_signals_anthropic.csv"
 _PDF_SIGNALS_CSV_OPENAI    = HERE / "step01_fdapdf_483_obs_llm_signals_openai.csv"

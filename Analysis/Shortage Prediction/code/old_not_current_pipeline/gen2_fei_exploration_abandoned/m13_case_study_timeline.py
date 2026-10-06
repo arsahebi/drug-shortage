@@ -39,7 +39,7 @@ from utils import get_logger, read_table  # noqa
 
 log = get_logger("m13_case_study", OUT_LOGS / "m13_case_study.log")
 
-TIMESERIES_CSV = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
+TIMESERIES_CSV = DATA.parent / "Analysis" / "Text Analysis" / "483_fei_text_features_timeseries.csv"
 INSP_XLSX      = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 UUTAH_MONTHLY  = OUT_DATA / "master_panel_monthly.parquet"
 

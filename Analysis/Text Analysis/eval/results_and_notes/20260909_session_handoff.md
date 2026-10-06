@@ -5,7 +5,7 @@
 
 ## Project structure (Text Analysis piece of the Drug Shortage project)
 
-Base path: `Data/99 - Outputs - Text Analysis/`
+Base path: `Analysis/Text Analysis/`
 
 ```
 01_extract_observation_signals.py   LLM extraction (v1 legacy + v2 active prompts,

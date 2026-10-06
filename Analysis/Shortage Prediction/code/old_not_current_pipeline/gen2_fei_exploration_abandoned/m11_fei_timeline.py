@@ -36,7 +36,7 @@ from config import (  # noqa: E402
     VALISURE_FEI,
 )
 
-TIMESERIES_CSV = DATA / "99 - Outputs - Text Analysis" / "483_fei_text_features_timeseries.csv"
+TIMESERIES_CSV = DATA.parent / "Analysis" / "Text Analysis" / "483_fei_text_features_timeseries.csv"
 CITATIONS_XLSX = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Citations Details.xlsx"
 RECALL_XLSX = DATA / "22 - FDA - Recall" / "raw" / "Recall Data.xlsx"
 SHORTAGE_XLSX = DATA / "24 - UUtah - Drug Shortage" / "raw" / "efox shortages small file through 2025 final.xlsx"

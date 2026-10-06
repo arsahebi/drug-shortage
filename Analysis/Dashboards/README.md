@@ -9,13 +9,13 @@ Interactive facility-history dashboard: a vis.js network of all 129 reference FE
 (colored by regulatory severity), with a per-facility detail panel — event timeline,
 full event table, CFR citation breakdown, and an LLM Risk Signals tab.
 
-Moved here 2026-09-15 from `Data/99 - Outputs - Text Analysis/` — it's a downstream
+Moved here 2026-09-15 from `Analysis/Text Analysis/` — it's a downstream
 consumer of that folder's LLM text signals (plus structured data from folders 14, 21,
 22, 23), not part of text extraction itself. **All 483 data (Overview-tab regex
 badges, the event timeline's "483" events, and the Risk Signals tab) now comes solely
 from Redica** (`step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv` /
 `step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv` in
-`../99 - Outputs - Text Analysis/`, 98/129 FEIs) — folder 12's PDF-only files
+`../Text Analysis/`, 98/129 FEIs) — folder 12's PDF-only files
 (38/129 FEIs) and the pre-stepXX-prefix filenames the dashboard used to read (which no
 longer existed, so the Risk Signals tab had been silently empty) are no longer used
 anywhere in this dashboard. Inspections/warning letters/recalls/import refusals still

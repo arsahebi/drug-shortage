@@ -18,7 +18,7 @@ PURPOSE
 
 WHEN TO RUN
   Run after 01_build_combined_dataset.py (required).
-  Also re-run after ../../99 - Outputs - Text Analysis/02_aggregate_fei_features.py
+  Also re-run after ../../Text Analysis/02_aggregate_fei_features.py
   if you want the Risk Signals tab to reflect a new extraction run.
 
 REQUIRED FOR COMBINED DATASET?  YES — primary research visualization.
@@ -31,9 +31,9 @@ INPUTS (required — produced by 01)
 
 INPUTS (optional — enriches the dashboard if present)
   Data/21 - FDA - Warning Letter/processed/warning_letter_records.csv
-  Data/99 - Outputs - Text Analysis/step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv
+  Analysis/Text Analysis/step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv
     → FEI-level LLM signal summary (Risk Signals tab), latest snapshot per FEI used
-  Data/99 - Outputs - Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
+  Analysis/Text Analysis/step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv
     → regex signal badges (Overview tab, FEI-lifetime "ever" flags) AND
       per-observation LLM signal cards (Risk Signals tab, top 25 by confidence per FEI)
 
@@ -52,7 +52,7 @@ from pathlib import Path
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE    = Path(__file__).parents[3]
 OUT     = Path(__file__).parent
-TEXT_ANALYSIS = BASE / "Data" / "99 - Outputs - Text Analysis"
+TEXT_ANALYSIS = BASE / "Analysis" / "Text Analysis"
 
 EVENTS_CSV   = OUT / "fei_events_timeline.csv"
 NODES_CSV    = OUT / "fei_node_summary.csv"
@@ -64,7 +64,7 @@ WL_REC_CSV   = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_r
 VALISURE     = BASE / "Data/08 - Valisure/raw/FEIs_March 2026.xlsx"
 # Current validated redica v2 extraction (Claude Sonnet 5) — step02 is a
 # time-series of snapshots per FEI per inspection date; we use the latest
-# snapshot per FEI for the summary. See ../../99 - Outputs - Text Analysis/README.md.
+# snapshot per FEI for the summary. See ../../Text Analysis/README.md.
 RISK_CSV     = TEXT_ANALYSIS / "step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv"
 OBS_SIGNALS  = TEXT_ANALYSIS / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
 SIGNALS_483  = OBS_SIGNALS  # Overview-tab regex badges read the same file
@@ -220,7 +220,7 @@ elif RISK_CSV.exists():
     print("  [INFO] step02 redica file found but step01 redica file missing — no obs cards")
 else:
     print("  LLM risk signals: not found — run 01_extract_observation_signals.py and "
-          "02_aggregate_fei_features.py in ../../99 - Outputs - Text Analysis/ to generate")
+          "02_aggregate_fei_features.py in ../../Text Analysis/ to generate")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1593,7 +1593,7 @@ function renderRiskTab(fei) {
       <div class="no-text-data">No LLM-extracted risk signals for this facility.</div>
       <div style="font-size:10px;color:#888;margin-top:8px">
         Run 01_extract_observation_signals.py and 02_aggregate_fei_features.py
-        (Data/99 - Outputs - Text Analysis/) to generate signals.
+        (Analysis/Text Analysis/) to generate signals.
       </div>
     </div>`;
     return;

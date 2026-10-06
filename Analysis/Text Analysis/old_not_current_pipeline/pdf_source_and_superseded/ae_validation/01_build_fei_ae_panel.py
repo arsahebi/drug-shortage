@@ -46,7 +46,7 @@ ROOT   = HERE.parent.parent.parent
 DATA   = ROOT / "Data"
 OUT    = HERE / "outputs"
 
-TEXT_TS_CSV  = DATA / "99 - Outputs - Text Analysis" / "step02_483_fei_text_features_timeseries_redica.csv"
+TEXT_TS_CSV  = DATA.parent / "Analysis" / "Text Analysis" / "step02_483_fei_text_features_timeseries_redica.csv"
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
 REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
