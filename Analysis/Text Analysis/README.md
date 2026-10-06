@@ -65,6 +65,7 @@ planned cross-model agreement check (see `eval/results_and_notes/20260909_sessio
 | Folder | Purpose |
 |---|---|
 | `eval/` | Human-eval harness — `code/` (scripts), `sent_to_abdul/` (the RA labeling package), `validation_data/` (sample-50 seed data + private answer key), `prompt_debug_reruns/` (re-runs used to separate real prompt fixes from model noise), `results_and_notes/` (scored metrics, findings writeup, handoff docs). |
+| `vai_signal_validation/` | Inspection-level outcome models. `01_build_inspection_panel.py` builds the FAERS panel; `01b_build_marketscan_outcomes.py` builds the parallel MarketScan switch outcomes (abandonment, ER, failure-mode dx; labeler rows bridged to plants via ProPublica + our NDC-FEI crosswalks); `02_vai_signal_model.py` runs the A-E configurations with `--outcome relative` (FAERS) or `aband_excess` / `aband_raw` / `er_rise` / `dx_rise` (MarketScan, `--cohort CCAE|MDCR`, `--min-switches`, `--common-sample`). |
 | `old_not_current_pipeline/` | Archived scripts/outputs, including `pdf_source_and_superseded/` (pdf-source runs, pre-v2 redica files, the old `ae_validation/` and `signal_verification/` pipelines — both superseded by `eval/` and the Shortage Prediction `m14`/`m17` models). |
 
 ## Output file naming

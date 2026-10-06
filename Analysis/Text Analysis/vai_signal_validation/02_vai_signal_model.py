@@ -23,6 +23,18 @@ inspection AE count, same facility, same window length) cancels the
 facility/drug-size confound out entirely. Both are still implemented,
 see _build_outcome_global() and _build_outcome_relative(), for comparison.
 
+MarketScan outcomes (added 2026-10-06): --outcome aband_excess | aband_raw |
+er_rise | dx_rise read outputs/marketscan_inspection_outcomes.parquet (built
+by 01b_build_marketscan_outcomes.py) and merge it onto the same inspection
+panel, so text features, OAI flags and CV are identical to the FAERS runs.
+Each is "did the plant's measure rise in the 4 quarters after the inspection
+vs the 4 before", requiring --min-switches (default 300) switches on BOTH
+sides in the chosen --cohort (CCAE primary, MDCR as a separate replication,
+never pooled). aband_excess is the primary DV: abandonment net of the
+same-product, same-quarter rate at other labelers. --common-sample keeps only
+inspections that have BOTH the FAERS relative outcome and the MarketScan
+outcome, so the two DVs can be compared on the same events.
+
 Five configurations, matching the INFORMS slide table exactly:
   A. Text only, full sample
   B. Text + inspection outcome (OAI) flag
@@ -68,6 +80,13 @@ OUT_MOD   = OUT / "models"
 PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
+MS_OUTCOMES = OUT / "marketscan_inspection_outcomes.parquet"
+MS_OUTCOMES_MAP = {          # --outcome -> (measure column stem, outcome column)
+    "aband_excess": ("ab_excess", "aband_excess_rise_next4q"),
+    "aband_raw":    ("ab_raw",    "aband_raw_rise_next4q"),
+    "er_rise":      ("er_net",    "er_net_rise_next4q"),
+    "dx_rise":      ("dx_net",    "dx_net_rise_next4q"),
+}
 
 # v2 schema: same 2 renames as 01_build_inspection_panel.py.
 # severity_critmajor_share (Critical+Major), NOT severity_majmod_share.
@@ -163,6 +182,45 @@ def _build_outcome_relative(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     return df, "ae_rise_next4q"
 
 
+def _build_outcome_marketscan(df: pd.DataFrame, outcome: str, cohort: str,
+                              min_switches: int) -> tuple[pd.DataFrame, str]:
+    """MarketScan switch outcome: 1 if the plant's measure in the 4 quarters
+    after the inspection is higher than in the 4 quarters before, same plant,
+    same cohort. Inspections with fewer than min_switches switches on either
+    side are dropped, not imputed (see 01b for the bridge and window rules).
+    """
+    measure, out_col = MS_OUTCOMES_MAP[outcome]
+    if not MS_OUTCOMES.exists():
+        raise FileNotFoundError(f"{MS_OUTCOMES} not found. Run 01b_build_marketscan_outcomes.py first.")
+    ms = pd.read_parquet(MS_OUTCOMES)
+    p = f"ms_{cohort.lower()}"
+    ms = ms[["fei", "insp_date", f"{p}_pre_n_sw", f"{p}_post_n_sw",
+             f"{p}_pre_{measure}", f"{p}_post_{measure}"]].copy()
+    ms["insp_date"] = pd.to_datetime(ms["insp_date"]).dt.normalize()
+    df = df.copy()
+    df["_date_key"] = pd.to_datetime(df["insp_date"]).dt.normalize()
+    df = df.merge(ms.rename(columns={"insp_date": "_date_key"}),
+                  on=["fei", "_date_key"], how="left").drop(columns="_date_key")
+    keep = ((df[f"{p}_pre_n_sw"] >= min_switches) & (df[f"{p}_post_n_sw"] >= min_switches)
+            & df[f"{p}_pre_{measure}"].notna() & df[f"{p}_post_{measure}"].notna())
+    print(f"  Dropping {(~keep).sum()} inspections with < {min_switches} {cohort} "
+          f"switches on the pre or post side (or no peer/plant data)")
+    df = df[keep].copy()
+    df[out_col] = (df[f"{p}_post_{measure}"] > df[f"{p}_pre_{measure}"]).astype(int)
+    return df, out_col
+
+
+def _outcome_desc(outcome: str, cohort: str) -> str:
+    return {
+        "relative": "AE count rose vs. this facility's own pre-inspection window",
+        "global": "above-median AEs in 4 quarters after inspection (pooled across facilities)",
+        "aband_excess": f"MarketScan {cohort}: peer-adjusted abandonment rose after vs. before inspection",
+        "aband_raw": f"MarketScan {cohort}: abandonment rate rose after vs. before inspection",
+        "er_rise": f"MarketScan {cohort}: net ER visits per 1,000 switches rose after vs. before inspection",
+        "dx_rise": f"MarketScan {cohort}: net failure-mode dx per 1,000 switches rose after vs. before inspection",
+    }[outcome]
+
+
 def _cv_evaluate(X: np.ndarray, y: np.ndarray, groups: np.ndarray, label: str,
                   n_splits: int = 5) -> list[dict]:
     n_splits = min(n_splits, max(2, len(np.unique(groups)) - 1))
@@ -204,7 +262,7 @@ def _cv_evaluate(X: np.ndarray, y: np.ndarray, groups: np.ndarray, label: str,
     return results
 
 
-def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path, outcome_label: str = "relative") -> None:
+def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path, outcome_desc: str) -> None:
     lr = metrics[metrics["model"] == "LR"].copy()
     rf = metrics[metrics["model"] == "RF"].copy()
     configs = lr["config"].tolist()
@@ -218,9 +276,6 @@ def plot_ablation_bar(metrics: pd.DataFrame, out_path: Path, outcome_label: str 
     ax.set_xticks(x)
     ax.set_xticklabels(configs, fontsize=9, rotation=20, ha="right")
     ax.set_ylabel("Mean AUC (GroupKFold CV)", fontsize=10)
-    outcome_desc = ("AE count rose vs. this facility's own pre-inspection window"
-                     if outcome_label == "relative" else
-                     "above-median AEs in 4 quarters after inspection (pooled across facilities)")
     ax.set_title(f"VAI-signal validation rerun (current text pipeline)\noutcome: {outcome_desc}", fontsize=9)
     ax.set_ylim(0.3, 1.0)
     ax.legend(fontsize=9)
@@ -244,11 +299,20 @@ def main() -> None:
                         help="'propublica' uses the clean one-FEI one-ANDA panel")
     parser.add_argument("--anda-ae", dest="anda_ae", action="store_true",
                         help="Use ANDA-specific AE panel instead of drug-level panel")
-    parser.add_argument("--outcome", choices=["global", "relative"], default="relative",
+    parser.add_argument("--outcome", choices=["global", "relative", *MS_OUTCOMES_MAP],
+                        default="relative",
                         help="global = original above-pooled-median split (confounded by "
                              "facility/drug size, see _build_outcome_global). relative = "
-                             "per-facility pre-vs-post comparison, the 2026-09-16 fix "
-                             "(default).")
+                             "per-facility FAERS pre-vs-post comparison, the 2026-09-16 fix "
+                             "(default). aband_excess / aband_raw / er_rise / dx_rise = "
+                             "MarketScan switch outcomes (see _build_outcome_marketscan).")
+    parser.add_argument("--cohort", choices=["CCAE", "MDCR"], default="CCAE",
+                        help="MarketScan cohort for the MarketScan outcomes")
+    parser.add_argument("--min-switches", type=int, default=300,
+                        help="minimum MarketScan switches on each side of the inspection")
+    parser.add_argument("--common-sample", action="store_true",
+                        help="keep only inspections with both the FAERS relative outcome "
+                             "and the MarketScan outcome")
     args = parser.parse_args()
     if args.anda_ae:
         panel_path = PANEL_PP if args.anda_source == 'propublica' else PANEL_ANDA
@@ -262,7 +326,15 @@ def main() -> None:
 
     print(f"Loading panel ({'ANDA-specific' if args.anda_ae else 'drug-level'})...")
     df = pd.read_parquet(panel_path)
-    if args.outcome == "relative":
+    is_ms = args.outcome in MS_OUTCOMES_MAP
+    if args.common_sample:
+        print("  Common sample: requiring both the FAERS and the MarketScan outcome")
+        df, _ = _build_outcome_relative(df)
+        if not is_ms:   # an MS outcome applies its own filter below
+            df, _ = _build_outcome_marketscan(df, "aband_excess", args.cohort, args.min_switches)
+    if is_ms:
+        df, outcome_col = _build_outcome_marketscan(df, args.outcome, args.cohort, args.min_switches)
+    elif args.outcome == "relative":
         df, outcome_col = _build_outcome_relative(df)
     else:
         df, outcome_col = _build_outcome_global(df)
@@ -330,14 +402,20 @@ def main() -> None:
     suffix = (("_anda" if args.anda_ae else "")
               + ("_pp" if args.anda_ae and args.anda_source == "propublica" else "")
               + ("_prodsys" if args.systems == "product" else "")
-              + ("" if args.outcome == "relative" else "_global"))
+              + ("_global" if args.outcome == "global" else "")
+              + (f"_ms_{args.outcome}_{args.cohort.lower()}" if is_ms else "")
+              + (f"_min{args.min_switches}" if is_ms and args.min_switches != 300 else "")
+              + ("_common" if args.common_sample else ""))
     metrics.to_csv(OUT_MOD / f"ablation_metrics{suffix}.csv", index=False)
     print(f"\nResults:\n{metrics[['config','model','auc','p_vs_0.5','n_folds','n']].to_string(index=False)}")
 
     md_lines = [
         "# VAI-signal validation rerun -- model summary",
         "",
-        f"Outcome definition: {args.outcome} ({outcome_col})",
+        f"Outcome definition: {args.outcome} ({outcome_col})"
+        + (f", cohort {args.cohort}, >= {args.min_switches} switches each side" if is_ms else ""),
+        f"Outcome: {_outcome_desc(args.outcome, args.cohort)}",
+        f"Panel file: {panel_path.name}" + (" (common FAERS + MarketScan sample)" if args.common_sample else ""),
         f"Panel: {len(df)} inspection events, {df['fei'].nunique()} unique FEIs",
         f"Outcome base rate: {y.mean():.1%}",
         "",
@@ -349,7 +427,7 @@ def main() -> None:
     ]
     (OUT_TABS / f"model_summary{suffix}.md").write_text("\n".join(md_lines))
 
-    plot_ablation_bar(metrics, OUT_FIGS / f"ablation_auc_bar{suffix}.png", outcome_label=args.outcome)
+    plot_ablation_bar(metrics, OUT_FIGS / f"ablation_auc_bar{suffix}.png", outcome_desc=_outcome_desc(args.outcome, args.cohort))
     print(f"\nAll outputs saved to {OUT}/")
 
 
