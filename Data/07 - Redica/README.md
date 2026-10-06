@@ -31,9 +31,20 @@ exports for any site list:
 
 Steps:
 
-1. Put the new files in `raw/` (keep the old ones; a dated subfolder per delivery is easiest).
-2. Point the three constants at the new files.
-3. Run the script. It overwrites `redica_all_drugs_combined.csv` and
+1. Put the new delivery in its own folder under `raw/`, e.g. `raw/2027-01 delivery/`. Keep
+   the old files where they are.
+2. Run the script with that folder:
+
+   ```
+   cd "Data/07 - Redica/processed"
+   python 20260505_redica_all_drugs_combined.py "../raw/2027-01 delivery"
+   ```
+
+   It picks the one file in the folder matching each of `*Red_Flag_Events*.xlsx`,
+   `*Data_Availability*.xlsx` and `*Site_List*.xlsx`, prints which files it used, and stops
+   with a message if a pattern matches zero files or more than one. Run with no folder, it
+   uses the three `Valisure14_*` files above.
+3. It overwrites `redica_all_drugs_combined.csv` and
    `redica_all_drugs_combined_mismatches_report.csv`.
 4. Look at the mismatch report. It lists sites where the count of 483s found in the event
    file differs from Redica's own `483s Issued` total. The notes at the bottom of the script
@@ -57,10 +68,10 @@ Classification rules the script applies, so they stay consistent across refreshe
 
 | File | What it is | Used by |
 |---|---|---|
-| `20260630_build_valisure_fei_inspection_history.py` | One-off from 2026-06-30 for the Metformin paper. Merged the old Sept 2025 metformin export with the June 2026 Valisure14 export into one event history for the ~25 metformin FEIs, flagging each inspection as in both exports, old only or new only (`Insp_coverage`) | Nothing reads its output. **Cannot run as written**, see below |
-| `valisure_fei_inspection_history.csv` | Output of the script above: 235 events, 24 FEIs | Nothing |
+| `legacy/20260630_build_valisure_fei_inspection_history.py` | One-off from 2026-06-30 for the Metformin paper. Merged the old Sept 2025 metformin export with the June 2026 Valisure14 export into one event history for the ~25 metformin FEIs, flagging each inspection as in both exports, old only or new only (`Insp_coverage`) | Nothing reads its output. **Cannot run as written**, see below |
+| `legacy/valisure_fei_inspection_history.csv` | Output of the script above: 235 events, 24 FEIs | Nothing |
 | `redica_all_drugs_combined_mismatches_report.csv` | QA output of the main script | You, after a refresh |
-| `ReadMe.rtf` | Copy of the discrepancy notes at the bottom of the main script | Nothing |
+| `legacy/ReadMe.rtf` | Copy of the discrepancy notes at the bottom of the main script | Nothing |
 | `ndc_fei_73_v4.xlsx` | 2025 metformin NDC to FEI map (73 NDCs) | MQRI v01 and v02 |
 | `Metformin Manufacturer Site Score Table.xlsx` | Redica delivery, June 2025: metformin site scores from events 2018-01-01 to 2021-09-01 | Nothing in code |
 | `Metformin NDCs labelers DUNS mfgr with Redica data.xlsx` | Redica delivery, June 2025: metformin NDCs linked to Redica site ids | Nothing in code |
@@ -88,7 +99,6 @@ comes only from `20260505_redica_all_drugs_combined.py`.
 |---|---|---|
 | June 2025, metformin (email from Yelena, see `docs/Redica Data (email note).txt`) | 16 files named `1000xxxxx - Firm [City _ Country].xlsx`, one per site, red-flag events and site score | 16 metformin sites. Read by the Dec 2025 dashboard in `Analysis/Dashboards/processed/code/`, which globs every `.xlsx` under `raw/` |
 | Sept 2025, metformin + Valisure | `MetformoinValisure_Site_Red_Flag_Events_RedicaSep25.xlsx`, `..._Agg_Score_RedicaSep25.xlsx`, `..._Site_List_RedicaSep25.xlsx` | Events and scores for 19 FEIs; the site list has all 127 |
-| | `metformin_2025/SITE_RED_FLAG_EVENTS.xlsx`, `metformin_2025/SITE_RED_FLAG_AGG_SCORE.xlsx` | Same content as the two Sep25 files above (moved here from the old `06 - Metformin Data`) |
 | June 2026, 14 Valisure APIs | `Valisure14_Sites_Red_Flag_Events.xlsx`, `Valisure14_Sites_Data_Availability.xlsx`, `Valisure14_Site_List.xlsx`, `Valisure14_FDA_483_Observations_WL_Deficiencies_OSU.xlsx` | 127 FEIs. **The current inputs** |
 | July 2026, metformin refresh | `MetfrmoinValisure_Red_Flag_Events_RedicaJuly26.xlsx`, `..._Data_Availability_RedicaJuly26.xlsx`, `..._FEI_RedicaID_Mapping_RedicaJuly26.xlsx`, `..._483_Obs_WL_Def_RedicaJuly26.xlsx`, `metformin_2025/MetforminFEI-Redica-July26.xlsx` | 29 metformin FEIs. Read by `Analysis/Metformin Paper/processed/code/step2_build_panel_july26.py` and `build_variant_graphs.py` |
 

@@ -2,6 +2,7 @@
 import pandas as pd
 from pathlib import Path
 import ast
+import sys
 import warnings
 
 # Suppress potential openpyxl warnings
@@ -14,6 +15,34 @@ BASE_DIR = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.ed
 REDICA_DETAILED = BASE_DIR / "Data/07 - Redica/raw/Valisure14_Sites_Red_Flag_Events.xlsx"
 DATA_AVAILABILITY = BASE_DIR / "Data/07 - Redica/raw/Valisure14_Sites_Data_Availability.xlsx"
 SITE_LIST = BASE_DIR / "Data/07 - Redica/raw/Valisure14_Site_List.xlsx"
+
+# New Redica delivery: pass its folder instead of editing the three paths above,
+#   python 20260505_redica_all_drugs_combined.py "../raw/<delivery folder>"
+# The folder must hold exactly one file matching each pattern below.
+DELIVERY_PATTERNS = {
+    "REDICA_DETAILED": "*Red_Flag_Events*.xlsx",
+    "DATA_AVAILABILITY": "*Data_Availability*.xlsx",
+    "SITE_LIST": "*Site_List*.xlsx",
+}
+
+# argv[1] is only treated as a delivery folder when it is one, so running this
+# file cell by cell in VS Code (where argv holds kernel arguments) still works
+if len(sys.argv) > 1 and Path(sys.argv[1]).is_dir():
+    delivery = Path(sys.argv[1]).resolve()
+    found = {}
+    for name, pattern in DELIVERY_PATTERNS.items():
+        matches = sorted(p for p in delivery.glob(pattern) if not p.name.startswith("~$"))
+        if len(matches) != 1:
+            sys.exit(f"{name}: expected one file matching {pattern} in {delivery}, found {len(matches)}: "
+                     f"{[m.name for m in matches]}")
+        found[name] = matches[0]
+    REDICA_DETAILED = found["REDICA_DETAILED"]
+    DATA_AVAILABILITY = found["DATA_AVAILABILITY"]
+    SITE_LIST = found["SITE_LIST"]
+
+print("Inputs:")
+for p in (REDICA_DETAILED, DATA_AVAILABILITY, SITE_LIST):
+    print(f"  {p.name}")
 
 # Output Paths
 OUT_DIR = BASE_DIR / "Data/07 - Redica/processed/redica_all_drugs_combined.csv"
