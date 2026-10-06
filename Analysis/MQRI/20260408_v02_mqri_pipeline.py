@@ -30,7 +30,7 @@ WHAT CHANGED FROM v01 → v02
        D_mkt  — Market Quality Signals (recalls only)  (weight: 30% of total)
        MQRI   = (D_reg × 0.70 + D_mkt × 0.30) × (100 / max_possible)
 
-  5. OUTPUT: new folder 99 - Outputs - MQRI (not data folder).
+  5. OUTPUT: Analysis/MQRI (outside the Data folder).
 
 ─────────────────────────────────────────────────────────────────────────────
 MODEL SUMMARY
@@ -109,7 +109,8 @@ warnings.filterwarnings('ignore')
 # ── PATHS ─────────────────────────────────────────────────────────────────────
 BASE = ('/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu'
         '/My Drive/North Carolina State University/Project - Drug Shortage/Data')
-OUT  = f'{BASE}/99 - Outputs - MQRI'
+OUT  = ('/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu'
+        '/My Drive/North Carolina State University/Project - Drug Shortage/Analysis/MQRI')
 os.makedirs(OUT, exist_ok=True)
 
 SURVEY_YEARS = list(range(2017, 2025))   # 2017–2024 annual panel

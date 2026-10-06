@@ -50,7 +50,8 @@ warnings.filterwarnings('ignore')
 # ── PATHS ─────────────────────────────────────────────────────────────────────
 BASE = ('/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu'
         '/My Drive/North Carolina State University/Project - Drug Shortage/Data')
-OUT  = f'{BASE}/06_07_08_12_14_15_21_22_23 - MQRI'
+OUT  = ('/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu'
+        '/My Drive/North Carolina State University/Project - Drug Shortage/Analysis/MQRI/20260408_v01')
 os.makedirs(OUT, exist_ok=True)
 
 SURVEY_YEARS = list(range(2017, 2025))   # 2017–2024 annual panel

@@ -13,7 +13,7 @@ event summary for use in MQRI and shortage prediction models.
 **This folder is scoped solely to that extraction/aggregation work.** The facility-
 history dashboard that *consumes* these signals alongside structured regulatory data
 (inspections, warning letters, recalls, import refusals) lives in
-`../99 - Outputs - Dashboards/fei_inspection_explorer/` — moved there 2026-09-15 since
+`Analysis/Dashboards/fei_inspection_explorer/` (project root) — moved there 2026-09-15 since
 it's a downstream consumer, not part of text extraction itself.
 
 **Redica is the primary and only actively maintained text source.** The pipeline can

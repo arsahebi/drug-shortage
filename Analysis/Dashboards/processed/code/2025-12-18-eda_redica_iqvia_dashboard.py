@@ -61,7 +61,7 @@ def _infer_run_tag() -> str:
 RUN_TAG = "2025-12-18"
 
 # script lives in: <module>/processed/code/script.py
-MODULE_DIR    = DATA_ROOT / "99 - Outputs - Dashboards"
+MODULE_DIR    = DATA_ROOT.parent / "Analysis" / "Dashboards"
 PROCESSED_DIR = MODULE_DIR / "processed"
 OUT_HTML      = PROCESSED_DIR / f"{RUN_TAG}-Metformin_IQVIA_Inspection_Dashboard.html"
 SOURCE_TXT    = MODULE_DIR / "source.txt"

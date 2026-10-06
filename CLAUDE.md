@@ -17,7 +17,8 @@ The project started with Metformin as a case study but the current focus is **14
 ## Project Root Structure
 ```
 Project - Drug Shortage/
-├── Data/                          ← main analysis workspace (numbered data source folders + output pipelines)
+├── Data/                          ← data sources only (numbered folders); remaining 99 - Outputs folders are being moved out to Analysis/
+├── Analysis/                      ← analysis pipelines and their outputs (MQRI, Dashboards so far)
 ├── Code/                          ← standalone R/Python scripts (EDA, early Metformin work)
 ├── Paper/                         ← manuscript drafts
 ├── Presentation/                  ← slides
@@ -65,14 +66,14 @@ Each numbered folder = one data source. Raw data files stay in Drive; processed 
 | `24 - UUtah - Drug Shortage` | University of Utah | Drug shortage database (outcome variable) |
 | `25 - Parent Firm Name` | Built | Parent company name mapping |
 
-## Output Folders (`99 - Outputs - *`)
+## Analysis Folders
 | Folder | Purpose |
 |--------|---------|
-| `99 - Outputs - Text Analysis/` | FDA 483 text extraction pipeline (LLM-based) |
-| `99 - Outputs - Graphs/` | Metformin JAMA figures + statistical tests |
-| `99 - Outputs - MQRI/` | Manufacturing Quality Risk Index pipeline |
-| `99 - Outputs - Shortage Prediction/` | Full shortage prediction ML pipeline (m01–m10 modules) |
-| `99 - Outputs - Dashboards/` | EDA dashboards (Redica + IQVIA) |
+| `Analysis/MQRI/` | Manufacturing Quality Risk Index pipeline |
+| `Analysis/Dashboards/` | EDA dashboards (Redica + IQVIA) and `fei_inspection_explorer/` |
+| `Data/99 - Outputs - Text Analysis/` | FDA 483 text extraction pipeline (LLM-based); to move to Analysis/ |
+| `Data/99 - Outputs - Shortage Prediction/` | Full shortage prediction ML pipeline (m01–m10 modules); to move to Analysis/ |
+| `Data/99 - Outputs - Metformin Analysis/` | Metformin paper (Health Affairs Scholar) pipeline; to move to Analysis/ |
 
 ## Key Pipelines
 
@@ -106,7 +107,7 @@ m09_model          ← ML model
 m10_lead_time      ← lead time analysis
 ```
 
-### MQRI Pipeline (`99 - Outputs - MQRI/`)
+### MQRI Pipeline (`Analysis/MQRI/`)
 Manufacturing Quality Risk Index. Current version: `20260408_v02_mqri_pipeline.py`.
 
 ## Code Conventions

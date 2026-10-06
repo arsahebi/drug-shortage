@@ -179,7 +179,7 @@ MQRI = (D_reg × 0.70  +  D_mkt × 0.30)  ×  100
 ## 9. Folder Structure
 
 ```
-99 - Outputs - MQRI/
+Analysis/MQRI/
 ├── 20260408_v01/           ← archived v01 (all original files)
 │   ├── mqri_pipeline.py
 │   ├── mqri_panel.csv
