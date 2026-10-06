@@ -18,7 +18,7 @@ The project started with Metformin as a case study but the current focus is **14
 ```
 Project - Drug Shortage/
 ├── Data/                          ← data sources only (numbered folders); remaining 99 - Outputs folders are being moved out to Analysis/
-├── Analysis/                      ← analysis pipelines and their outputs (MQRI, Dashboards so far)
+├── Analysis/                      ← analysis pipelines and their outputs (MQRI, Dashboards, Metformin Paper so far)
 ├── Code/                          ← standalone R/Python scripts (EDA, early Metformin work)
 ├── Paper/                         ← manuscript drafts
 ├── Presentation/                  ← slides
@@ -73,7 +73,7 @@ Each numbered folder = one data source. Raw data files stay in Drive; processed 
 | `Analysis/Dashboards/` | EDA dashboards (Redica + IQVIA) and `fei_inspection_explorer/` |
 | `Data/99 - Outputs - Text Analysis/` | FDA 483 text extraction pipeline (LLM-based); to move to Analysis/ |
 | `Data/99 - Outputs - Shortage Prediction/` | Full shortage prediction ML pipeline (m01–m10 modules); to move to Analysis/ |
-| `Data/99 - Outputs - Metformin Analysis/` | Metformin paper (Health Affairs Scholar) pipeline; to move to Analysis/ |
+| `Analysis/Metformin Paper/` | Metformin paper (Health Affairs Scholar) pipeline: `processed/code/` steps 1-6, `raw/qa_derived/` Q&A inputs, `ha_revision/` SDUD audit + review-response notebooks, `legacy_2025/` early work |
 
 ## Key Pipelines
 

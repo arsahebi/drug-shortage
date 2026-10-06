@@ -22,8 +22,8 @@ from pathlib import Path
 import doc_style as ds
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-VOUT = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs/variants"
-OUT  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs/20260920_metformin_all_variants.docx"
+VOUT = BASE / "Analysis/Metformin Paper/processed/outputs/variants"
+OUT  = BASE / "Analysis/Metformin Paper/processed/outputs/20260920_metformin_all_variants.docx"
 
 VARIANTS = [("rulebased", "all"), ("rulebased", "IR"), ("rulebased", "ER"),
             ("manual", "all"), ("manual", "IR"), ("manual", "ER")]

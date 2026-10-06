@@ -16,7 +16,7 @@ from pathlib import Path
 import doc_style as ds
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-OUT  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs/20260910_metformin_pipeline_changes.docx"
+OUT  = BASE / "Analysis/Metformin Paper/processed/outputs/20260910_metformin_pipeline_changes.docx"
 
 doc = ds.new_document()
 

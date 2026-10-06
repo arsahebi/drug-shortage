@@ -32,7 +32,7 @@ Statistical models (after figures)
                    Same approach; reference = NAI; additional test OAI vs VAI
 
 Figures and model outputs saved to:
-  Data/99 - Outputs - Metformin Analysis/processed/outputs/
+  Analysis/Metformin Paper/processed/outputs/
 """
 
 import warnings
@@ -53,8 +53,8 @@ matplotlib.rcParams["font.size"]    = 11
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-STEP5   = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step5_analysis_panel_july26.csv"
-OUT_DIR = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs"
+STEP5   = BASE / "Analysis/Metformin Paper/processed/step5_analysis_panel_july26.csv"
+OUT_DIR = BASE / "Analysis/Metformin Paper/processed/outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── constants ──────────────────────────────────────────────────────────────────

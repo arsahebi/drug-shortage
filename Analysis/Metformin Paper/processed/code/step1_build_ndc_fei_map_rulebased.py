@@ -37,8 +37,8 @@ import pandas as pd
 from pathlib import Path
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-SRC  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.xlsx"
-OUT  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.csv"
+SRC  = BASE / "Analysis/Metformin Paper/processed/step1_ndc_fei_map_rulebased.xlsx"
+OUT  = BASE / "Analysis/Metformin Paper/processed/step1_ndc_fei_map_rulebased.csv"
 
 TAB_NDC  = "NDCs from Valisure Data"
 TAB_LINK = "Filtered Linkage NDC-FEI"

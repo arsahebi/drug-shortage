@@ -36,11 +36,11 @@ from typing import Optional
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 import os
 STEP2   = Path(os.environ.get("STEP2_OVERRIDE",
-          str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv")))
+          str(BASE / "Analysis/Metformin Paper/processed/step2_panel_july26.csv")))
 RAW24   = BASE / "Data/08 - Valisure/raw/Valisure_2024_raw.xlsx"
 DOD     = BASE / "Data/08 - Valisure/raw/Testing Data_DoD First 13 Drug Scores with ANDAs & NDCs.xlsx"
 OUT     = Path(os.environ.get("STEP3_OUT_OVERRIDE",
-          str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step3_panel_july26.csv")))
+          str(BASE / "Analysis/Metformin Paper/processed/step3_panel_july26.csv")))
 
 LOQ_VAL = 151.54   # sentinel for <LOQ / BLOQ results
 
@@ -312,7 +312,7 @@ if not covered.empty:
 
 # ── 6. Compare against Sheet1 Q&A ────────────────────────────────────────────
 print("\n── Comparison with Sheet1 Q&A (sanity check) ──")
-QA_FILE = BASE / "Data/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As1234_v8_v02.xlsx"
+QA_FILE = BASE / "Analysis/Metformin Paper/raw/qa_derived/Q&As1234_v8_v02.xlsx"
 s1 = pd.read_excel(QA_FILE, sheet_name='Sheet1', dtype=str)
 s1['ndc11_bare'] = s1['NDC11'].apply(to_ndc11_bare)
 s1['TestYear'] = pd.to_numeric(s1['Year'], errors='coerce').astype('Int64')

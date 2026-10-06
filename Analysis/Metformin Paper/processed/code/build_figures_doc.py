@@ -21,7 +21,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import doc_style as ds
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-FIG  = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs"
+FIG  = BASE / "Analysis/Metformin Paper/processed/outputs"
 OUT  = FIG / "20260910_metformin_figures_rulebased.docx"
 
 doc = ds.new_document()

@@ -43,13 +43,13 @@ from pathlib import Path
 BASE     = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 import os
 STEP1    = Path(os.environ.get("STEP1_OVERRIDE",
-           str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.csv")))
-QA_FILE  = BASE / "Data/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As1234_v8_v02.xlsx"
+           str(BASE / "Analysis/Metformin Paper/processed/step1_ndc_fei_map_rulebased.csv")))
+QA_FILE  = BASE / "Analysis/Metformin Paper/raw/qa_derived/Q&As1234_v8_v02.xlsx"
 RAW      = BASE / "Data/07 - Redica/raw"
 FEI_MAP  = RAW  / "MetfrmoinValisure_FEI_RedicaID_Mapping_RedicaJuly26.xlsx"
 EVENTS   = RAW  / "MetfrmoinValisure_Red_Flag_Events_RedicaJuly26.xlsx"
 OUT      = Path(os.environ.get("STEP2_OUT_OVERRIDE",
-           str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step2_panel_july26.csv")))
+           str(BASE / "Analysis/Metformin Paper/processed/step2_panel_july26.csv")))
 
 # ── Sample exclusions (apply to the ENTIRE analysis, every downstream figure) ──
 # Enforced here in step 2 so steps 3-6 inherit one filtered panel and every

@@ -48,7 +48,7 @@ BASE = Path(
 METFORMIN_FILE = BASE / "Data/07 - Redica/raw/METFORMIN_SITE_RED_FLAG_EVENTS.xlsx"
 VALISURE14_FILE = BASE / "Data/07 - Redica/raw/Valisure14_Sites_Red_Flag_Events.xlsx"
 SITE_LIST = BASE / "Data/07 - Redica/raw/Site List.xlsx"
-PANEL_CSV = BASE / "Data/99 - Outputs - Metformin Analysis/processed/metformin_panel_v1.csv"
+PANEL_CSV = BASE / "Analysis/Metformin Paper/processed/metformin_panel_v1.csv"
 OUT_FILE = BASE / "Data/07 - Redica/processed/valisure_fei_inspection_history.csv"
 
 # =============================================================================

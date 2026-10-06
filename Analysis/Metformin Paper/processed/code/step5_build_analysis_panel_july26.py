@@ -24,9 +24,9 @@ from pathlib import Path
 BASE  = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 import os
 STEP4 = Path(os.environ.get("STEP4_OVERRIDE",
-        str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step4_panel_july26.csv")))
+        str(BASE / "Analysis/Metformin Paper/processed/step4_panel_july26.csv")))
 OUT   = Path(os.environ.get("STEP5_OUT_OVERRIDE",
-        str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step5_analysis_panel_july26.csv")))
+        str(BASE / "Analysis/Metformin Paper/processed/step5_analysis_panel_july26.csv")))
 
 OUTCOME_SCORE = {'NAI': 0.0, 'VAI': 1.5, 'OAI': 3.5}
 OUTCOME_RANK  = {'OAI': 2,  'VAI': 1,   'NAI': 0}   # higher = worse, for tie-breaking

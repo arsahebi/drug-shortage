@@ -47,7 +47,7 @@ except ImportError:
     HAS_STATSMODELS = False
 
 BASE = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-PROC = BASE / "Data/99 - Outputs - Metformin Analysis/processed"
+PROC = BASE / "Analysis/Metformin Paper/processed"
 VDIR = PROC / "variants"
 OUT  = PROC / "outputs" / "variants"
 

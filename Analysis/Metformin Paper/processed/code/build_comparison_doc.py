@@ -39,11 +39,11 @@ import tempfile
 
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 OLD_FIG = BASE / "Paper/Metformin"
-NEW_FIG = BASE / "Data/99 - Outputs - Metformin Analysis/processed/outputs"
+NEW_FIG = BASE / "Analysis/Metformin Paper/processed/outputs"
 OUT_DOC = NEW_FIG / "comparison_prerevision_vs_july2026.docx"
 
 # ── panel counts, computed from the panel this document describes ────────────
-_MANUAL_PANEL = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step5_analysis_panel_manualmap_july26.csv"
+_MANUAL_PANEL = BASE / "Analysis/Metformin Paper/processed/step5_analysis_panel_manualmap_july26.csv"
 _p         = pd.read_csv(_MANUAL_PANEL)
 N_ROWS     = len(_p)                                          # 148
 N_NDCS     = _p["NDC11"].nunique()                            # 112

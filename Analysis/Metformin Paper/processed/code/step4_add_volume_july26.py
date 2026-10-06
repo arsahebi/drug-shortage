@@ -37,11 +37,11 @@ from typing import Optional
 BASE   = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
 import os
 STEP3  = Path(os.environ.get("STEP3_OVERRIDE",
-         str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step3_panel_july26.csv")))
+         str(BASE / "Analysis/Metformin Paper/processed/step3_panel_july26.csv")))
 IQVIA  = BASE / "Data/06 - IQVIA/raw/Metformin Jul 2019 - Jun 2025 NDC Level.xlsx"
 SDUD   = BASE / "Data/04 - Medicaid - SDUD/raw"
 OUT    = Path(os.environ.get("STEP4_OUT_OVERRIDE",
-         str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step4_panel_july26.csv")))
+         str(BASE / "Analysis/Metformin Paper/processed/step4_panel_july26.csv")))
 
 TEST_YEARS = [2020, 2022, 2024]
 

@@ -6,7 +6,7 @@ compared to the pre-revision paper (Health Affairs Scholars 2026-05-29).*
 *Prior inspection rule: **EventYear strictly < TestYear** (year before the test year only; same-year inspections excluded).*
 
 Old figures: `~/Desktop/MetforminFigures/`
-New figures: `Data/99 - Outputs - Metformin Analysis/processed/outputs/`
+New figures: `Analysis/Metformin Paper/processed/outputs/`
 
 ---
 
