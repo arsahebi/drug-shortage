@@ -126,7 +126,7 @@ Key variables: `n_import_refusals_drug`
 ### 3i. ANDA→FEI Crosswalk (Critical for FAERS linkage)
 | Path | File |
 |------|------|
-| `07 - Redica/processed/` | `ndc_fei_73_v4.xlsx` |
+| `07 - Redica/processed/legacy/` | `ndc_fei_73_v4.xlsx` |
 
 - Columns: `application_num` (ANDA number), `FEI`
 - FEI column has float format in raw data (e.g., `3.008298e+09`) — must strip decimal: `.astype(str).str.split('.').str[0].str.strip()`

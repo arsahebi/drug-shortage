@@ -304,7 +304,7 @@ print(f"    {len(iqvia):,} rows  |  {iqvia['date'].min().date()} – {iqvia['dat
 # NDC → FEI crosswalk
 print("  NDC–FEI crosswalk ...")
 xwalk = pd.read_excel(
-    f'{BASE}/07 - Redica/processed/ndc_fei_73_v4.xlsx',
+    f'{BASE}/07 - Redica/processed/legacy/ndc_fei_73_v4.xlsx',
     sheet_name='detailed with notes'
 )
 xwalk['FEI']       = xwalk['FEI'].astype(str).str.split('.').str[0].str.strip()
