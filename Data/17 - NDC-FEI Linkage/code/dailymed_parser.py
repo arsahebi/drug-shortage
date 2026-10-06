@@ -75,11 +75,19 @@ _V3 = "{urn:hl7-org:v3}"
 DUNS_ROOT = "1.3.6.1.4.1.519.1"       # id/@root that marks a DUNS number
 NDC_CODESYSTEM = "2.16.840.1.113883.6.69"
 
-# FDA Drug Establishments Current Registration Site export (tab-separated)
-DRLS_PATH = "data/eDLRs/drls_reg.txt"
+# paths are anchored to this file: <Data>/17 - NDC-FEI Linkage/code/
+LINKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.dirname(LINKAGE_DIR)
 
-# the one table this module produces (tracked in git)
-OUTPUT_PATH = "output/all_daily_med.csv"
+# FDA Drug Establishments Current Registration Site export (tab-separated)
+DRLS_PATH = os.path.join(DATA_DIR, "05 - Firm Level", "drls_reg.txt")
+
+# one zip per SPL label (the full DailyMed human Rx/OTC archive, ~50K zips);
+# override with a folder path as the first command-line argument
+LABELS_DIR = os.path.join(LINKAGE_DIR, "raw", "all_daily_med_zip")
+
+# the one table this module produces
+OUTPUT_PATH = os.path.join(LINKAGE_DIR, "processed", "all_daily_med.csv")
 
 # Set to a collection of operation codes to keep only those, e.g. {"C43360"}
 # for manufacture alone. None keeps every operation.
@@ -402,10 +410,14 @@ def add_fei(df, drls_path=DRLS_PATH):
 
 
 if __name__ == "__main__":
-    # regenerate output/all_daily_med.csv
+    # regenerate processed/all_daily_med.csv
+    import sys
     from ndc_cleaner import format_ndc
 
-    df = process_zip_folder("data/all_daily_med_zip")
+    labels_dir = sys.argv[1] if len(sys.argv) > 1 else LABELS_DIR
+    if not os.path.isdir(labels_dir):
+        sys.exit(f"label folder not found: {labels_dir}")
+    df = process_zip_folder(labels_dir)
     for column in ("ndc", "opr_ndc"):
         df = format_ndc(df, column)
     # source_ndc may hold several ";"-joined NDCs; format each one
