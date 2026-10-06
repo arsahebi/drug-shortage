@@ -55,7 +55,7 @@ reflect the fully-fixed v2 prompt, not a stale pre-feedback run.
 | `step02_483_fei_text_features_timeseries_redica_openai_v2.csv` | GPT-5-mini | 246 snapshots | 98 |
 
 `step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv` is the file
-`Data/99 - Outputs - Shortage Prediction/code/config.py`'s `TEXT_TIMESERIES_REDICA_CSV`
+`Analysis/Shortage Prediction/code/config.py`'s `TEXT_TIMESERIES_REDICA_CSV`
 must point to — this is what feeds `m14_recall_fei_model.py` / `m17_faers_fei_model.py`.
 The GPT step02 file isn't wired into any downstream model yet — it exists for the
 planned cross-model agreement check (see `eval/results_and_notes/20260909_session_handoff.md`).

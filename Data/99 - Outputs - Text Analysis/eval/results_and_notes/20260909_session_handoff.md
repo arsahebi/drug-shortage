@@ -32,7 +32,7 @@ the validated pipeline with `--model claude-sonnet-5`, so Claude files carry
 which is a latent collision risk if anthropic is ever run with its own default —
 not yet fixed, flagged as tech debt.
 
-**Downstream consumer:** `Data/99 - Outputs - Shortage Prediction/code/`
+**Downstream consumer:** `Analysis/Shortage Prediction/code/`
 - `config.py` — `TEXT_TIMESERIES_REDICA_CSV` must point at the current validated
   step02 file. It was stale for a long time (pointed at a file that didn't exist),
   silently starving the models of text features — fixed 2026-09-08.

@@ -54,7 +54,7 @@ has the full tables and reasoning.
 ## Folder structure
 
 ```
-99 - Outputs - Shortage Prediction/
+Analysis/Shortage Prediction/
 ├── README.md     ← pipeline / folder structure (you are here)
 ├── RESULTS.docx  ← what the models found, in plain language
 ├── code/

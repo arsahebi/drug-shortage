@@ -80,7 +80,7 @@ SDUD_MONTHLY_CSV = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDU
 NDC_FEI_MAP_CSV  = DATA / "17 - NDC-FEI Linkage" / "processed" / "ndc_fei_from_labels.csv"
 
 # Output paths
-OUT_ROOT  = DATA / "99 - Outputs - Shortage Prediction"
+OUT_ROOT  = ROOT / "Analysis" / "Shortage Prediction"
 OUT_DATA  = OUT_ROOT / "data"
 OUT_FIGS  = OUT_ROOT / "outputs" / "figures"
 OUT_TABS  = OUT_ROOT / "outputs" / "tables"

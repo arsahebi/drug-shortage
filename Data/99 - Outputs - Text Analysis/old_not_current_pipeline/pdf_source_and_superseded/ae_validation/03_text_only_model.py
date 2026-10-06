@@ -59,7 +59,7 @@ PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 
 # Inspection features from shortage prediction pipeline (optional enrichment)
-SP_CODE   = HERE.parent.parent.parent / "Data" / "99 - Outputs - Shortage Prediction" / "code"
+SP_CODE   = HERE.parent.parent.parent / "Analysis" / "Shortage Prediction" / "code"
 
 TEXT_FEATURES = [
     # Layer 3: LLM signal shares
