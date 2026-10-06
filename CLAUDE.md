@@ -52,11 +52,10 @@ Each numbered folder = one data source. Raw data files stay in Drive; processed 
 | `08 - Valisure` | Valisure | Independent drug testing results — **primary quality outcome for current 14-drug focus** |
 | `11 - Medicaid - NADAC` | CMS NADAC | Medicaid drug pricing |
 | `12 - FDA - 483` | FDA Form 483 | Inspection observation letters (PDFs → structured) |
-| `13 - Processed DailyMed` | DailyMed processed | Parsed label data |
 | `14 - FDA - Inspection` | FDA OASIS | Facility inspection records |
 | `15 - FDA - Adverse Event` | FAERS | FDA adverse event reports |
 | `16 - FDA - FEI` | FDA FEI | Facility Establishment Identifier; annual self-ID generics lists |
-| `17 - NDC, FEI Mapping` | Built | NDC ↔ FEI crosswalk from DailyMed labels |
+| `17 - NDC-FEI Linkage` | Built | NDC ↔ FEI crosswalk from DailyMed labels. `code/dailymed_parser.py` builds `processed/all_daily_med.csv` (current, one row per NDC × establishment operation); `processed/ndc_fei_from_labels.csv` is the older map still read by Shortage Prediction config and vai_signal_validation; old outputs in `processed/legacy/` |
 | `18 - MCCPDC` | MCCPDC | Multi-source claims data |
 | `19 - ProPublica` | ProPublica rx-inspector | Facility inspection public data |
 | `20 - Market Scan` | Truven MarketScan | Commercial claims — planned for future phases |

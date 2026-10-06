@@ -40,7 +40,7 @@ OUT_FIGS = OUT / "figures"
 
 VALISURE_SCORE = DATA / "08 - Valisure" / "raw" / "Discrete Scoring_DoD First 13 Drug Scores with ANDAs & NDCs.xlsx"
 NDC_PRODUCT    = DATA / "03 - FDA - NDC" / "product.csv"
-NDC_FEI_MAP    = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
+NDC_FEI_MAP    = DATA / "17 - NDC-FEI Linkage" / "processed" / "ndc_fei_from_labels.csv"
 PANEL          = OUT / "fei_ae_panel.parquet"
 
 

@@ -77,7 +77,7 @@ FIRM_STD_NAMES_XLSX = DATA / "25 - Parent Firm Name" / "std_firm_names_v7_101520
 FIRM_LOOKUP_XLSX    = DATA / "25 - Parent Firm Name" / "lookup_tables_06032020.xlsx"
 
 SDUD_MONTHLY_CSV = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDmonthly.csv"
-NDC_FEI_MAP_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
+NDC_FEI_MAP_CSV  = DATA / "17 - NDC-FEI Linkage" / "processed" / "ndc_fei_from_labels.csv"
 
 # Output paths
 OUT_ROOT  = DATA / "99 - Outputs - Shortage Prediction"

@@ -52,7 +52,7 @@ VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
 REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
 FDA_INSP_XLSX   = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
 SDUD_PARQ    = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDcanonical.parquet"
-NDC_FEI_CSV  = DATA / "17 - NDC, FEI Mapping" / "ndc_fei_from_labels.csv"
+NDC_FEI_CSV  = DATA / "17 - NDC-FEI Linkage" / "processed" / "ndc_fei_from_labels.csv"
 ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae_counts_quarterly.csv"
 
 OUT_PANEL_YR        = OUT / "fei_ae_panel.parquet"
