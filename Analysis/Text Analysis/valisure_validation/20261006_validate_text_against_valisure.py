@@ -1,6 +1,6 @@
 """Exploratory text/Valisure validation across both complete DoD workbooks.
 
-Read README.md for the frozen first-pass design and limitations. Source files
+Read outputs/20261006_first_pass/ANALYSIS_SPECIFICATION.md for the original design. Source files
 are never rewritten. No LLM calls are made. CSVs preserve raw assay values and
 source row provenance; the report does not interpret score penalties as harm.
 """
@@ -566,7 +566,7 @@ Next steps are expert adjudication of those mechanisms, historical finished-dose
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir",type=Path,default=HERE/"outputs/20261006")
+    parser.add_argument("--output-dir",type=Path,default=HERE/"outputs/20261006_first_pass")
     parser.add_argument("--bootstraps",type=int,default=2000)
     args = parser.parse_args()
     out = args.output_dir

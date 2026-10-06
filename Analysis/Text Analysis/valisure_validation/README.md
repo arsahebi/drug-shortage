@@ -1,31 +1,30 @@
-# Valisure validation of inspection text
+# Existing text signals versus DoD quality components
 
-This first pass uses all 13 worksheets in both DoD source workbooks. Ampicillin and ampicillin–sulbactam remain separate API labels. It tests laboratory quality associations, not patient outcomes. The source workbooks are read only.
+The current analysis follows the user's instruction to use the fixed extracted text variables and separate DoD scoring components. It replaces the earlier keyword-screen experiment; that experiment and its specification are preserved in `outputs/20261006_first_pass/`. The source workbooks are read only.
 
-## Analysis choices, October 6, 2026
+## Current specification
 
-These choices were recorded before computing the new associations. The data and earlier outcome analyses have already been reviewed, so this is an exploratory specification, not a preregistered confirmatory protocol.
+These are exploratory analyses of previously examined data, not preregistered confirmatory tests.
 
-- Unit: a tested sample for source reconciliation; a facility × API × formulation × strength cell for raw dissolution analyses; a facility × exact product × shared score unit for scorecard analyses. Repeated samples and NDC packages do not become independent score outcomes.
-- Source scores are used on their recorded scale, including negative totals. Component penalties are source scoring decisions, not regulatory failure determinations. `--` means no recorded penalty. Blank assay entries and censored assay results are not zeroes.
-- Main linkage: union of full ProPublica links, March Valisure links, and DailyMed manufacture/FDF-manufacture links before restricting to text coverage. ProPublica links explicitly marked API-only are excluded from the candidate union but retained in the audit. Admit only one candidate FEI. Historical finished-dose attribution remains provisional.
-- Link latest text strictly before observed metformin intake when available. For other samples use January 1, 2023 as a conservative collection-period boundary from the supplied documentation. This is cross-sectional validation with temporal safeguards, not established prediction of future manufactured lots. Never use expiration minus assumed shelf life.
-- Restrict observation applicability by a transparent route screen: exclude sterile-only observations for oral solids, and oral-only observations for injectables; keep observations without an explicit route. Exclude observations explicitly naming other covered APIs without naming the sampled API. This is a candidate screen, not expert-confirmed product matching. Export a laboratory-blinded annotation table.
-- Six declared exploratory associations: dissolution mention share versus dissolution score penalty; chemical/impurity mention share versus chemical score penalties; existing LLM patient-risk, data-integrity, and laboratory-system shares individually versus overall score loss; dissolution mention share versus within-exact-product raw dissolution percentile.
-- Higher outcomes mean worse recorded quality. The raw difference factor is ranked within exact product to avoid pooling incompatible scales or importing an unverified failure threshold.
-- Estimate within-product effects, adjusting for log inspection age and log observation count. Require product strata with at least two facilities. Use one total weight per shared score unit for score outcomes and one weight per facility/product cell for raw dissolution. Cluster score analyses on connected components of shared FEIs and shared score units; cluster raw dissolution on FEI. Report all six analyses, with Holm correction within each cohort. Very small cluster counts remain descriptive.
-- Compare product/inspection-age/observation-count/FDA-class baseline with that baseline plus the three existing LLM shares, using the identical scored cohort and held-out connected groups. Report pooled out-of-fold AUC and Brier score. A paired group bootstrap of fixed out-of-fold predictions is conditional uncertainty, not complete training uncertainty.
-- Sensitivities: March-only singleton mapping, acknowledging disagreements; and the observed-intake-date metformin subset. Do not pick the strongest sensitivity as the main result.
-- No new LLM API calls, trained extraction model, patient-data refresh, manuscript claim, or clinically validated threshold is introduced by this first pass.
+- Read the exact 17-column `TEXT_FEATURES` list from the existing `vai_signal_validation/02_vai_signal_model.py`. Values come directly from `step02_483_fei_text_features_timeseries_redica_claudesonnet5_v2.csv`. No feature redefinition, new extraction, keyword exposure, route screen or product-name screen is used.
+- Use all 13 worksheets of the DoD scoring and testing workbooks, retaining separate ampicillin–sulbactam labels. All 302 scoring rows are represented in the testing source. Keep source sample/NDC/score provenance.
+- Outcomes: original overall DoD score; dissolution, DMF, nitrosamine and toxic-element penalty magnitudes. Retain signed source values as well. `--` is no recorded scoring penalty; an absent component column is missing. Toxic-element columns are summed within their source row. Reconcile the original score against all components, including dosage, benzene/EtOx and sterility. Do not clip negative total scores.
+- The source labels the nitrosamine family rather than an NDMA-specific concentration. This family is constant at zero, so no association can be estimated. DMF variation is confined to metformin. Raw laboratory dissolution is not a dependent variable in this revision.
+- Retain the full-source singleton facility map and timing safeguards. Match the latest existing inspection snapshot strictly before observed metformin intake when available; otherwise use January 1, 2023 as the conservative collection-period boundary. Historical manufacturing attribution and manufacture time remain unresolved.
+- Unit: facility × exact product (API/form/strength) × shared source score unit. Average existing snapshot values only when several samples in the same cell have different eligible snapshots. Do not treat repeated packages or copied scores as independent measurements. Require product strata with at least two facilities for within-product comparisons.
+- Estimate each of the 17 features separately against each of the five outcomes, adjusting for exact product, log inspection age and log observation count. Weight shared score units equally and cluster connected facilities/score units. Apply Holm correction to the full 85-test family within each cohort, including constant/unestimable combinations. Preserve the previous sparse-exposure inference safeguard.
+- Joint models use all 17 signals together. Compare product/FDA-class/inspection-age/observation-count baseline with the same baseline plus text, using paired five-fold connected-group holdouts and numeric outcomes. Report RMSE/MAE/R². Fit Ridge with alpha 10 and a constrained random forest with 300 trees, maximum depth 4 and minimum leaf 5. No outcome-guided parameter or feature selection.
+- Bootstrap fixed out-of-fold predictions by connected group for paired RMSE differences. These intervals quantify conditional test-sample uncertainty, not complete model-training uncertainty. Lower RMSE and negative text-minus-baseline differences indicate better prediction.
+- Sensitivities remain March-only singleton mapping and the observed-intake-date metformin subset. Do not choose the strongest sensitivity as the primary result.
 
-After the initial run, an exposure-count diagnostic found that the dated metformin dissolution signal came from just one exposed facility. Inferential intervals and p-values are therefore withheld when fewer than four clusters carry a nonzero exposure (with zero exposure also present). The coefficient and nominal model output remain in the CSV as descriptive diagnostics. This safeguard was added after inspecting the first results, is applied to every association, and must not be treated as a preregistered rule.
+The initial experiment's sparse-exposure rule withholds inferential intervals and p-values when fewer than four clusters carry nonzero exposure and zero exposure is also present. Coefficients and nominal outputs remain available as descriptive diagnostics. This was a post-diagnostic safeguard, not a preregistered rule.
 
 ## Run
 
 From the project root:
 
 ```bash
-.venv/bin/python 'Analysis/Text Analysis/valisure_validation/20261006_validate_text_against_valisure.py'
+.venv/bin/python 'Analysis/Text Analysis/valisure_validation/20261006_fixed_signals_dod_components.py'
 ```
 
-Outputs go to `outputs/20261006/`: sample and assay records, scorecard/NDC reconciliation, facility-link audit, cohort flow, all association results, paired out-of-fold predictions, a summary report and source hashes. The blind annotation file has no laboratory outcomes; its candidate screens require expert review before interpreting them as validated defect mechanisms.
+Updated files and the report are in `outputs/20261006/`. The original script now defaults to the archived directory so it does not overwrite current results. Source workbooks, extraction outputs, patient-outcome scripts and manuscript are unchanged.
