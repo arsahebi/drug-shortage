@@ -6,7 +6,7 @@ Build monthly NDC11 panel by merging:
   - SDUD monthly (utilization + reimbursement), filtered to drugs in Drug List
   - NADAC monthly (pricing)
 
-No IQVIA. Drug scope is the full list from Data/Drugs List.xlsx (42 drugs).
+No IQVIA. Drug scope is the full list from Data/00 - Reference/Drugs List.xlsx (42 drugs).
 
 Data sources (relative to Data/ root):
   - Drug list:      Drugs List.xlsx
@@ -40,7 +40,7 @@ RUN_TAG = "2026-03-26"
 OUTPUT_DIR = DATA_ROOT / "04_11 - Build - Monthly Panel (SDUD+NADAC)" / "processed"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-DRUGS_LIST_PATH = DATA_ROOT / "Drugs List.xlsx"
+DRUGS_LIST_PATH = DATA_ROOT / "00 - Reference" / "Drugs List.xlsx"
 
 SDUD_CANONICAL_PATH = DATA_ROOT / "04 - Medicaid - SDUD/processed/2025-12-18-SDUDcanonical.parquet"
 

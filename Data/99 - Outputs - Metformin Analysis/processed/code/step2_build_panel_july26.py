@@ -44,7 +44,7 @@ BASE     = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.ed
 import os
 STEP1    = Path(os.environ.get("STEP1_OVERRIDE",
            str(BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_rulebased.csv")))
-QA_FILE  = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
+QA_FILE  = BASE / "Data/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As1234_v8_v02.xlsx"
 RAW      = BASE / "Data/07 - Redica/raw"
 FEI_MAP  = RAW  / "MetfrmoinValisure_FEI_RedicaID_Mapping_RedicaJuly26.xlsx"
 EVENTS   = RAW  / "MetfrmoinValisure_Red_Flag_Events_RedicaJuly26.xlsx"

@@ -251,7 +251,7 @@ print("=" * 68)
 
 # Q&A base (spine: Valisure outcomes + facility metadata)
 print("  Q&As1234_v8_v02.xlsx ...")
-base = pd.read_excel(f'{BASE}/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx')
+base = pd.read_excel(f'{BASE}/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As1234_v8_v02.xlsx')
 base['FEI'] = base['FEI'].astype(str).str.split('.').str[0].str.strip()
 OUR_FEIS = base['FEI'].unique().tolist()
 print(f"    {base.shape}  |  {len(OUR_FEIS)} unique FEIs")

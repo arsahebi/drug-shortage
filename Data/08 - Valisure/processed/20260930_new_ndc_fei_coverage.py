@@ -67,7 +67,7 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE.parents[1]
 
 VALISURE_NEW = DATA / "08 - Valisure" / "raw" / "DoD Testing Overview NEW_081026_NDCs.xlsx"
-PROPUBLICA   = DATA / "26 - Propublica" / "raw" / "ndc_fei.csv"
+PROPUBLICA   = DATA / "19 - ProPublica" / "raw" / "ndc_fei.csv"
 REDICA       = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
 # The BINDING constraint. Redica gave us two different things: inspection history
 # for 127 FEIs (dates, classification, 483 counts) and actual 483 observation TEXT

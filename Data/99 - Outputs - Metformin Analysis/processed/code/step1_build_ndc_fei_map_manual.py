@@ -24,7 +24,7 @@ import pandas as pd
 from pathlib import Path
 
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-QA_FILE = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
+QA_FILE = BASE / "Data/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As1234_v8_v02.xlsx"
 OUT     = BASE / "Data/99 - Outputs - Metformin Analysis/processed/step1_ndc_fei_map_manual.csv"
 
 # ── helpers ───────────────────────────────────────────────────────────────────

@@ -33,14 +33,10 @@ RUN_TAG = "2025-12-18"
 
 IQVIA_POST2019_CANDIDATES = [
     "06 - IQVIA/raw/Metformin Jul 2019 - Jun 2025 NDC Level.xlsx",
-    "06 - Metformin Data/IQVIA/raw/Metformin Jul 2019 - Jun 2025 NDC Level.xlsx",
-    "06 - Metformin Data/IQVIA/Metformin Jul 2019 - Jun 2025 NDC Level.xlsx",
 ]
 
 IQVIA_PRE2019_CANDIDATES = [
     "06 - IQVIA/raw/Metformin Jan 2015 - Mar 2025 No NDC.xlsx",
-    "06 - Metformin Data/IQVIA/raw/Metformin Jan 2015 - Mar 2025 No NDC.xlsx",
-    "06 - Metformin Data/IQVIA/Metformin Jan 2015 - Mar 2025 No NDC.xlsx",
 ]
 
 SDUD_MONTHLY_PARQUET_CANDIDATES = [

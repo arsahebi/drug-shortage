@@ -45,7 +45,7 @@ DATA = HERE.parents[2]                          # .../Data
 VALISURE = DATA / "08 - Valisure" / "raw" / "DoD Testing Overview NEW_081026_NDCs.xlsx"
 # folder name has a trailing space on disk, so glob rather than hard-code it
 DAILYMED = next(DATA.glob("27 - Our NDC-FEI Linkage*/all_daily_med.csv"))
-PROPUBLICA = DATA / "26 - Propublica" / "raw" / "ndc_fei.csv"
+PROPUBLICA = DATA / "19 - ProPublica" / "raw" / "ndc_fei.csv"
 REDICA_HISTORY = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
 REDICA_TEXT = DATA / "99 - Outputs - Text Analysis" / "step00_redica_483_observations.csv"
 

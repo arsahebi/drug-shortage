@@ -312,7 +312,7 @@ if not covered.empty:
 
 # ── 6. Compare against Sheet1 Q&A ────────────────────────────────────────────
 print("\n── Comparison with Sheet1 Q&A (sanity check) ──")
-QA_FILE = BASE / "Data/06 - Metformin Data/Derived/Q&As1234_v8_v02.xlsx"
+QA_FILE = BASE / "Data/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As1234_v8_v02.xlsx"
 s1 = pd.read_excel(QA_FILE, sheet_name='Sheet1', dtype=str)
 s1['ndc11_bare'] = s1['NDC11'].apply(to_ndc11_bare)
 s1['TestYear'] = pd.to_numeric(s1['Year'], errors='coerce').astype('Int64')

@@ -93,3 +93,6 @@ Paper/Data Paper/Data Sources/
 # ── SAS work files ───────────────────────────────────────────────────────────
 *.sas7bdat
 *.sas7bcat
+
+# Files parked for deletion review (see MANIFEST.md inside)
+_TO_DELETE_review/

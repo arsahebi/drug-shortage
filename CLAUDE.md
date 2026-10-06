@@ -38,7 +38,7 @@ Each numbered folder = one data source. Raw data files stay in Drive; processed 
 
 | Folder | Data Source | Notes |
 |--------|-------------|-------|
-| `00 - ERD` | Entity Relationship Diagram | DB schema PDF |
+| `00 - Reference` | Project reference files | ERD (DB schema PDF), Drugs List.xlsx (used by 04_11 build), FDA data request, risk assessments, early sample lists |
 | `01 - Orange Book` | FDA Orange Book | Generic drug approvals |
 | `02 - DailyMed - Labels` | DailyMed | Drug label XMLs (large zip) |
 | `03 - FDA - NDC` | FDA NDC Directory | product.csv / package.csv |
@@ -48,7 +48,6 @@ Each numbered folder = one data source. Raw data files stay in Drive; processed 
 | `04_11 - Build - Monthly Panel (SDUD+NADAC)` | Built panel | SDUD + NADAC (no IQVIA) |
 | `05 - Firm Level` | FDA DRLS | Firm-level regulatory status |
 | `06 - IQVIA` | IQVIA | Commercial sales/volume data |
-| `06 - Metformin Data` | Metformin case study | Quality signals + IQVIA dashboard |
 | `07 - Redica` | Redica Systems | Third-party inspection/quality ratings |
 | `08 - Valisure` | Valisure | Independent drug testing results — **primary quality outcome for current 14-drug focus** |
 | `11 - Medicaid - NADAC` | CMS NADAC | Medicaid drug pricing |

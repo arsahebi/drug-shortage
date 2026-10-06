@@ -53,7 +53,7 @@ When running in the sandbox (Cowork/Claude), paths are under:
 ### 3a. Base Dataset (Q&As)
 | Path | File |
 |------|------|
-| `06 - Metformin Data/Derived/` | `Q&As1234_v8_v02.xlsx` |
+| `99 - Outputs - Metformin Analysis/raw/qa_derived/` | `Q&As1234_v8_v02.xlsx` |
 
 - 1,001 rows (facility × survey year combinations for 2020, 2022, 2024)
 - 18 unique FEI numbers for metformin

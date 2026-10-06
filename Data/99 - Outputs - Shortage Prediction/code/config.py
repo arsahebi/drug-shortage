@@ -71,7 +71,7 @@ TEXT_TIMESERIES_REDICA_CSV   = DATA / "99 - Outputs - Text Analysis" / "step02_4
 # resolves 385 distinct plants rather than 77. It is generics-only by design
 # (brand NDAs excluded, gases and intradermal dropped), so keep the DailyMed map
 # as a supplement rather than replacing it.
-PROPUBLICA_NDC_FEI_CSV = DATA / "26 - Propublica" / "ndc_fei.csv"
+PROPUBLICA_NDC_FEI_CSV = DATA / "19 - ProPublica" / "raw" / "ndc_fei.csv"
 NDC_PRODUCT_CSV     = DATA / "03 - FDA - NDC" / "product.csv"
 FIRM_STD_NAMES_XLSX = DATA / "25 - Parent Firm Name" / "std_firm_names_v7_10152020.xlsx"
 FIRM_LOOKUP_XLSX    = DATA / "25 - Parent Firm Name" / "lookup_tables_06032020.xlsx"

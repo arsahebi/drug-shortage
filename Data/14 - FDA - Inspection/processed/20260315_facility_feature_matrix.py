@@ -33,7 +33,7 @@ Pipeline order
 --------------
 1. Run 20260315_cfr_cooccurrence_analysis.py.
 2. Run this script.
-3. Downstream users include 06 - Metformin Data quality-signal correlation and
+3. Downstream users include Metformin Analysis legacy quality-signal correlation and
    99 - Outputs - MQRI prompt/materials.
 
 Citation-to-project-area mapping

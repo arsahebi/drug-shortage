@@ -32,8 +32,8 @@ from scipy import stats
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-BASE     = Path(__file__).parents[3]
-QUAL     = BASE / "Data/06 - Metformin Data/Derived/Q&As134_v8_v02.xlsx"
+BASE     = Path(__file__).parents[4]
+QUAL     = BASE / "Data/99 - Outputs - Metformin Analysis/raw/qa_derived/Q&As134_v8_v02.xlsx"
 FEAT     = BASE / "Data/14 - FDA - Inspection/processed/facility_feature_matrix.csv"
 WL_FEI   = BASE / "Data/21 - FDA - Warning Letter/processed/warning_letter_fei_features.csv"
 FEI483   = BASE / "Data/12 - FDA - 483/processed/483_fei_features.csv"
