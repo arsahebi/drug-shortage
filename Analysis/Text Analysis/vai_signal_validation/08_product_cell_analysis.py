@@ -78,6 +78,7 @@ Outputs
   outputs/product_cell_panel.parquet
   outputs/tables/product_cell_results.csv
   outputs/tables/product_cell_results.md
+  outputs/tables/product_cell_robustness.csv
   outputs/tables/product_cell_all17.csv / .md
   outputs/tables/product_cell_diagnostics.csv
   outputs/tables/marketscan_ccae_quarterly_abandonment.csv
@@ -328,6 +329,33 @@ def _diagnostics() -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.DataFrame(rows), q.reset_index()
 
 
+def _robustness(f: pd.DataFrame, n_perm: int = 2000) -> pd.DataFrame:
+    """H1/H2 on the primary frame: plant-level permutation test (exposures
+    shuffled across plants, cells keep their plant), each cohort alone on the
+    same cells, and leave-one-API-out."""
+    def beta(df, x):
+        df = df.dropna(subset=["y", x]).copy()
+        df["z"] = (df[x] - df[x].mean()) / df[x].std()
+        return 100 * smf.ols("y ~ z + C(product)", data=df).fit().params["z"]
+
+    rows, rng = [], np.random.default_rng(1)
+    for x in ["lab_share", "di_share"]:
+        b0 = beta(f, x)
+        plants = f["fei"].unique()
+        vals = f.groupby("fei")[x].first().reindex(plants).values
+        null = np.array([beta(f.assign(**{x: f["fei"].map(dict(zip(plants, rng.permutation(vals))))}), x)
+                         for _ in range(n_perm)])
+        rows.append({"exposure": x, "check": f"plant permutation ({n_perm}), two-sided p",
+                     "value": float((np.abs(null) >= abs(b0)).mean())})
+        for coh in ["ccae", "mdcr"]:
+            rows.append({"exposure": x, "check": f"{coh.upper()} only, same cells: beta",
+                         "value": beta(f.assign(y=f[f"ab_pct_{coh}"]), x)})
+        for ing in sorted(f["ingredient"].unique()):
+            rows.append({"exposure": x, "check": f"leave out {ing}: beta",
+                         "value": beta(f[f["ingredient"] != ing], x)})
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     print("Building labeler x exact-product cells...")
     cells = _load_cells()
@@ -349,6 +377,8 @@ def main() -> None:
                              "role": "comparator" if label in COMPARATORS else "hypothesis", **r})
         prim = frames["abandonment (CCAE+MDCR)"].assign(text_window=window)
         panels.append(prim)
+        if year_max == 2022:
+            rob = _robustness(frames["abandonment (CCAE+MDCR)"])
 
     # Replication in 2023Q1-2024Q3 (CCAE only; MDCR stops at 2022). Added
     # after the main run: H1/H2 were chosen after a first look at the
@@ -373,6 +403,7 @@ def main() -> None:
     TABS.mkdir(parents=True, exist_ok=True)
     pd.concat(panels).to_parquet(OUT / "product_cell_panel.parquet", index=False)
     res.to_csv(TABS / "product_cell_results.csv", index=False)
+    rob.to_csv(TABS / "product_cell_robustness.csv", index=False)
 
     show = ["outcome", "exposure", "n_cells", "n_plants", "beta_pct_pts", "ci_lo", "ci_hi",
             "p", "p_holm", "plant_rho", "plant_rho_p"]
@@ -384,6 +415,8 @@ def main() -> None:
     for w in res["text_window"].unique():
         md += [f"## Text window {w}", "", res.loc[res["text_window"] == w, show]
                .to_string(index=False, float_format=lambda v: f"{v:.3f}"), ""]
+    md += ["## H1/H2 robustness (text 2018-2022, primary outcome)", "",
+           rob.to_string(index=False, float_format=lambda v: f"{v:.4f}"), ""]
     (TABS / "product_cell_results.md").write_text("\n".join(md))
     print("\n".join(md))
     print(f"\nSaved -> {TABS / 'product_cell_results.csv'}")
