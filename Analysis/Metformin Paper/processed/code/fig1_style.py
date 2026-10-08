@@ -4,7 +4,7 @@ Figure 1 drawing style, shared by step6_graphs_july26.py and
 build_variant_graphs.py so both produce the figure the manuscript uses
 (Metformin J Pharma 2026 10 09 ASF.docx, Figure 1): blue-filled boxes, navy
 median, points jittered and colored by country, KW p in the title, country
-legend upper right, n beneath each box.
+legend below the plot (bottom right), n beneath each box.
 
 One outcome per figure: volume and price are drawn as separate figures.
 Drawing only -- no statistics are computed here except the Kruskal-Wallis p
@@ -89,7 +89,10 @@ def _draw(sub, value_col, title, ylabel, outfiles, outcome_col, country_col, see
         handles.append(Line2D([0], [0], marker="o", linestyle="", color=UNKNOWN_COLOR,
                               label="Unknown", markeredgecolor="white",
                               markeredgewidth=0.5, markersize=8))
-    ax.legend(handles=handles, title="Country", loc="upper right")
+    # Below the plot area, right-aligned, so it never covers data points
+    ax.legend(handles=handles, title="Country", loc="upper right",
+              bbox_to_anchor=(1.0, -0.13), ncol=len(handles), fontsize=9,
+              title_fontsize=9, frameon=True)
     fig.tight_layout()
     for p in outfiles:
         fig.savefig(p, bbox_inches="tight", dpi=150)
