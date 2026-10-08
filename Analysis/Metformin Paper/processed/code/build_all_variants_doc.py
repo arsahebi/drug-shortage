@@ -1,7 +1,8 @@
 # %%
 """
-Build one document covering all 6 max-sample variants (rulebased x manual,
-each pooled / IR / ER). Figures follow the style and structure of
+Build one document covering all 9 max-sample variants (rulebased x manual x
+ProPublica, each pooled / IR / ER), plus the recent-inspection sensitivity
+check for the manual and ProPublica maps. Figures follow the style and structure of
 Metformin Health Affairs Scholars 2026 05 29_ASF.docx: points colored by
 country, sample sizes shown on the plot itself (n = NDC-year observations),
 correlation panels annotated in-plot, quality-by-country as bar charts of
@@ -26,8 +27,10 @@ VOUT = BASE / "Analysis/Metformin Paper/processed/outputs/variants"
 OUT  = BASE / "Analysis/Metformin Paper/processed/outputs/20260920_metformin_all_variants.docx"
 
 VARIANTS = [("rulebased", "all"), ("rulebased", "IR"), ("rulebased", "ER"),
-            ("manual", "all"), ("manual", "IR"), ("manual", "ER")]
-MAP_LABEL = {"rulebased": "Rule-based NDC-FEI map", "manual": "Manual NDC-FEI map"}
+            ("manual", "all"), ("manual", "IR"), ("manual", "ER"),
+            ("propublica", "all"), ("propublica", "IR"), ("propublica", "ER")]
+MAP_LABEL = {"rulebased": "Rule-based NDC-FEI map", "manual": "Manual NDC-FEI map",
+             "propublica": "ProPublica NDC-FEI map"}
 DOSE_LABEL = {"all": "all dosage forms pooled", "IR": "immediate-release only", "ER": "extended-release only"}
 
 
@@ -228,7 +231,7 @@ def fig23_finding(d, fig):
 def build():
     doc = ds.new_document()
     doc.add_heading("Metformin Analysis: All Variants", 0)
-    ds.p(doc, "September 21, 2026", italic=True, size=10)
+    ds.p(doc, "September 21, 2026 (ProPublica map added October 8, 2026)", italic=True, size=10)
     ds.rule(doc)
 
     # Statistical Procedure and Outcomes, as written in the paper draft, carried
@@ -278,16 +281,31 @@ def build():
 
     doc.add_heading("This Document", 1)
     ds.p(doc,
-         "Six versions of Figures 1 through 5: the rule-based and manual NDC-FEI maps, each "
-         "pooled and split by dosage form (immediate vs. extended release). The only universal "
-         "exclusion is Canada and Bangladesh.",
+         "Nine versions of Figures 1 through 5: the rule-based, manual, and ProPublica NDC-FEI "
+         "maps, each pooled and split by dosage form (immediate vs. extended release). The only "
+         "universal exclusion is Canada and Bangladesh.",
          size=10)
 
     ds.p(doc,
          "Country of origin is determined from Redica facility-inspection data, indexed by FEI. "
          "Because country appears in every figure here, either as an axis or as the point color, "
          "all five figures are restricted to NDCs whose manufacturing facility has a Redica-"
-         "assigned FEI.",
+         "assigned FEI. The one exception is the ProPublica map: 6 of its 33 facilities are not "
+         "in our Redica pull, so for those we use the country of the registered address that "
+         "ProPublica reports. Five of them (two Viatris plants in India, Amneal in New York, "
+         "Chartwell in Congers NY, and Saptalis) have no inspection history in our data, so they "
+         "appear in the country figures but not in Figure 1; the sixth (Apotex, Canada) is "
+         "excluded with the other Canadian facilities.",
+         italic=True, size=9)
+
+    ds.p(doc,
+         "The ProPublica map changes one headline result. Under the manual map, NDMA is higher "
+         "for India-made products than for U.S.-made ones (p=0.014); under the ProPublica map it "
+         "is not (p=0.715). The difference comes from two Amneal NDCs tested in 2020 "
+         "(65162-0178-10 and 65162-0179-10), which have the two highest NDMA values in the sample "
+         "(1,348 and 329 ng/day). The manual search links them to Amneal's plant in India "
+         "(FEI 3010254278); ProPublica links them, by address matching, to Amneal's plant in "
+         "New York (FEI 2434153).",
          italic=True, size=9)
 
     ds.p(doc,
@@ -365,19 +383,19 @@ def build():
     # inspection at all. Figures 2/3/5 don't depend on prior inspection
     # outcome or recency and are unchanged from the manual-map sections above.
     doc.add_page_break()
-    doc.add_heading("Sensitivity Check: Manual Map, Recent Inspections Only", 1)
+    doc.add_heading("Sensitivity Check: Recent Inspections Only", 1)
     ds.p(doc,
          "Figure 1 restricted to rows whose prior inspection is within 36 months of the "
          "product's test year; a prior inspection older than that is treated as no inspection "
          "history (same as if none had been found). Figure 4 does not group by inspection "
          "outcome, so this restriction instead requires a recent qualifying inspection for a "
          "row to be included at all. Figures 2, 3, and 5 do not depend on prior inspection "
-         "outcome or its recency and are unchanged from the manual-map sections above.", size=10)
-    for dosage in ["all", "IR", "ER"]:
-        log_path = VOUT / f"manual_{dosage}_recent3y" / "stats_log.txt"
-        fig_dir = VOUT / f"manual_{dosage}_recent3y"
+         "outcome or its recency and are unchanged from the matching sections above.", size=10)
+    for map_label, dosage in [(m, x) for m in ("manual", "propublica") for x in ("all", "IR", "ER")]:
+        log_path = VOUT / f"{map_label}_{dosage}_recent3y" / "stats_log.txt"
+        fig_dir = VOUT / f"{map_label}_{dosage}_recent3y"
         d = parse_log(log_path)
-        doc.add_heading(f"Manual NDC-FEI map, {DOSE_LABEL[dosage]}, recent inspections only", 2)
+        doc.add_heading(f"{MAP_LABEL[map_label]}, {DOSE_LABEL[dosage]}, recent inspections only", 2)
 
         doc.add_heading("Figure 1, price and volume by prior inspection outcome", 3)
         ds.figure(doc, fig_dir / "Figure1_Price_Volume_by_Outcome.png",
