@@ -197,7 +197,10 @@ def _coef_table(log, names, params, se, dof, header="", group_support=None, ref_
     from scipy.stats import t as t_dist
     t_vals = params / np.where(se > 0, se, np.nan)
     p_vals = 2 * t_dist.sf(np.abs(t_vals), df=max(dof, 1))
-    lo, hi = params - 1.96 * se, params + 1.96 * se
+    # CI from the same t(dof) the p-value uses, so a CI excludes 0 exactly when
+    # p < 0.05 (a 1.96 normal CI disagreed with the t-based p at small n).
+    t_crit = t_dist.ppf(0.975, df=max(dof, 1))
+    lo, hi = params - t_crit * se, params + t_crit * se
     ref_thin = ref_support is not None and (ref_support[0] < 3 or ref_support[1] < 2)
     if header:
         log(f"\n  {header}")

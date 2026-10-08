@@ -36,7 +36,8 @@ DOSE_LABEL = {"all": "all dosage forms pooled", "IR": "immediate-release only", 
 
 # ── parsing ───────────────────────────────────────────────────────────────────
 _COEF_LINE = re.compile(
-    r"\s*(\w+): beta=([+-]\d+\.\d+), SE=(\d+\.\d+).*?p([<=])(\d+\.\d+)(\*{1,2}|\.)?([^\n]*)")
+    r"\s*(\w+): beta=([+-]\d+\.\d+), SE=(\d+\.\d+), 95% CI \[([+-]\d+\.\d+), ([+-]\d+\.\d+)\], "
+    r"p([<=])(\d+\.\d+)(\*{1,2}|\.)?([^\n]*)")
 
 
 def _coefs_after(anchor_match):
@@ -49,9 +50,9 @@ def _coefs_after(anchor_match):
         mm = _COEF_LINE.match(line)
         if not mm:
             continue
-        name, beta, se, rel, pval, sig, extra = mm.groups()
+        name, beta, se, lo, hi, rel, pval, sig, extra = mm.groups()
         out[name] = {
-            "beta": float(beta), "se": float(se),
+            "beta": float(beta), "se": float(se), "lo": float(lo), "hi": float(hi),
             "p": ("<" + pval) if rel == "<" else float(pval),
             "sig": sig or "", "unreliable": "UNRELIABLE" in extra,
         }
@@ -164,7 +165,8 @@ def coef_phrase(coefs, name, label):
     if name not in coefs:
         return f"{label} n/a"
     c = coefs[name]
-    base = f"{label} beta={c['beta']:+.3f}, p={pfmt(c['p'])}{_sig_tag(c['sig'])}"
+    base = (f"{label} beta={c['beta']:+.3f}, SE={c['se']:.3f}, "
+            f"95% CI [{c['lo']:+.3f}, {c['hi']:+.3f}], p={pfmt(c['p'])}{_sig_tag(c['sig'])}")
     if c["unreliable"]:
         return f"{base} (too few observations, not reliable)"
     return base
@@ -252,7 +254,7 @@ def fig1_sections(doc, d, fig_dir, level):
 def build():
     doc = ds.new_document()
     doc.add_heading("Metformin Analysis: All Variants", 0)
-    ds.p(doc, "September 21, 2026 (ProPublica map and new Figure 1 layout added October 8, 2026)", italic=True, size=10)
+    ds.p(doc, "September 21, 2026 (ProPublica map, new Figure 1 layout, and SE / 95% CI added October 8, 2026)", italic=True, size=10)
     ds.rule(doc)
 
     # Statistical Procedure and Outcomes, as written in the paper draft, carried
@@ -335,7 +337,10 @@ def build():
          "USA for India and China, then India for China (so China vs India is direct). Where a "
          "coefficient's own group, or the reference group it is measured against, rests on fewer "
          "than 3 observations or 2 facilities, the estimate is still reported but marked as too "
-         "few observations to be reliable, and is excluded from the bolded finding sentence.",
+         "few observations to be reliable, and is excluded from the bolded finding sentence. "
+         "Each coefficient is shown with its two-way clustered standard error and a 95% "
+         "confidence interval built from the same t distribution as its p-value, so the "
+         "interval excludes zero exactly when p<0.05.",
          italic=True, size=9)
 
     for map_label, dose in VARIANTS:

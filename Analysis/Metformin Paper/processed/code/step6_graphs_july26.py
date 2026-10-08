@@ -813,8 +813,10 @@ def _print_coef_table(names: list, params: np.ndarray, se: np.ndarray,
     from scipy.stats import t as t_dist
     t_vals = params / np.where(se > 0, se, np.nan)
     p_vals = 2 * t_dist.sf(np.abs(t_vals), df=max(dof, 1))
-    lo = params - 1.96 * se
-    hi = params + 1.96 * se
+    # CI from the same t(dof) the p-value uses (see build_variant_graphs.py)
+    t_crit = t_dist.ppf(0.975, df=max(dof, 1))
+    lo = params - t_crit * se
+    hi = params + t_crit * se
     if header:
         print(f"\n  {header}")
     print(f"  {'Var':>14s}  {'Coef':>10s}  {'SE':>8s}  {'t':>7s}  {'p':>8s}  {'95% CI':>24s}  sig")
