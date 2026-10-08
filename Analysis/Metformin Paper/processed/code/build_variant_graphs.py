@@ -1,6 +1,7 @@
 # %%
 """
-Build max-sample figures for both NDC-FEI linkage methods (manual, rule-based),
+Build max-sample figures for the three NDC-FEI linkage methods (manual,
+rule-based, ProPublica),
 each pooled and split by dosage form (IR / ER).
 
 Per John's guidance (Sept 17 2026 meeting): each figure uses whatever sample its
@@ -11,7 +12,7 @@ color points by country, so they also require an actual matched facility (not ju
 a non-null CountryCode -- that field can come from an old Q&A spreadsheet fallback
 independent of any real facility match); S1 uses every row with the fields it plots.
 
-Inputs: variants/step5_{manual,rulebased}.csv (built by running step2-step5
+Inputs: variants/step5_{manual,rulebased,propublica}.csv (built by running step2-step5
 with REQUIRE_REDICA_HISTORY=0 DROP_NDCS_WITHOUT_FEI=0 against each step1 map;
 see the run commands in the Sept 20 2026 session).
 
@@ -641,6 +642,8 @@ def _matched_fei_lookup(map_label):
     def n11(x):
         p = str(x).split("-"); return f"{p[0].zfill(5)}-{p[1].zfill(4)}-{p[2].zfill(2)}"
     m["NDC11"] = m["NDC11"].map(n11)
+    if "pp_country" in m.columns:  # ProPublica map: never pick a Canada/Bangladesh plant
+        m = m[~m["pp_country"].isin(["CAN", "BGD"])]
     return m.drop_duplicates("NDC11", keep="first").set_index("NDC11")["FEI"].to_dict()
 
 
@@ -714,6 +717,17 @@ def build(map_label, dosage, recent_only=False):
     # this column, or it can silently plot a country nothing here actually
     # confirmed.
     df["CountryCode"] = df["matched_fei"].map(_REDICA_COUNTRY_CACHE)
+    if map_label == "propublica":
+        # 6 of ProPublica's 33 FEIs are outside the Redica metformin pull, so
+        # Redica has no country for them. Fall back to ProPublica's own
+        # registered-address country -- still a facility-level fact, unlike
+        # the Q&A sheet's self-reported location.
+        pp = pd.read_csv(PROC / "step1_ndc_fei_map_propublica.csv", dtype=str)
+        pp = pp.dropna(subset=["FEI", "pp_country"]).drop_duplicates("FEI")
+        fb = df["matched_fei"].map(dict(zip(pp["FEI"], pp["pp_country"])))
+        lines_pre = int((df["CountryCode"].isna() & fb.notna()).sum())
+        df["CountryCode"] = df["CountryCode"].fillna(fb)
+        print(f"propublica {dosage}: {lines_pre} row(s) got country from ProPublica fallback")
     if dosage != "all":
         df = df[df.IR_ER == dosage]
     suffix = "_recent3y" if recent_only else ""
@@ -753,9 +767,13 @@ def build(map_label, dosage, recent_only=False):
 
 
 if __name__ == "__main__":
-    for m in ["rulebased", "manual"]:
+    import sys
+    # Optional args pick which maps to build, e.g. `python build_variant_graphs.py propublica`
+    maps = sys.argv[1:] or ["rulebased", "manual", "propublica"]
+    for m in maps:
         for dosage in ["all", "IR", "ER"]:
             build(m, dosage)
-    for dosage in ["all", "IR", "ER"]:
-        build("manual", dosage, recent_only=True)
+    for m in [m for m in maps if m in ("manual", "propublica")]:
+        for dosage in ["all", "IR", "ER"]:
+            build(m, dosage, recent_only=True)
 # %%

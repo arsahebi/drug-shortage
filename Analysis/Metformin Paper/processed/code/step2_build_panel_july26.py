@@ -229,6 +229,18 @@ s1_meta = (
 )
 
 meta = step1.merge(s1_meta, on="ndc11", how="left")
+
+# ProPublica map only: it carries its own facility country (pp_country), which
+# covers FEIs outside the Redica pull. Use it for EXCLUSION 1 and as a country
+# fallback. Manual / rule-based maps have no such column and are unaffected.
+if "pp_country" in step1.columns:
+    _pp = step1.dropna(subset=["FEI", "pp_country"]).drop_duplicates("FEI")
+    _pp_excl = {"CAN": "Canada", "BGD": "Bangladesh"}
+    for f, cc in zip(_pp["FEI"], _pp["pp_country"]):
+        if _pp_excl.get(cc) in EXCLUDE_COUNTRIES and f not in excluded_feis:
+            print(f"  EXCLUSION 1 (ProPublica country): {f}  {_pp_excl[cc]}")
+            excluded_feis.add(f)
+        fei_to_country_code.setdefault(f, cc)
 meta["Strength"] = meta["s1_strength"].replace({"0": None, "nan": None, "": None})
 # NDC, NDC11, NDC8, fei_count, facility_distance_km already provided by step1
 
