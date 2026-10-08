@@ -38,6 +38,10 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from scipy.stats import spearmanr, kruskal, mannwhitneyu
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from fig1_style import outcome_boxplot
+
 warnings.filterwarnings("ignore")
 
 try:
@@ -367,33 +371,22 @@ def _n_label(ax, x_pos, n, y_frac=0.03):
 
 # ── figure builders ───────────────────────────────────────────────────────────
 def fig1(df, outdir, log):
+    """Price and volume by prior inspection outcome, drawn as two separate
+    figures in the manuscript's Figure 1 style (fig1_style.py). Statistics
+    and log order (price, then volume) are unchanged from the two-panel
+    version."""
     d = df.copy()
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-    for ax, col, ylab in [(axes[0], PRICE_COL, "Price per Unit ($)"),
-                           (axes[1], VOL_COL, "Market Volume (Extended Units)")]:
+    for col, ylab, fname, title, axis_lab in [
+            (PRICE_COL, "Price per Unit ($)", "Figure1_Price_by_Outcome",
+             "Market Price by FDA Inspection Outcome", "Price per Unit ($/unit, log scale)"),
+            (VOL_COL, "Market Volume (Extended Units)", "Figure1_Volume_by_Outcome",
+             "Market Volume by FDA Inspection Outcome", "IQVIA Extended Units (log scale)")]:
         sub = d[d["prior_outcome"].notna() & d[col].notna() & (d[col] > 0)]
         if col == PRICE_COL:
             sub = sub[sub.get("price_outlier", 0) == 0]
         if sub.empty:
-            ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
-            ax.set_title("n=0")
             log(f"\n[{ylab}] n=0"); continue
-        data = [sub.loc[sub.prior_outcome == o, col].values for o in OUTCOME_ORDER]
-        bp = ax.boxplot(data, labels=OUTCOME_ORDER, showfliers=False, patch_artist=True,
-                         boxprops=dict(facecolor="none", edgecolor="black"),
-                         medianprops=dict(color="#f59e0b", linewidth=1.5))
-        rng = np.random.default_rng(0)
-        for i, o in enumerate(OUTCOME_ORDER):
-            s = sub.loc[sub.prior_outcome == o]
-            jitter = rng.uniform(-0.06, 0.06, len(s))
-            colors = [COUNTRY_COLORS.get(cc, "#9ca3af") for cc in s.CountryCode]
-            ax.scatter(i + 1 + jitter, s[col], s=16, alpha=0.75, color=colors, edgecolor="none")
-        if col == VOL_COL:
-            ax.set_yscale("log")
-        ax.set_xlabel("Prior Inspection Outcome")
-        ax.set_ylabel(ylab)
-        for i, o in enumerate(OUTCOME_ORDER):
-            _n_label(ax, i + 1, int((sub.prior_outcome == o).sum()))
+        outcome_boxplot(sub, col, title, axis_lab, [outdir / f"{fname}.png"])
         log(f"\n[{ylab}] n={len(sub)}, by outcome: "
             f"{ {o: int((sub.prior_outcome==o).sum()) for o in OUTCOME_ORDER} }")
         pairwise_group_tests(log, sub, col, "prior_outcome", OUTCOME_ORDER, fei_col="prior_fei")
@@ -408,9 +401,6 @@ def fig1(df, outdir, log):
         m2["OAI_d"] = (m2.prior_outcome == "OAI").astype(float)
         m2["_y"] = np.log(m2[col].astype(float))
         modelB_re_twoway(log, m2, "_y", ["NAI_d", "OAI_d"], "NDC11", "prior_fei", f"log({ylab}), ref=VAI")
-    _country_legend(fig, axes[0], title="Country")
-    fig.tight_layout(rect=[0, 0.08, 1, 1])
-    fig.savefig(outdir / "Figure1_Price_Volume_by_Outcome.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
 def fig2_3(df, outdir, log, x_col, label, fname):

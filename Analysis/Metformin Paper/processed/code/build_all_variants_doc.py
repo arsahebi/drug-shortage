@@ -228,10 +228,31 @@ def fig23_finding(d, fig):
     return "Significant: " + "; ".join(sig_bits) + "."
 
 
+def fig1_sections(doc, d, fig_dir, level):
+    """Figure 1 as two separate figures: market volume (the paper's Figure 1)
+    first, then price. Same numbers as before; only the layout changed."""
+    for key, label, fname, head in [
+            ("volume", "Volume", "Figure1_Volume_by_Outcome",
+             "Figure 1a, market volume by prior inspection outcome"),
+            ("price", "Price", "Figure1_Price_by_Outcome",
+             "Figure 1b, price by prior inspection outcome")]:
+        doc.add_heading(head, level)
+        ds.figure(doc, fig_dir / f"{fname}.png",
+                  "Points are NDC-year observations colored by country of manufacture; "
+                  "sample sizes shown beneath each box; Kruskal-Wallis p in the title.",
+                  width=4.6)
+        icc_str = f", ICC={d[key]['icc']:.2f}" if d[key]["icc"] is not None else ""
+        ds.p(doc, f"{label}: n={d[key]['n']}{icc_str}. "
+             f"{coef_phrase(d[key]['coefs'], 'VAI', 'VAI vs NAI')}. "
+             f"{coef_phrase(d[key]['coefs'], 'OAI', 'OAI vs NAI')}. "
+             f"{coef_phrase(d[key]['coefs'], 'OAI_vs_VAI', 'OAI vs VAI')}.", size=9)
+    ds.p(doc, fig1_finding(d), bold=True, size=9)
+
+
 def build():
     doc = ds.new_document()
     doc.add_heading("Metformin Analysis: All Variants", 0)
-    ds.p(doc, "September 21, 2026 (ProPublica map added October 8, 2026)", italic=True, size=10)
+    ds.p(doc, "September 21, 2026 (ProPublica map and new Figure 1 layout added October 8, 2026)", italic=True, size=10)
     ds.rule(doc)
 
     # Statistical Procedure and Outcomes, as written in the paper draft, carried
@@ -325,18 +346,8 @@ def build():
         doc.add_page_break()
         doc.add_heading(f"{MAP_LABEL[map_label]}, {DOSE_LABEL[dose]}", 1)
 
-        # Figure 1
-        doc.add_heading("Figure 1, price and volume by prior inspection outcome", 2)
-        ds.figure(doc, fig_dir / "Figure1_Price_Volume_by_Outcome.png",
-                  "Points are NDC-year observations colored by country of manufacture; "
-                  "sample sizes shown beneath each box.", width=5.8)
-        for label, key in [("Price", "price"), ("Volume", "volume")]:
-            icc_str = f", ICC={d[key]['icc']:.2f}" if d[key]["icc"] is not None else ""
-            ds.p(doc, f"{label}: n={d[key]['n']}{icc_str}. "
-                 f"{coef_phrase(d[key]['coefs'], 'VAI', 'VAI vs NAI')}. "
-                 f"{coef_phrase(d[key]['coefs'], 'OAI', 'OAI vs NAI')}. "
-                 f"{coef_phrase(d[key]['coefs'], 'OAI_vs_VAI', 'OAI vs VAI')}.", size=9)
-        ds.p(doc, fig1_finding(d), bold=True, size=9)
+        # Figure 1: volume and price as separate figures
+        fig1_sections(doc, d, fig_dir, level=2)
 
         # Figure 2 / Figure 3
         for fig_num, fname in [("2", "Figure2_Volume_vs_Quality"), ("3", "Figure3_Price_vs_Quality")]:
@@ -397,17 +408,7 @@ def build():
         d = parse_log(log_path)
         doc.add_heading(f"{MAP_LABEL[map_label]}, {DOSE_LABEL[dosage]}, recent inspections only", 2)
 
-        doc.add_heading("Figure 1, price and volume by prior inspection outcome", 3)
-        ds.figure(doc, fig_dir / "Figure1_Price_Volume_by_Outcome.png",
-                  "Points are NDC-year observations colored by country of manufacture; "
-                  "sample sizes shown beneath each box.", width=5.8)
-        for label, key in [("Price", "price"), ("Volume", "volume")]:
-            icc_str = f", ICC={d[key]['icc']:.2f}" if d[key]["icc"] is not None else ""
-            ds.p(doc, f"{label}: n={d[key]['n']}{icc_str}. "
-                 f"{coef_phrase(d[key]['coefs'], 'VAI', 'VAI vs NAI')}. "
-                 f"{coef_phrase(d[key]['coefs'], 'OAI', 'OAI vs NAI')}. "
-                 f"{coef_phrase(d[key]['coefs'], 'OAI_vs_VAI', 'OAI vs VAI')}.", size=9)
-        ds.p(doc, fig1_finding(d), bold=True, size=9)
+        fig1_sections(doc, d, fig_dir, level=3)
 
         doc.add_heading("Figure 4, quality by country of manufacture", 3)
         ds.figure(doc, fig_dir / "Figure4_Quality_by_Country.png",

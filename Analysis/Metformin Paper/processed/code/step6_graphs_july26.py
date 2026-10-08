@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 Step 6 (July 2026 refresh) — Analysis Graphs + Statistical Models
 ==================================================================
-Reads step5_analysis_panel_july26.csv (336 rows: NDC11 × TestYear).
+Reads variants/step5_manual.csv (manual NDC-FEI map; NDC11 × TestYear).
 
 Figures produced
 ----------------
@@ -36,6 +36,7 @@ Figures and model outputs saved to:
 """
 
 import warnings
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -47,13 +48,18 @@ from scipy import stats
 from scipy.stats import spearmanr, kruskal
 from itertools import combinations
 
+sys.path.insert(0, str(Path(__file__).parent))
+from fig1_style import outcome_boxplot
+
 matplotlib.rcParams["pdf.fonttype"] = 42
 matplotlib.rcParams["ps.fonttype"]  = 42
 matplotlib.rcParams["font.size"]    = 11
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-STEP5   = BASE / "Analysis/Metformin Paper/processed/step5_analysis_panel_july26.csv"
+# Manual NDC-FEI map (the paper's primary linkage), max-sample panel. Was the
+# rule-based step5_analysis_panel_july26.csv until 2026-10-08.
+STEP5   = BASE / "Analysis/Metformin Paper/processed/variants/step5_manual.csv"
 OUT_DIR = BASE / "Analysis/Metformin Paper/processed/outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -265,9 +271,9 @@ print(f"  df_single_gap36:  {len(df_single_gap36):,} rows | {df_single_gap36['ND
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Figure 1 — Market Outcomes by Prior Inspection Outcome (2 panels)
-# Left:  NADAC price per unit (blank — not yet in current pipeline)
-# Right: IQVIA annual volume (box + jitter by country, log scale)
+# Figure 1 — Market Outcomes by Prior Inspection Outcome
+# Volume and price are separate figures, drawn in the manuscript's Figure 1
+# style (fig1_style.py): Figure1_Volume_by_Outcome / Figure1_Price_by_Outcome.
 # ═══════════════════════════════════════════════════════════════════════════════
 def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
     _df = data if data is not None else df
@@ -285,11 +291,6 @@ def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
         (_df[VOL_COL] > 0) &
         _df["CountryCode"].isin(COUNTRY_ORDER)
     ].copy()
-
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
-
-    # ── Left panel: Medicaid Price ────────────────────────────────────────────
-    ax_price = axes[0]
     sub_price = _df[
         _df["prior_outcome"].notna() &
         _df[PRICE_COL].notna() &
@@ -298,111 +299,17 @@ def plot_fig1_market_by_outcome(data=None, suffix="") -> None:
         _df["CountryCode"].isin(COUNTRY_ORDER)
     ].copy()
 
-    x_pos_p = {out: i for i, out in enumerate(OUTCOME_ORDER)}
-    n_price_vals = []
-    rng_p = np.random.default_rng(99)
-    has_price_data = len(sub_price) > 0
-
-    if has_price_data:
-        for out in OUTCOME_ORDER:
-            d_out = sub_price[sub_price["prior_outcome"] == out]
-            n_price_vals.append(len(d_out))
-            xi = x_pos_p[out]
-            vals = d_out[PRICE_COL].values
-            if len(vals) > 0:
-                ax_price.boxplot(vals, positions=[xi], widths=0.45,
-                                 patch_artist=True, showfliers=False,
-                                 boxprops=dict(facecolor="#fce7f3", color="#9d174d"),
-                                 medianprops=dict(color="#500724", linewidth=2),
-                                 whiskerprops=dict(color="#9d174d"),
-                                 capprops=dict(color="#9d174d"))
-            for cc in COUNTRY_ORDER:
-                d_cc = d_out[d_out["CountryCode"] == cc]
-                if d_cc.empty:
-                    continue
-                jitter = rng_p.uniform(-0.15, 0.15, size=len(d_cc))
-                ax_price.scatter(xi + jitter, d_cc[PRICE_COL].values,
-                                 c=COUNTRY_COLORS[cc], s=40, alpha=0.75,
-                                 edgecolor="white", linewidth=0.4, zorder=3)
-        ax_price.set_yscale("log")
-        _n_label(ax_price, list(x_pos_p.values()), n_price_vals, y_frac=0.01)
-        p_grps = {out: sub_price.loc[sub_price["prior_outcome"] == out, PRICE_COL].dropna().values
-                  for out in OUTCOME_ORDER}
-        kw_p = _kruskal_p(p_grps)
-        p_str_p = (f"KW p={kw_p:.3f}" if kw_p is not None and kw_p >= 0.001
-                   else ("KW p<0.001" if kw_p is not None else ""))
-        ax_price.set_title(f"Market Price by FDA Inspection Outcome  ({p_str_p})",
-                           fontsize=11, fontweight="bold")
-    else:
-        ax_price.text(0.5, 0.5, "No price data", transform=ax_price.transAxes,
-                      ha="center", va="center", fontsize=12, color="#9ca3af")
-        ax_price.set_title("Market Price by FDA Inspection Outcome", fontsize=11, fontweight="bold")
-
-    ax_price.set_xticks(list(x_pos_p.values()))
-    ax_price.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
-    ax_price.set_xlabel("Prior Inspection Outcome")
-    ax_price.set_ylabel("Medicaid Price per Unit ($/unit, log scale)")
-    ax_price.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
-    ax_price.set_axisbelow(True)
-
-    # ── Right panel: IQVIA Volume ─────────────────────────────────────────────
-    ax_vol = axes[1]
-    x_pos  = {out: i for i, out in enumerate(OUTCOME_ORDER)}
-    n_vals = []
-    rng    = np.random.default_rng(42)
-
-    for out in OUTCOME_ORDER:
-        d_out = sub[sub["prior_outcome"] == out]
-        n_vals.append(len(d_out))
-        xi   = x_pos[out]
-        vals = d_out[VOL_COL].values
-        if len(vals) > 0:
-            ax_vol.boxplot(vals, positions=[xi], widths=0.45,
-                           patch_artist=True, showfliers=False,
-                           boxprops=dict(facecolor="#e0e7ff", color="#4f46e5"),
-                           medianprops=dict(color="#1e1b4b", linewidth=2),
-                           whiskerprops=dict(color="#4f46e5"),
-                           capprops=dict(color="#4f46e5"))
-        for cc in COUNTRY_ORDER:
-            d_cc = d_out[d_out["CountryCode"] == cc]
-            if d_cc.empty:
-                continue
-            jitter = rng.uniform(-0.15, 0.15, size=len(d_cc))
-            ax_vol.scatter(xi + jitter, d_cc[VOL_COL].values,
-                           c=COUNTRY_COLORS[cc], s=40, alpha=0.75,
-                           edgecolor="white", linewidth=0.4, zorder=3)
-
-    ax_vol.set_yscale("log")
-    ax_vol.set_xticks(list(x_pos.values()))
-    ax_vol.set_xticklabels([OUTCOME_LABELS[o] for o in OUTCOME_ORDER])
-    ax_vol.set_xlabel("Prior Inspection Outcome")
-    ax_vol.set_ylabel("IQVIA Extended Units (log scale)")
-    ax_vol.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
-    ax_vol.set_axisbelow(True)
-    _n_label(ax_vol, list(x_pos.values()), n_vals, y_frac=0.01)
-
-    groups = {out: sub.loc[sub["prior_outcome"] == out, VOL_COL].dropna().values
-              for out in OUTCOME_ORDER}
-    p = _kruskal_p(groups)
-    if p is not None:
-        p_str = f"KW p={p:.3f}" if p >= 0.001 else "KW p<0.001"
-        ax_vol.set_title(f"Market Volume by FDA Inspection Outcome  ({p_str})",
-                         fontsize=11, fontweight="bold")
-
-    legend_handles = [
-        Line2D([0], [0], marker="o", linestyle="",
-               color=COUNTRY_COLORS[cc], label=COUNTRY_LABELS[cc],
-               markeredgecolor="white", markeredgewidth=0.5, markersize=8)
-        for cc in COUNTRY_ORDER
-    ]
-    ax_vol.legend(handles=legend_handles, title="Country", loc="upper right")
-
-    fig.suptitle(
-        f"Figure 1 — Relationship between Market Outcomes and Prior FDA Inspection Outcome{label}",
-        fontsize=11, fontweight="bold", y=1.01)
-    plt.tight_layout()
-    _save(fig, f"Figure1_Market_by_Outcome{suffix}")
-    plt.close(fig)
+    name = f"Figure1_Volume_by_Outcome{suffix}"
+    outcome_boxplot(sub, VOL_COL, "Market Volume by FDA Inspection Outcome",
+                    "IQVIA Extended Units (log scale)",
+                    [OUT_DIR / f"{name}.{ext}" for ext in ("pdf", "png")])
+    print(f"  Saved → {OUT_DIR / name}.pdf / .png")
+    if len(sub_price):
+        name = f"Figure1_Price_by_Outcome{suffix}"
+        outcome_boxplot(sub_price, PRICE_COL, "Market Price by FDA Inspection Outcome",
+                        "Price per Unit ($/unit, log scale)",
+                        [OUT_DIR / f"{name}.{ext}" for ext in ("pdf", "png")])
+        print(f"  Saved → {OUT_DIR / name}.pdf / .png")
     print_fig1_stats(sub)
 
 
