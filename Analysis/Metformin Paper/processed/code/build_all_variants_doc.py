@@ -266,7 +266,7 @@ def fig1_sections(doc, d, fig_dir, level):
 def build():
     doc = ds.new_document()
     doc.add_heading("Metformin Analysis: All Variants", 0)
-    ds.p(doc, "September 21, 2026 (ProPublica map, new Figure 1 layout, SE / 95% CI, and Figure 5b added October 8, 2026)", italic=True, size=10)
+    ds.p(doc, "September 21, 2026 (ProPublica map, new Figure 1 layout, SE / 95% CI, and Figure 5b added October 8; facility-cluster rule for the country figures added October 9, 2026)", italic=True, size=10)
     ds.rule(doc)
 
     # Statistical Procedure and Outcomes, as written in the paper draft, carried
@@ -291,6 +291,21 @@ def build():
          "Assurance outcome (NAI, VAI, or OAI) strictly before the product's test year. Where a "
          "facility has more than one such inspection in the same year, the most recent by exact "
          "date is used; a tie on the same date is broken to the worse outcome.",
+         italic=True, size=9)
+
+    ds.p(doc,
+         "Facility clusters. Some NDCs are linked to more than one manufacturing facility. In the "
+         "inspection analysis (Figure 1), each NDC-year is clustered on the facility whose "
+         "inspection was used, i.e. the one that supplied the most recent prior inspection. In the "
+         "country-of-manufacture analyses (Figures 4, 5a, and 5b), there is no inspection to tie "
+         "an NDC to one facility, so facilities that share any NDC are treated as a single "
+         "cluster: if an NDC is linked to plants A and B, A and B form one group, and every NDC "
+         "made at either plant falls into it. Under the manual map this merges five pairs of "
+         "plants owned by the same company (Granules, Zydus, Aurobindo, Alkem, Lupin); under the "
+         "rule-based map, three (Zydus, Aurobindo, Lupin). Country itself comes from the "
+         "facility's Redica record; every multi-facility NDC has all its facilities in one "
+         "country except four Amneal NDCs under the ProPublica map (see the ProPublica note "
+         "below).",
          italic=True, size=9)
 
     ds.p(doc,

@@ -492,19 +492,19 @@ def fig4(df, outdir, log):
         ax.set_ylim(bottom=-ymax * 0.12 if ymax else -0.1, top=ymax * 1.15 if ymax else 1)
         log(f"\n[{title} by country] n={len(sub)}, by country: "
             f"{ {cc: int((sub.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
-        pairwise_group_tests(log, sub, col, "CountryCode", COUNTRY_ORDER, fei_col="matched_fei")
+        pairwise_group_tests(log, sub, col, "CountryCode", COUNTRY_ORDER, fei_col="fei_cluster")
         m = sub.copy()
         m["IND"] = (m.CountryCode == "IND").astype(float)
         m["CHN"] = (m.CountryCode == "CHN").astype(float)
         m["_y"] = np.log1p(m[col].astype(float))
-        modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei", f"log1p({title}), ref=USA",
+        modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "fei_cluster", f"log1p({title}), ref=USA",
                           cross_section=(col == DIFF_COL))
         # CHN vs IND: re-parameterize with IND as the omitted (reference) group
         m2 = sub.copy()
         m2["USA_d"] = (m2.CountryCode == "USA").astype(float)
         m2["CHN_d"] = (m2.CountryCode == "CHN").astype(float)
         m2["_y"] = np.log1p(m2[col].astype(float))
-        modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "matched_fei", f"log1p({title}), ref=IND",
+        modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "fei_cluster", f"log1p({title}), ref=IND",
                           cross_section=(col == DIFF_COL))
     fig.tight_layout()
     fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)
@@ -558,18 +558,18 @@ def _by_country(df, outdir, log, col, ylab, fname):
         _n_label(ax, i + 1, int((d.CountryCode == cc).sum()))
     log(f"\n[{ylab} by country] n={len(d)}, by country: "
         f"{ {cc: int((d.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
-    pairwise_group_tests(log, d, col, "CountryCode", COUNTRY_ORDER, fei_col="matched_fei")
+    pairwise_group_tests(log, d, col, "CountryCode", COUNTRY_ORDER, fei_col="fei_cluster")
     m = d.copy()
     m["IND"] = (m.CountryCode == "IND").astype(float)
     m["CHN"] = (m.CountryCode == "CHN").astype(float)
     m["_y"] = np.log(m[col].astype(float))
-    modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "matched_fei",
+    modelB_re_twoway(log, m, "_y", ["IND", "CHN"], "NDC11", "fei_cluster",
                       f"log({ylab}), ref=USA")
     m2 = d.copy()
     m2["USA_d"] = (m2.CountryCode == "USA").astype(float)
     m2["CHN_d"] = (m2.CountryCode == "CHN").astype(float)
     m2["_y"] = np.log(m2[col].astype(float))
-    modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "matched_fei",
+    modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "fei_cluster",
                       f"log({ylab}), ref=IND")
     handles = [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor=OUTCOME_COLORS[o],
                            markersize=7, label=o) for o in OUTCOME_ORDER]
@@ -642,9 +642,10 @@ def _matched_fei_lookup(map_label):
     prior_fei only exists where a prior inspection was found (null for the 31
     country-known-but-no-history rows the max-sample policy now includes), so
     Figure 4's FEI-clustering needs this separate, always-available key.
-    Multi-plant NDCs (11 of them) get their first assigned FEI; the choice of
-    which of the two plants only affects which cluster the row falls in, not
-    whether it is clustered at all."""
+    Multi-plant NDCs get their first assigned FEI; this sets country only
+    (all plants of a multi-plant NDC share a country except four ProPublica
+    Amneal NDCs). Facility clustering for the country figures uses
+    _fei_cluster_lookup instead."""
     m = pd.read_csv(PROC / f"step1_ndc_fei_map_{map_label}.csv", dtype=str)
     m = m.dropna(subset=["FEI"]).sort_values(["NDC11", "FEI"])
     def n11(x):
@@ -653,6 +654,45 @@ def _matched_fei_lookup(map_label):
     if "pp_country" in m.columns:  # ProPublica map: never pick a Canada/Bangladesh plant
         m = m[~m["pp_country"].isin(["CAN", "BGD"])]
     return m.drop_duplicates("NDC11", keep="first").set_index("NDC11")["FEI"].to_dict()
+
+
+def _fei_cluster_lookup(map_label):
+    """FEI -> facility-cluster id for the country figures (4, 5, 5b).
+
+    Plants that share any NDC in this map are merged into one cluster
+    (connected components of the NDC-FEI links), labelled by the smallest FEI
+    in the group. A multi-plant NDC can't be attributed to one plant, so its
+    plants are treated as one unit instead of picking one arbitrarily.
+    Canada/Bangladesh plants are left out of the graph, as they are out of the
+    analysis. Figure 1 is not affected: it keeps clustering on prior_fei, the
+    plant whose inspection was used.
+
+    Under the manual and rule-based maps this reproduces the earlier
+    first-FEI grouping exactly (every NDC at a pair's second plant is also
+    linked to the first), so their numbers do not change."""
+    m = pd.read_csv(PROC / f"step1_ndc_fei_map_{map_label}.csv", dtype=str).dropna(subset=["FEI"])
+    def n11(x):
+        p = str(x).split("-"); return f"{p[0].zfill(5)}-{p[1].zfill(4)}-{p[2].zfill(2)}"
+    m["NDC11"] = m["NDC11"].map(n11)
+    excl = {f for f, c in (_REDICA_COUNTRY_CACHE or {}).items() if c in ("CAN", "BGD")}
+    if "pp_country" in m.columns:
+        excl |= set(m.loc[m["pp_country"].isin(["CAN", "BGD"]), "FEI"])
+    m = m[~m["FEI"].isin(excl)]
+    parent = {}
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for _, g in m.groupby("NDC11"):
+        feis = sorted(g["FEI"])
+        for other in feis[1:]:
+            a, b_ = find(feis[0]), find(other)
+            if a != b_:
+                parent[max(a, b_)] = min(a, b_)
+        find(feis[0])
+    return {f: find(f) for f in parent}
 
 
 VALISURE_FORM_FILE = BASE / "Data/08 - Valisure/raw/Valisure_2024_raw_prices_20260728_f1-and-formulation_20260813.xlsx"
@@ -725,6 +765,8 @@ def build(map_label, dosage, recent_only=False):
     # this column, or it can silently plot a country nothing here actually
     # confirmed.
     df["CountryCode"] = df["matched_fei"].map(_REDICA_COUNTRY_CACHE)
+    # Facility cluster for the country figures: plants sharing NDCs merged
+    df["fei_cluster"] = df["matched_fei"].map(_fei_cluster_lookup(map_label)).fillna(df["matched_fei"])
     if map_label == "propublica":
         # 6 of ProPublica's 33 FEIs are outside the Redica metformin pull, so
         # Redica has no country for them. Fall back to ProPublica's own
