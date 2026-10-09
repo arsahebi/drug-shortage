@@ -334,13 +334,16 @@ def build():
          italic=True, size=9)
 
     ds.p(doc,
-         "The ProPublica map changes one headline result. Under the manual map, NDMA is higher "
-         "for India-made products than for U.S.-made ones (p=0.014); under the ProPublica map it "
-         "is not (p=0.715). The difference comes from two Amneal NDCs tested in 2020 "
-         "(65162-0178-10 and 65162-0179-10), which have the two highest NDMA values in the sample "
-         "(1,348 and 329 ng/day). The manual search links them to Amneal's plant in India "
-         "(FEI 3010254278); ProPublica links them, by address matching, to Amneal's plant in "
-         "New York (FEI 2434153).",
+         "Under the ProPublica map as built here, NDMA is no longer higher for India-made "
+         "products (p=0.715 vs p=0.014 under the manual map), but this comes from how the "
+         "pipeline handles multi-plant NDCs, not from ProPublica relinking them. For four Amneal "
+         "NDCs (65162-0178-10 and 65162-0179-10, tested in 2020 with the two highest NDMA values "
+         "in the sample, 1,348 and 329 ng/day, plus 42291-0497-90 and 42291-0498-01), ProPublica "
+         "lists all three plants on the ANDA: two in New York (FEI 2434153, 3005263655) and the "
+         "India plant the manual search found (FEI 3010254278). For country, the pipeline keeps "
+         "the first FEI in sort order, which is a New York plant. Assigning these NDCs to the "
+         "India plant, or dropping them, restores the result (NDMA India vs USA p=0.007 either "
+         "way). These four are the only NDCs in any map whose plants span more than one country.",
          italic=True, size=9)
 
     ds.p(doc,
