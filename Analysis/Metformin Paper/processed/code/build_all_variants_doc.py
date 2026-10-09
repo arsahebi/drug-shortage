@@ -266,7 +266,7 @@ def fig1_sections(doc, d, fig_dir, level):
 def build():
     doc = ds.new_document()
     doc.add_heading("Metformin Analysis: All Variants", 0)
-    ds.p(doc, "September 21, 2026 (ProPublica map, new Figure 1 layout, SE / 95% CI, and Figure 5b added October 8; facility-cluster rule for the country figures added October 9, 2026)", italic=True, size=10)
+    ds.p(doc, "September 21, 2026 (ProPublica map, new Figure 1 layout, SE / 95% CI, and Figure 5b added October 8; facility-cluster and multi-country rules for the country figures added October 9, 2026)", italic=True, size=10)
     ds.rule(doc)
 
     # Statistical Procedure and Outcomes, as written in the paper draft, carried
@@ -349,16 +349,18 @@ def build():
          italic=True, size=9)
 
     ds.p(doc,
-         "Under the ProPublica map as built here, NDMA is no longer higher for India-made "
-         "products (p=0.715 vs p=0.014 under the manual map), but this comes from how the "
-         "pipeline handles multi-plant NDCs, not from ProPublica relinking them. For four Amneal "
-         "NDCs (65162-0178-10 and 65162-0179-10, tested in 2020 with the two highest NDMA values "
-         "in the sample, 1,348 and 329 ng/day, plus 42291-0497-90 and 42291-0498-01), ProPublica "
-         "lists all three plants on the ANDA: two in New York (FEI 2434153, 3005263655) and the "
-         "India plant the manual search found (FEI 3010254278). For country, the pipeline keeps "
-         "the first FEI in sort order, which is a New York plant. Assigning these NDCs to the "
-         "India plant, or dropping them, restores the result (NDMA India vs USA p=0.007 either "
-         "way). These four are the only NDCs in any map whose plants span more than one country.",
+         "Multi-country NDCs (ProPublica map only). For four Amneal NDCs, ProPublica lists all "
+         "three plants approved under the ANDA: two in New York (FEI 2434153, 3005263655) and one "
+         "in India (FEI 3010254278). These links come from the ANDA's list of approved sites, "
+         "which includes packaging sites, and they are the only NDCs in any map whose plants span "
+         "more than one country. For these NDCs the country figures use the plant our manual "
+         "label review confirmed as the manufacturer: India for 65162-0178-10 and 65162-0179-10 "
+         "(the current DailyMed label lists the New York plants as packagers only; these two "
+         "products, tested in 2020, have the two highest NDMA values in the sample), and the "
+         "Brookhaven, NY plant for 42291-0497-90 and 42291-0498-01. Picking a plant arbitrarily "
+         "instead would put the first two in New York and remove the NDMA India vs USA result "
+         "(p=0.715 instead of p=0.007). Figure 1 is unaffected, since it pools inspections "
+         "across all linked plants.",
          italic=True, size=9)
 
     ds.p(doc,

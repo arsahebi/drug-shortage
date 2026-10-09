@@ -642,10 +642,11 @@ def _matched_fei_lookup(map_label):
     prior_fei only exists where a prior inspection was found (null for the 31
     country-known-but-no-history rows the max-sample policy now includes), so
     Figure 4's FEI-clustering needs this separate, always-available key.
-    Multi-plant NDCs get their first assigned FEI; this sets country only
-    (all plants of a multi-plant NDC share a country except four ProPublica
-    Amneal NDCs). Facility clustering for the country figures uses
-    _fei_cluster_lookup instead."""
+    Multi-plant NDCs get their first assigned FEI; this sets country only,
+    and is harmless when all plants share a country. Where they don't (four
+    ProPublica Amneal NDCs), the multi-country rule below picks the plant the
+    manual label review confirmed. Facility clustering for the country
+    figures uses _fei_cluster_lookup instead."""
     m = pd.read_csv(PROC / f"step1_ndc_fei_map_{map_label}.csv", dtype=str)
     m = m.dropna(subset=["FEI"]).sort_values(["NDC11", "FEI"])
     def n11(x):
@@ -653,7 +654,25 @@ def _matched_fei_lookup(map_label):
     m["NDC11"] = m["NDC11"].map(n11)
     if "pp_country" in m.columns:  # ProPublica map: never pick a Canada/Bangladesh plant
         m = m[~m["pp_country"].isin(["CAN", "BGD"])]
-    return m.drop_duplicates("NDC11", keep="first").set_index("NDC11")["FEI"].to_dict()
+    out = m.drop_duplicates("NDC11", keep="first").set_index("NDC11")["FEI"].to_dict()
+    if "pp_country" in m.columns:
+        # Multi-country rule: when an NDC's plants span more than one country,
+        # country can't come from an arbitrary pick. ProPublica's address-matched
+        # links list every site on the ANDA, packaging sites included, so use
+        # the plant our manual label review confirmed as the manufacturer.
+        # Today this is the four Amneal ANDA 078596 NDCs: two NY plants that the
+        # label lists as packagers, and the India plant (FEI 3010254278).
+        man = pd.read_csv(PROC / "step1_ndc_fei_map_manual.csv", dtype=str).dropna(subset=["FEI"])
+        man["NDC11"] = man["NDC11"].map(n11)
+        man_feis = man.groupby("NDC11")["FEI"].apply(set).to_dict()
+        n_ctry = m.groupby("NDC11")["pp_country"].nunique()
+        for ndc in n_ctry[n_ctry > 1].index:
+            confirmed = sorted(set(m.loc[m["NDC11"] == ndc, "FEI"]) & man_feis.get(ndc, set()))
+            if confirmed:
+                out[ndc] = confirmed[0]
+            else:
+                out.pop(ndc, None)  # no confirmed manufacturer: leave out of country figures
+    return out
 
 
 def _fei_cluster_lookup(map_label):
