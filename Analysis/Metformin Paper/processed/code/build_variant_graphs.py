@@ -40,6 +40,7 @@ from scipy.stats import spearmanr, kruskal, mannwhitneyu
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
+import fig1_style as _fs
 from fig1_style import outcome_boxplot, country_boxplot
 
 warnings.filterwarnings("ignore")
@@ -62,6 +63,13 @@ OUTCOME_ORDER  = ["NAI", "VAI", "OAI"]
 COUNTRY_ORDER  = ["IND", "CHN", "USA"]
 COUNTRY_COLORS = {"IND": "#ef4444", "CHN": "#f59e0b", "USA": "#3b82f6"}
 OUTCOME_COLORS = {"NAI": "#22c55e", "VAI": "#f59e0b", "OAI": "#ef4444"}
+
+# Output settings. Defaults give the internal figures; build_submission_figures.py
+# overrides them (size, dpi, TIFF, no titles) for the journal versions.
+STYLE = {"fig23_size": (15, 4.5), "fig4_size": (14, 4.2), "ext": "png", "titles": True,
+         "fig23_data_frac": None,  # e.g. 0.72: highest point at 72% of panel height, stats box above it
+         "fig23_ylabel": None,     # override y-axis title (journal versions: shorter, so it isn't clipped)
+         "fig4_n_in_ticks": False}  # journal versions: "India\n(n=70)" tick labels
 
 
 # ── stat helpers (self-contained; mirror step6_graphs_july26.py) ─────────────
@@ -389,7 +397,8 @@ def fig1(df, outdir, log):
             sub = sub[sub.get("price_outlier", 0) == 0]
         if sub.empty:
             log(f"\n[{ylab}] n=0"); continue
-        outcome_boxplot(sub, col, title, axis_lab, [outdir / f"{fname}.png"])
+        outcome_boxplot(sub, col, title if STYLE["titles"] else None, axis_lab,
+                        [outdir / f"{fname}.{STYLE['ext']}"])
         log(f"\n[{ylab}] n={len(sub)}, by outcome: "
             f"{ {o: int((sub.prior_outcome==o).sum()) for o in OUTCOME_ORDER} }")
         pairwise_group_tests(log, sub, col, "prior_outcome", OUTCOME_ORDER, fei_col="prior_fei")
@@ -408,7 +417,7 @@ def fig1(df, outdir, log):
 
 def fig2_3(df, outdir, log, x_col, label, fname):
     d = df.copy()
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+    fig, axes = plt.subplots(1, 3, figsize=STYLE["fig23_size"])
     metrics = [(DMF_COL, "DMF (ng/day)", False), (NDMA_COL, "NDMA (ng/day)", False),
                (DIFF_COL, "Dissolution Difference", True)]
     for ax, (col, xlab, linear_x) in zip(axes, metrics):
@@ -435,7 +444,7 @@ def fig2_3(df, outdir, log, x_col, label, fname):
         if not linear_x:
             ax.set_xscale("symlog", linthresh=1)
         ax.set_yscale("log")
-        ax.set_xlabel(xlab); ax.set_ylabel(label)
+        ax.set_xlabel(xlab); ax.set_ylabel(STYLE["fig23_ylabel"] or label)
         log(f"\n[{xlab} vs {label}] n={len(sub)} (NDCs={sub.NDC11.nunique()}, "
             f"all facility-matched, country confirmed)")
         res = correlation_tests(log, sub, col, x_col)
@@ -455,9 +464,12 @@ def fig2_3(df, outdir, log, x_col, label, fname):
                 zx = np.linspace(xs.min(), xs.max(), 50)
                 b, a = np.polyfit(np.log1p(xs), np.log(ys), 1)
                 ax.plot(zx, np.exp(a + b * np.log1p(zx)), "--", color="#f4777f", linewidth=1.5)
+            if STYLE["fig23_data_frac"]:
+                lo = np.log10(ax.get_ylim()[0]); hi = np.log10(ys.max())
+                ax.set_ylim(top=10 ** (lo + (hi - lo) / STYLE["fig23_data_frac"]))
     _country_legend(fig, axes[0], title="Country")
     fig.tight_layout(rect=[0, 0.1, 1, 1])
-    fig.savefig(outdir / f"{fname}.png", dpi=150, bbox_inches="tight"); plt.close(fig)
+    _fs.save(fig, [outdir / f"{fname}.{STYLE['ext']}"]); plt.close(fig)
 
 
 def fig4(df, outdir, log):
@@ -469,27 +481,34 @@ def fig4(df, outdir, log):
     # are excluded here even though the max-sample policy keeps them for
     # Figures 2/3, which don't use country at all.
     d = df[df.CountryCode.isin(COUNTRY_ORDER) & df.matched_fei.notna()].copy()
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.2))
+    fig, axes = plt.subplots(1, 3, figsize=STYLE["fig4_size"])
     metrics = [(DMF_COL, "DMF (ng/day)"), (NDMA_COL, "NDMA (ng/day)"), (DIFF_COL, "Dissolution Difference")]
     for ax, (col, title) in zip(axes, metrics):
         sub = d[d[col].notna()]
         if sub.empty:
             ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
-            ax.set_title(title)
+            ax.set_title(title) if STYLE["titles"] else ax.set_ylabel(title)
             log(f"\n[{title} by country] n=0"); continue
         means = [sub.loc[sub.CountryCode == cc, col].mean() for cc in COUNTRY_ORDER]
         ns    = [int((sub.CountryCode == cc).sum()) for cc in COUNTRY_ORDER]
         bars = ax.bar(range(len(COUNTRY_ORDER)), means, color="#93c5fd", edgecolor="black", width=0.6)
         ax.set_xticks(range(len(COUNTRY_ORDER)))
-        ax.set_xticklabels([COUNTRY_FULL[cc].replace("United States of America", "USA") for cc in COUNTRY_ORDER])
+        if STYLE["fig4_n_in_ticks"]:
+            ax.set_xticklabels([f"{COUNTRY_FULL[cc].replace(' ', chr(10))}\n(n={n})"
+                                for cc, n in zip(COUNTRY_ORDER, ns)])
+        else:
+            ax.set_xticklabels([COUNTRY_FULL[cc].replace("United States of America", "USA") for cc in COUNTRY_ORDER])
         ax.set_xlabel("Country")
-        ax.set_title(title)
+        # Journal versions: no titles inside figures, so the metric goes on the y-axis
+        ax.set_title(title) if STYLE["titles"] else ax.set_ylabel(title)
         ymax = max(means) if means else 1
         for i, (m, n) in enumerate(zip(means, ns)):
             ax.text(i, m + ymax * 0.02, f"{m:,.2f}" if m < 100 else f"{m:,.0f}",
                     ha="center", va="bottom", fontsize=9)
-            ax.text(i, -ymax * 0.06, f"n={n}", ha="center", va="top", fontsize=8, color="#444444")
-        ax.set_ylim(bottom=-ymax * 0.12 if ymax else -0.1, top=ymax * 1.15 if ymax else 1)
+            if not STYLE["fig4_n_in_ticks"]:
+                ax.text(i, -ymax * 0.06, f"n={n}", ha="center", va="top", fontsize=8, color="#444444")
+        ax.set_ylim(bottom=(0 if STYLE["fig4_n_in_ticks"] else -ymax * 0.12) if ymax else -0.1,
+                    top=ymax * 1.15 if ymax else 1)
         log(f"\n[{title} by country] n={len(sub)}, by country: "
             f"{ {cc: int((sub.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
         pairwise_group_tests(log, sub, col, "CountryCode", COUNTRY_ORDER, fei_col="fei_cluster")
@@ -507,7 +526,7 @@ def fig4(df, outdir, log):
         modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "fei_cluster", f"log1p({title}), ref=IND",
                           cross_section=(col == DIFF_COL))
     fig.tight_layout()
-    fig.savefig(outdir / "Figure4_Quality_by_Country.png", dpi=150, bbox_inches="tight"); plt.close(fig)
+    _fs.save(fig, [outdir / f"Figure4_Quality_by_Country.{STYLE['ext']}"]); plt.close(fig)
 
 
 def fig5(df, outdir, log):
@@ -541,7 +560,8 @@ def _by_country(df, outdir, log, col, ylab, fname, title, axis_lab):
     if d.empty:
         log(f"\n[{ylab} by country] n=0")
         return
-    country_boxplot(d, col, title, axis_lab, [outdir / f"{fname}.png"])
+    country_boxplot(d, col, title if STYLE["titles"] else None, axis_lab,
+                    [outdir / f"{fname}.{STYLE['ext']}"])
     log(f"\n[{ylab} by country] n={len(d)}, by country: "
         f"{ {cc: int((d.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
     pairwise_group_tests(log, d, col, "CountryCode", COUNTRY_ORDER, fei_col="fei_cluster")
@@ -726,28 +746,15 @@ _REDICA_COUNTRY_CACHE = None
 _VALISURE_FORM_CACHE = None
 
 
-def build(map_label, dosage, recent_only=False):
-    """recent_only=True restricts the prior-inspection fields (prior_outcome,
-    prior_fei, prior_score, prior_site, months_since_inspection) to rows whose
-    prior inspection is within 36 months of the test year -- a row whose only
-    qualifying inspection is older than that is treated the same as a row with
-    no inspection history at all. Rebuilds Figure 1 (grouped by prior_outcome)
-    and Figure S1 (the months_since_inspection distribution) on that basis.
-
-    Figure 4 groups by country via matched_fei, not prior_outcome, so it has
-    no recency concept of its own; here it is additionally restricted to rows
-    that have a recent qualifying inspection at all (prior_outcome notna after
-    the masking above), i.e. a country only counts as confirmed for this
-    sensitivity check if its facility was actually inspected in the last 3
-    years, not just matched to an FEI. Figures 2/3/5 don't depend on prior
-    inspection outcome or recency at all and are not rebuilt -- the standard
-    {map_label}_{dosage} folder's copies already apply."""
+def prepare(map_label, dosage):
+    """Analysis rows for one map / dosage split: Valisure-tested rows with
+    matched facility, Redica country, facility cluster, and per-year IR/ER.
+    Shared by build() and build_submission_figures.py."""
     global _REDICA_COUNTRY_CACHE, _VALISURE_FORM_CACHE
     if _REDICA_COUNTRY_CACHE is None:
         _REDICA_COUNTRY_CACHE = _redica_country_lookup()
     if _VALISURE_FORM_CACHE is None:
         _VALISURE_FORM_CACHE = _valisure_formulation_lookup()
-
     df = pd.read_csv(VDIR / f"step5_{map_label}.csv")
     df = df[df[[DMF_COL, NDMA_COL, DIFF_COL]].notna().any(axis=1)]  # Valisure-tested rows only
     df["matched_fei"] = df["NDC11"].map(_matched_fei_lookup(map_label))
@@ -779,6 +786,47 @@ def build(map_label, dosage, recent_only=False):
         print(f"propublica {dosage}: {lines_pre} row(s) got country from ProPublica fallback")
     if dosage != "all":
         df = df[df.IR_ER == dosage]
+    return df
+
+
+RECENT_FIELDS = ["prior_outcome", "prior_fei", "prior_score", "prior_site",
+                 "months_since_inspection", "prior_inspection_date",
+                 "prior_event_year", "gap_test_inspection_more_than_3_years"]
+
+
+def mask_recent(df):
+    """Clear prior-inspection fields older than 36 months (recent3y check).
+    Returns (df, number of rows whose inspection was cleared)."""
+    df = df.copy()
+    stale = ~(df.months_since_inspection.notna() & (df.months_since_inspection <= 36))
+    n_dropped = int((stale & df.prior_outcome.notna()).sum())
+    df.loc[stale, RECENT_FIELDS] = np.nan
+    return df, n_dropped
+
+
+def build(map_label, dosage, recent_only=False):
+    """recent_only=True restricts the prior-inspection fields (prior_outcome,
+    prior_fei, prior_score, prior_site, months_since_inspection) to rows whose
+    prior inspection is within 36 months of the test year -- a row whose only
+    qualifying inspection is older than that is treated the same as a row with
+    no inspection history at all. Rebuilds Figure 1 (grouped by prior_outcome)
+    and Figure S1 (the months_since_inspection distribution) on that basis.
+
+    Figure 4 groups by country via matched_fei, not prior_outcome, so it has
+    no recency concept of its own; here it is additionally restricted to rows
+    that have a recent qualifying inspection at all (prior_outcome notna after
+    the masking above), i.e. a country only counts as confirmed for this
+    sensitivity check if its facility was actually inspected in the last 3
+    years, not just matched to an FEI. Figures 2/3/5 don't depend on prior
+    inspection outcome or recency at all and are not rebuilt -- the standard
+    {map_label}_{dosage} folder's copies already apply."""
+    global _REDICA_COUNTRY_CACHE, _VALISURE_FORM_CACHE
+    if _REDICA_COUNTRY_CACHE is None:
+        _REDICA_COUNTRY_CACHE = _redica_country_lookup()
+    if _VALISURE_FORM_CACHE is None:
+        _VALISURE_FORM_CACHE = _valisure_formulation_lookup()
+
+    df = prepare(map_label, dosage)
     suffix = "_recent3y" if recent_only else ""
     outdir = OUT / f"{map_label}_{dosage}{suffix}"
     outdir.mkdir(parents=True, exist_ok=True)
@@ -788,13 +836,9 @@ def build(map_label, dosage, recent_only=False):
              f"Redica-confirmed country={df.CountryCode.notna().sum()}  not={df.CountryCode.isna().sum()}"]
     def log(s): lines.append(str(s))
     if recent_only:
-        stale = ~(df.months_since_inspection.notna() & (df.months_since_inspection <= 36))
-        n_dropped = int((stale & df.prior_outcome.notna()).sum())
+        df, n_dropped = mask_recent(df)
         lines.append(f"recent_only=True: {n_dropped} row(s) with a prior inspection older than "
                       f"36 months had their inspection fields cleared (treated as no history)")
-        df.loc[stale, ["prior_outcome", "prior_fei", "prior_score", "prior_site",
-                        "months_since_inspection", "prior_inspection_date",
-                        "prior_event_year", "gap_test_inspection_more_than_3_years"]] = np.nan
         fig1(df, outdir, log)
         df_recent = df[df.prior_outcome.notna()].copy()
         lines.append(f"\nFigure 4 additionally restricted to rows with a recent qualifying "

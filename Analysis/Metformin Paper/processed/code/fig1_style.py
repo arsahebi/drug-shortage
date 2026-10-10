@@ -27,6 +27,19 @@ COUNTRY_COLORS = {"IND": "#ef4444", "CHN": "#f59e0b", "USA": "#3b82f6"}
 OUTCOME_COLORS = {"NAI": "#22c55e", "VAI": "#f59e0b", "OAI": "#ef4444"}
 UNKNOWN_COLOR  = "#9ca3af"
 
+# Output settings. Defaults give the internal (all-variants doc) figures;
+# build_submission_figures.py overrides them for the journal versions.
+DPI = 150
+FIGSIZE = (6.5, 5.5)
+N_IN_TICKS = False  # journal versions: "NAI\n(n=18)" tick labels instead of n text over the data
+
+
+def save(fig, outfiles):
+    """Save to every path; TIFF gets LZW compression."""
+    for p in outfiles:
+        kw = {"pil_kwargs": {"compression": "tiff_lzw"}} if str(p).endswith((".tif", ".tiff")) else {}
+        fig.savefig(p, bbox_inches="tight", dpi=DPI, **kw)
+
 
 def _kw_title_p(groups):
     valid = [np.asarray(g, dtype=float) for g in groups if len(g) >= 2]
@@ -72,7 +85,24 @@ def group_boxplot(sub, value_col, group_col, group_order, group_labels, xlabel,
 def _draw(sub, value_col, group_col, group_order, group_labels, xlabel,
           color_col, color_order, color_map, color_labels, unknown_label,
           legend_title, title, ylabel, outfiles, seed):
-    fig, ax = plt.subplots(figsize=(6.5, 5.5))
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    groups, has_unknown = draw_on(ax, sub, value_col, group_col, group_order, group_labels,
+                                  xlabel, color_col, color_order, color_map, ylabel, seed)
+    if title:  # journal versions pass title=None (no titles inside figures)
+        ax.set_title(f"{title}{_kw_title_p(groups)}", fontsize=11, fontweight="bold")
+    # Below the plot area, centered, so it never covers data points
+    ax.legend(handles=legend_handles(color_order, color_map, color_labels, unknown_label, has_unknown),
+              title=legend_title, loc="upper center",
+              bbox_to_anchor=(0.5, -0.22 if N_IN_TICKS else -0.13),  # two-line ticks need more room
+              ncol=len(color_order) + has_unknown, fontsize=9, title_fontsize=9, frameon=True)
+    fig.tight_layout()
+    save(fig, outfiles)
+    plt.close(fig)
+
+
+def draw_on(ax, sub, value_col, group_col, group_order, group_labels, xlabel,
+            color_col, color_order, color_map, ylabel, seed=42):
+    """Draw one box-plot panel onto ax. Returns (groups, has_unknown)."""
     rng = np.random.default_rng(seed)
     groups, n_vals = [], []
     has_unknown = False
@@ -101,18 +131,24 @@ def _draw(sub, value_col, group_col, group_order, group_labels, xlabel,
 
     ax.set_yscale("log")
     ax.set_xticks(range(len(group_order)))
-    ax.set_xticklabels(group_labels)
+    if N_IN_TICKS:
+        ax.set_xticklabels([f"{lab}\n(n={int(n)})" for lab, n in zip(group_labels, n_vals)])
+    else:
+        ax.set_xticklabels(group_labels)
     ax.set_xlim(-0.5, len(group_order) - 0.5)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
     ax.set_axisbelow(True)
-    trans = blended_transform_factory(ax.transData, ax.transAxes)
-    for xi, n in enumerate(n_vals):
-        ax.text(xi, 0.01, f"n={int(n)}", transform=trans,
-                ha="center", va="bottom", fontsize=9, color="#374151")
-    ax.set_title(f"{title}{_kw_title_p(groups)}", fontsize=11, fontweight="bold")
+    if not N_IN_TICKS:
+        trans = blended_transform_factory(ax.transData, ax.transAxes)
+        for xi, n in enumerate(n_vals):
+            ax.text(xi, 0.01, f"n={int(n)}", transform=trans,
+                    ha="center", va="bottom", fontsize=9, color="#374151")
+    return groups, has_unknown
 
+
+def legend_handles(color_order, color_map, color_labels, unknown_label, has_unknown):
     handles = [Line2D([0], [0], marker="o", linestyle="", color=color_map[c],
                       label=color_labels[c], markeredgecolor="white",
                       markeredgewidth=0.5, markersize=8) for c in color_order]
@@ -120,12 +156,5 @@ def _draw(sub, value_col, group_col, group_order, group_labels, xlabel,
         handles.append(Line2D([0], [0], marker="o", linestyle="", color=UNKNOWN_COLOR,
                               label=unknown_label, markeredgecolor="white",
                               markeredgewidth=0.5, markersize=8))
-    # Below the plot area, centered, so it never covers data points
-    ax.legend(handles=handles, title=legend_title, loc="upper center",
-              bbox_to_anchor=(0.5, -0.13), ncol=len(handles), fontsize=9,
-              title_fontsize=9, frameon=True)
-    fig.tight_layout()
-    for p in outfiles:
-        fig.savefig(p, bbox_inches="tight", dpi=150)
-    plt.close(fig)
+    return handles
 # %%
