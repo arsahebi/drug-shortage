@@ -40,7 +40,7 @@ from scipy.stats import spearmanr, kruskal, mannwhitneyu
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from fig1_style import outcome_boxplot
+from fig1_style import outcome_boxplot, country_boxplot
 
 warnings.filterwarnings("ignore")
 
@@ -353,7 +353,7 @@ def correlation_tests(log, sub, x_col, y_col, cluster_col="NDC11"):
     return res
 
 
-COUNTRY_FULL = {"IND": "India", "USA": "United States of America", "CHN": "China"}
+COUNTRY_FULL = {"IND": "India", "USA": "United States", "CHN": "China"}
 
 
 def _country_legend(fig, ax_ref, title="Country"):
@@ -518,7 +518,8 @@ def fig5(df, outdir, log):
     prior_fei, matching Figure 4's clustering choice for the same reason: a
     country figure should not additionally require inspection history."""
     _by_country(df, outdir, log, VOL_COL, "Market Volume (Extended Units)",
-                "Figure5_Volume_by_Country")
+                "Figure5_Volume_by_Country", "Market Volume by Country of Manufacture",
+                "IQVIA Extended Units (log scale)")
 
 
 def fig5b(df, outdir, log):
@@ -528,34 +529,19 @@ def fig5b(df, outdir, log):
     footnote saying price does not differ by country of origin."""
     d = df[df.get("price_outlier", 0) == 0]
     _by_country(d, outdir, log, PRICE_COL, "Price per Unit ($)",
-                "Figure5b_Price_by_Country")
+                "Figure5b_Price_by_Country", "Market Price by Country of Manufacture",
+                "Price per Unit ($/unit, log scale)")
 
 
-def _by_country(df, outdir, log, col, ylab, fname):
+def _by_country(df, outdir, log, col, ylab, fname, title, axis_lab):
+    """Drawn in Figure 1's style (fig1_style.country_boxplot); statistics and
+    log lines unchanged."""
     d = df[df.CountryCode.isin(COUNTRY_ORDER) & df.matched_fei.notna()
            & df[col].notna() & (df[col] > 0)].copy()
-    fig, ax = plt.subplots(figsize=(6, 4.5))
     if d.empty:
-        ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
         log(f"\n[{ylab} by country] n=0")
-        fig.savefig(outdir / f"{fname}.png", dpi=150, bbox_inches="tight"); plt.close(fig)
         return
-    labels = [COUNTRY_FULL[cc].replace("United States of America", "USA") for cc in COUNTRY_ORDER]
-    data = [d.loc[d.CountryCode == cc, col].values for cc in COUNTRY_ORDER]
-    ax.boxplot(data, labels=labels, showfliers=False, patch_artist=True,
-               boxprops=dict(facecolor="none", edgecolor="black"),
-               medianprops=dict(color="#f59e0b", linewidth=1.5))
-    rng = np.random.default_rng(0)
-    for i, cc in enumerate(COUNTRY_ORDER):
-        s = d[d.CountryCode == cc]
-        jitter = rng.uniform(-0.06, 0.06, len(s))
-        colors = [OUTCOME_COLORS.get(o, "#9ca3af") for o in s.prior_outcome]
-        ax.scatter(i + 1 + jitter, s[col], s=16, alpha=0.75, color=colors, edgecolor="none")
-    ax.set_yscale("log")
-    ax.set_xlabel("Country of Manufacture")
-    ax.set_ylabel(ylab)
-    for i, cc in enumerate(COUNTRY_ORDER):
-        _n_label(ax, i + 1, int((d.CountryCode == cc).sum()))
+    country_boxplot(d, col, title, axis_lab, [outdir / f"{fname}.png"])
     log(f"\n[{ylab} by country] n={len(d)}, by country: "
         f"{ {cc: int((d.CountryCode==cc).sum()) for cc in COUNTRY_ORDER} }")
     pairwise_group_tests(log, d, col, "CountryCode", COUNTRY_ORDER, fei_col="fei_cluster")
@@ -571,12 +557,6 @@ def _by_country(df, outdir, log, col, ylab, fname):
     m2["_y"] = np.log(m2[col].astype(float))
     modelB_re_twoway(log, m2, "_y", ["USA_d", "CHN_d"], "NDC11", "fei_cluster",
                       f"log({ylab}), ref=IND")
-    handles = [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor=OUTCOME_COLORS[o],
-                           markersize=7, label=o) for o in OUTCOME_ORDER]
-    fig.legend(handles=handles, loc="lower center", ncol=len(OUTCOME_ORDER), title="Prior Inspection Outcome",
-               bbox_to_anchor=(0.5, -0.06), frameon=True, fontsize=8, title_fontsize=8)
-    fig.tight_layout(rect=[0, 0.13, 1, 1])
-    fig.savefig(outdir / f"{fname}.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
 def figS1(df, outdir, log):
