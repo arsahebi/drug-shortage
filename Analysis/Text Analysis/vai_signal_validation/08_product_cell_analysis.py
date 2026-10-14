@@ -62,7 +62,10 @@ Results (first run 2026-10-06; see outputs/tables/product_cell_results.md)
   per SD (Holm p 0.022), H2 DI +10.8 (Holm p 0.001); plant-permutation
   two-sided p 0.011 / 0.0025; present in CCAE and MDCR separately; the OAI
   flag is null (-3.8). H3/H4 null. Removing atorvastatin cuts H2 to +3.6.
-  The sterile filter makes no difference. NOT replicated in 2023Q1-2024Q3
+  The sterile filter makes no difference. BUT the finding depends on the
+  coverage subtraction in the numerator (see the sensitivity block): dropping
+  dose changes only, data integrity falls to +6.3 (p 0.12) and the
+  quality-system reversals vanish. NOT replicated in 2023Q1-2024Q3
   CCAE with either 2018-2022 or 2023-2026 text, but the outcome itself is
   only weakly stable over time (cell percentile rho 0.10-0.29 between
   periods), and H1/H2 were picked after a first look at the main window.
@@ -79,6 +82,7 @@ Outputs
   outputs/tables/product_cell_results.csv
   outputs/tables/product_cell_results.md
   outputs/tables/product_cell_robustness.csv
+  outputs/tables/product_cell_numerator_sensitivity.csv
   outputs/tables/product_cell_all17.csv / .md
   outputs/tables/product_cell_diagnostics.csv
   outputs/tables/marketscan_ccae_quarterly_abandonment.csv
@@ -131,7 +135,8 @@ HYPOTHESES = ["lab_share", "di_share", "product_test_share"]
 COMPARATORS = ["critmajor_share", "any_oai"]
 
 
-def _load_cells(cohorts=COHORTS, first_qi=FIRST_QI, last_qi=LAST_QI) -> pd.DataFrame:
+def _load_cells(cohorts=COHORTS, first_qi=FIRST_QI, last_qi=LAST_QI,
+                numerator: str = "coverage_adjusted") -> pd.DataFrame:
     """One row per labeler x exact product x cohort with outcome percentiles."""
     xws = ms01b._load_crosswalks()
     out = []
@@ -141,7 +146,21 @@ def _load_cells(cohorts=COHORTS, first_qi=FIRST_QI, last_qi=LAST_QI) -> pd.DataF
         d = d[~d["ingredient"].str.startswith(ms01b.ACUTE_PREFIXES) & d["form"].isin(ORAL_FORMS)].copy()
         d["qi"] = d["quarter"].map(ms01b._qidx)
         d = d[(d["qi"] >= first_qi) & (d["qi"] <= last_qi)].copy()
-        d["adj_stops"] = d["n_stops"] - d["n_stops_dose_change"] - d["n_coverage_ended"]
+        # Numerator. "coverage_adjusted" follows the Qual Score (drop dose
+        # changes and coverage loss), but the delivered n_coverage_ended appears
+        # to be counted over ALL switches rather than over stops: it exceeds
+        # n_stops in 6.9% of commercial labeler rows, and 12.2% of oral
+        # non-acute quarterly rows go negative. Open question 3b with the
+        # MarketScan team. The two alternatives bound the effect of that.
+        base = d["n_stops"] - d["n_stops_dose_change"]
+        if numerator == "coverage_adjusted":
+            d["adj_stops"] = base - d["n_coverage_ended"]
+        elif numerator == "coverage_adjusted_clipped":
+            d["adj_stops"] = (base - d["n_coverage_ended"]).clip(lower=0)
+        elif numerator == "no_coverage_adjustment":
+            d["adj_stops"] = base
+        else:
+            raise ValueError(f"unknown numerator: {numerator}")
         d["er_net"] = d["er_visits_after_90d"] - d["er_visits_before_90d"]
         d["dx_net"] = d["dx_visits_after_90d"] - d["dx_visits_before_90d"]
 
@@ -438,6 +457,22 @@ def main() -> None:
     a17 = pd.DataFrame(a17)
     a17.to_csv(TABS / "product_cell_all17.csv", index=False)
 
+    # ── Numerator sensitivity (added 2026-10-14 after a research review found
+    # negative adjusted-stop counts). The primary finding depends on the
+    # coverage subtraction: with it, data integrity is +11.0 (p 0.0001); with
+    # dose-change adjustment alone, +6.3 (p 0.12). Clipping at zero keeps it.
+    print("\nNumerator sensitivity...")
+    sens = []
+    for mode in ["coverage_adjusted", "coverage_adjusted_clipped", "no_coverage_adjustment"]:
+        cl = _load_cells(numerator=mode)
+        neg = (cl["ab_rate"] < 0).mean()
+        f = _build_panel(cl, e1822)["abandonment (CCAE+MDCR)"]
+        for x in FIXED17 + ["any_oai"]:
+            sens.append({"numerator": mode, "share_cells_negative_rate": neg,
+                         "feature": x, **_fit(f, x)})
+    sens = pd.DataFrame(sens)
+    sens.to_csv(TABS / "product_cell_numerator_sensitivity.csv", index=False)
+
     diag, quarters = _diagnostics()
     diag.to_csv(TABS / "product_cell_diagnostics.csv", index=False)
     quarters.to_csv(TABS / "marketscan_ccae_quarterly_abandonment.csv", index=False)
@@ -449,7 +484,14 @@ def main() -> None:
     for w in a17["window"].unique():
         md += [f"## {w}", "", a17.loc[a17["window"] == w, s17]
                .to_string(index=False, float_format=lambda v: f"{v:.3f}"), ""]
-    md += ["## Diagnostics", "", diag.to_string(index=False, float_format=lambda v: f"{v:.3f}"), "",
+    md += ["## Numerator sensitivity", "",
+           "n_coverage_ended exceeds n_stops in part of the delivered data, so the primary",
+           "numerator can go negative. These three definitions bound that.", "",
+           sens[sens["feature"].isin(["data_integrity_llm_share", "vc_laboratorycontrolssystem_share",
+                                      "vc_qualitysystem_share", "n_qualitysystem_obs", "any_oai"])]
+           [["numerator", "share_cells_negative_rate", "feature", "beta_pct_pts", "ci_lo", "ci_hi", "p"]]
+           .to_string(index=False, float_format=lambda v: f"{v:.3f}"), "",
+           "## Diagnostics", "", diag.to_string(index=False, float_format=lambda v: f"{v:.3f}"), "",
            "## CCAE quarterly abandonment (oral, non-acute, all labelers)", "",
            quarters.to_string(index=False, float_format=lambda v: f"{v:.4f}"), ""]
     (TABS / "product_cell_all17.md").write_text("\n".join(md))
