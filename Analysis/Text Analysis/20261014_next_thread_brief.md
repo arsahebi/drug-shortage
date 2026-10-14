@@ -10,11 +10,15 @@ Continuing the 483 text analysis. Two datasets arrived today and they change wha
 
 `Analysis/Text Analysis/eval/sent_to_abdul/labeling_template_round2_done.xlsx`, three sheets: Instructions, Labeling, AI_Revision_Log.
 
-- Labeling: 70 observations. Twelve of the thirteen label and free-text fields are complete at 70/70, but **`human_remediation_signal` is filled on only 2 of 70 rows**, so that field cannot be validated from round 2 at all. Everything else is complete.
+- Labeling: 70 observations, every field complete. `human_remediation_signal` is filled on only 2 of 70 rows (both "Partial"), but blank there means "the text says nothing about remediation", which is the intended convention: the LLM also leaves that field blank on 912 of 1,067 observations. Treat blank as a value, not as missing, and the field scores normally.
 - Key: `eval/validation_data/DO_NOT_SHARE_round2_key.csv`, 70 rows. `source` is 50 new and 20 repeat, `round1_row_id` identifies the repeats, `stratum` gives the sampling cell (20 random_natural, 8 remediation_nonblank, 8 violation_rare, 8 severity_Minor, 3 scope_Unclear, 3 rootcause_Unclear, 20 repeat).
 - **AI_Revision_Log records 33 cells across 14 of the 70 rows that an AI model revised after Abdul submitted**, with original_value, revised_value and a reason for each. Most affected: contamination_why (6), contamination_risk_flag (4), severity_tier (4), data_integrity_flag (3).
 
 **The revisions are already applied to the Labeling tab, not held separately.** Verified: for all 33 logged cells the Labeling tab holds the revised value, never the original. So the main tab is Abdul's work with 33 AI overwrites in it, and the log is the audit trail, not a parallel sensitivity version. The log header says highlighted cells mark the AI changes, but every one of the 1,050 data cells on that tab carries a fill, so the highlighting cannot be used to find them. The log is the only reliable record, and Abdul's original submission is not in the repo, so the logged `original_value` entries are the only route back to it.
+
+**The edits lean toward the model's answers.** Of the 24 edits to categorical or flag fields (the other 9 are free-text "why" fields), 18 moved Abdul's label to exactly the value the Claude v2 extraction had produced, 2 moved away from it, and 4 landed on neither. Pooled agreement across the 10 scored categorical fields rises from **79.6% (95% CI 76 to 82) as-submitted to 81.9% (79 to 85) as-delivered**, with the largest gains on severity_tier, patient_risk_flag and data_integrity_flag (+4.3 points each) and a small loss on violation_category (-1.4). The intervals overlap heavily and both round to about 80%, so the headline number barely moves, which is the main reason this is recoverable rather than fatal. But the direction is the problem, not the size.
+
+Several of the edits may be correct readings of the v2 rules, and the logged reasons cite specific rule numbers. That does not help: an edit made by the same model family under evaluation cannot serve as independent human judgment even when it is right.
 
 This matters because round 2 is the paper's held-out human validation. Labels an AI rewrote are not independent human judgment, and scoring the LLM against them is circular.
 
@@ -22,7 +26,7 @@ This matters because round 2 is the paper's held-out human validation. Labels an
 
 **What to produce:**
 0. First reconstruct and save the as-submitted labels as their own CSV in `eval/validation_data/`, by taking the Labeling tab and reverting each logged cell to `original_value`. Everything downstream reads that file, so the reconstruction happens once and is auditable.
-1. Agreement of the Claude v2 extraction against the as-submitted round-2 labels, per field, with Wilson 95% intervals. Exclude `remediation_signal` and say why. Reuse the round-1 scorer at `eval/code/04_score_models_vs_human.py` or `eval/code/human_eval_02_score.py` rather than writing a new one; check which one produced `results_and_notes/models_vs_human_agreement.csv`.
+1. Agreement of the Claude v2 extraction against the as-submitted round-2 labels, per field, with Wilson 95% intervals. Report the as-delivered version beside it so the gap is visible. Reuse the round-1 scorer at `eval/code/04_score_models_vs_human.py` or `eval/code/human_eval_02_score.py` rather than writing a new one; check which one produced `results_and_notes/models_vs_human_agreement.csv`.
 2. Test-retest reliability from the 20 repeats: Abdul against his own round-1 labels on the same observations, per field. This is the human ceiling, and the paper needs it beside every LLM accuracy figure. Say plainly that it measures consistency, not correctness.
 3. The same comparison restricted to the 50 genuinely new observations, since the repeats were chosen for prior coverage and are not a random sample.
 4. A short note in `eval/results_and_notes/` recording the AI-revision problem, how many cells, and which fields.
