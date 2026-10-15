@@ -123,6 +123,13 @@ def q1_fair_baseline(p: pd.DataFrame) -> None:
     print(f"remaining: {len(k)} inspections, {k['fei'].nunique()} FEIs, "
           f"{k['fda_class'].value_counts().to_dict()}")
 
+    # share of inspections where reports rose afterwards, by FDA grade
+    by_class = (k.groupby("fda_class")["rise"]
+                 .agg(n="size", n_rose="sum", share_rose="mean").reset_index())
+    print(by_class.to_string(index=False))
+    OUT.mkdir(parents=True, exist_ok=True)
+    by_class.to_csv(OUT / "rise_by_fda_class.csv", index=False)
+
     y = k["rise"].values
     g = k["fei"].values
     feats = [c for c in TEXT_FEATURES if c in k.columns]
