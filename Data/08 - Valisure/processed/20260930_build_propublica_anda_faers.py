@@ -90,6 +90,8 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE.parents[1]
 
 XWALK = HERE / "new_ndc_fei_crosswalk.csv"
+# the full ProPublica NDC -> FEI file (every NDC, not just Valisure's list)
+PROPUBLICA_ALL = DATA / "19 - ProPublica" / "raw" / "ndc_fei.csv"
 FAERS = DATA / "15 - FDA - Adverse Event" / "processed" / \
     "faers_all_drugs_anda_linked_2015Q1_2026Q1.csv"
 
@@ -112,11 +114,15 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool,
     """ProPublica crosswalk -> one row per (appl_no, fei), with sharing counts.
 
     Strict rule (2026-10-15): both "is this NDC made at one site" and
-    "is this ANDA made at one site" are checked against the WHOLE crosswalk,
-    every registered facility, BEFORE we keep only our 483-text facilities.
-    Checking after the restriction hid sites outside our list: an ANDA made
-    at one of our plants and at a plant we do not study looked single-site,
-    and its FAERS reports would mix both plants.
+    "is this ANDA made at one site" are checked BEFORE we keep only our
+    483-text facilities. Checking after the restriction hid sites outside our
+    list: an ANDA made at one of our plants and at a plant we do not study
+    looked single-site, and its FAERS reports would mix both plants.
+
+    The NDC check uses the crosswalk, which already holds every ProPublica
+    facility for each Valisure NDC. The ANDA check uses the FULL ProPublica
+    file, because the crosswalk only has Valisure's NDCs: an ANDA can also be
+    made at another plant under an NDC that is not on Valisure's list.
     """
     # Step 0. Read the crosswalk: one row per (NDC, facility, application)
     x = pd.read_csv(XWALK, low_memory=False, dtype={"ndc9": str})
@@ -134,9 +140,19 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool,
         x = x[x["api_mfr"].astype(str).str.upper() != "TRUE"]
         count_ndcs(x, "   drop API-only manufacturer rows")
 
-    # Step 1. How many facilities make each ANDA, counted over ALL facilities.
-    #         Saved now, before any row is dropped, so no site can be hidden.
-    sites_per_anda = x.groupby("appl_no")["fei"].nunique()
+    # Step 1. How many facilities make each ANDA, counted in the FULL
+    #         ProPublica file (all NDCs), so no site can be hidden.
+    pp = pd.read_csv(PROPUBLICA_ALL, low_memory=False)
+    pp["appl_no"] = pd.to_numeric(
+        pp["anda"].astype(str).str.replace(r"^[A-Za-z]+-?", "", regex=True),
+        errors="coerce",
+    )
+    pp = pp.dropna(subset=["appl_no", "fei"])
+    if drop_api_mfr:
+        pp = pp[pp["api_mfr"].astype(str).str.upper() != "TRUE"]
+    sites_per_anda = pp.groupby(pp["appl_no"].astype(int))["fei"].nunique()
+    print(f"  1. sites per ANDA counted in full ProPublica file: "
+          f"{pp['ndc'].nunique():,} NDCs, {pp['fei'].nunique()} FEIs")
 
     # Step 2. Drop NDCs listed at more than one facility or under more than
     #         one ANDA, again counted over ALL facilities.
@@ -156,7 +172,7 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool,
     # Step 4 (shown here, applied in attribute() for the 'single' scheme):
     #         the ANDA is made at no other facility anywhere in the crosswalk.
     count_ndcs(x[x["appl_no"].map(sites_per_anda) == 1],
-               "4. ANDA made at only this facility (single scheme)")
+               "4. ANDA made at only this facility, full ProPublica (single)")
 
     m = x[["appl_no", "fei", "api", "labeler", "registrant", "country",
            "in_redica_text", "in_redica_history"]].drop_duplicates(["appl_no", "fei"])
