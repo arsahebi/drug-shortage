@@ -139,21 +139,21 @@ The Redica-sourced corpus contains 1,067 observations from 246 inspection
 dates at 98 facilities, from 16 January 2018 to 21 April 2026. The initial
 facility list was assembled around 14 ingredients; the later NDC-to-ANDA
 linkage covers products for additional ingredients made at those facilities.
-The single-site ANDA quarterly CSV has 76 facilities and a median of seven
+The single-site ANDA quarterly CSV has 77 facilities and a median of eight
 serious cases per facility-quarter. The observed count is a count of
 reported cases, not an incidence rate.
 
 The NDC-to-facility crosswalk lists 1,070 NDCs with an ANDA across 206
-facilities. Of these, 834 map to exactly one facility and one ANDA, 550 of
-those are made at a facility in our text corpus, 500 remain after dropping
-ANDAs that any other facility makes, and 454 have a serious FAERS case. The
-last set contains 185 ANDAs and 76 facilities. Both sharing checks are made
-before restricting to the text corpus. The crosswalk holds every ProPublica
-facility for each listed NDC, but only for Valisure's NDCs, so facilities per
-ANDA are counted in the full ProPublica file (37,584 NDCs, 723 facilities),
-where an ANDA can also appear under an unlisted NDC. Checking only within the
-corpus or the crosswalk would miss a second plant and leave its reports
-mixed in.
+facilities. Of these, 733 NDCs (272 ANDAs) are made at a facility in our text corpus,
+502 (210 ANDAs) remain after dropping ANDAs that any other facility makes,
+and 456 have a serious FAERS case. The last set contains 186 ANDAs and 77
+facilities. Because FAERS names the application rather than the NDC, the
+attribution rule is applied to ANDA--facility pairs only; NDCs serve only to
+define which drugs are in scope. Facilities per ANDA are counted in the full
+ProPublica file (37,584 NDCs, 723 facilities) before restricting to the
+corpus, since an ANDA can also be made at a plant outside the corpus or
+under an NDC not on Valisure's list. Two Vancomycin NDCs list two ANDAs;
+this does not affect attribution and they are kept.
 Coverage is highly uneven: the final current linkage retains three
 Sertraline NDCs and two Lisinopril NDCs, so their ingredient-specific
 patterns cannot be interpreted with confidence.
@@ -370,7 +370,7 @@ we treat this single-partition result as a lead. These analyses do not show indi
 VAI. At this sample size, the approximate 80\% detectable AUC is 0.63;
 the null result is less informative about smaller effects.
 
-In the clean-ANDA panel, 24 of 64 unadjusted text-feature by quarter
+In the clean-ANDA panel, 23 of 64 unadjusted text-feature by quarter
 Spearman tests had $p<0.05$, compared with 3.2 expected under 64
 independent true nulls. None survived the Bonferroni threshold
 $p<0.00078125$ (Table~\ref{tab:lag}). The closest was the count of
@@ -393,7 +393,7 @@ baseline volume are not adjusted for.}
 Text feature & Quarter & $n$ & Spearman $\rho$ & $p$ \\\midrule
 Lab controls (count) & Q+1 (0--3 mo after) & 111 & 0.314 & 0.0008 \\
 Data integrity flag & Q+1 (0--3 mo after) & 111 & 0.304 & 0.0012 \\
-Lab controls (count) & Q+4 (9--12 mo after) & 114 & 0.290 & 0.0018 \\
+Lab controls (count) & Q+4 (9--12 mo after) & 115 & 0.288 & 0.0018 \\
 Patient risk flag & Q0 (inspection qtr) & 117 & 0.284 & 0.0019 \\
 Data integrity flag & Q0 (inspection qtr) & 117 & 0.275 & 0.0027 \\
 \bottomrule\end{tabular}
@@ -583,18 +583,19 @@ and regenerate the sensitivity analysis.}
 
 The primary path links serious primary-suspect FAERS reports by ANDA
 number to an NDC-to-FEI crosswalk, and retains NDCs with one facility
-and one ANDA plus ANDAs made at only one facility in the full ProPublica
-file, both judged before restricting to the text corpus.
+and keeps only ANDAs made at a single facility in the full ProPublica
+file, judged before restricting to the text corpus. No NDC-level filter is
+applied.
 Each FAERS case is counted once, in the first quarter it appears as a
-serious report; later versions of the same case (5,249 of 49,989
-report-ANDA pairs, 10.5\%) are dropped. This excludes shared
+serious report; later versions of the same case (4,855 of 46,934
+report-ANDA pairs on the single-site ANDAs, 10.3\%) are dropped. This excludes shared
 applications for which the producing site cannot be identified. The
 development audit found 37 shared ANDAs: 27 across plants of one firm,
 seven involving contract manufacturing, and three involving an API
 supplier and finisher. The source code also produces full-assignment
 and equal-split sensitivity files, but the reported AUCs use the
 single-site construction. Its current quarterly CSV has a median of
-seven serious cases per facility-quarter. None of these counts prove
+eight serious cases per facility-quarter. None of these counts prove
 that the manufacturing site caused a reported event.
 
 For each inspection, the binary target is whether the mean serious
@@ -604,7 +605,7 @@ Missing facility-quarters inside the window are treated as zero cases.
 An inspection is kept only if its facility holds a single-site ANDA, the
 full window from quarter $-4$ to $+4$ lies within the FAERS extract
 (2015Q1--2026Q1), and the baseline window has at least one case. Of 246
-text snapshots, 191 are at linked facilities, 171 have the full window,
+text snapshots, 192 are at linked facilities, 172 have the full window,
 and 123 have at least one baseline case; the known-grade comparison
 contains 109. Thus the predictive sample
 is selected for both ANDA linkage and observed pre/post windows.
