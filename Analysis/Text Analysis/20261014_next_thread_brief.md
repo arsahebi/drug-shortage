@@ -8,10 +8,10 @@ Continuing the 483 text analysis. Two datasets arrived today and they change wha
 
 ## New data 1: Abdel's round-2 labels (resolved, two files)
 
-Abdel sent two workbooks, both in `Analysis/Text Analysis/eval/sent_to_abdel/`:
+Abdel sent two workbooks, both now in `Analysis/Text Analysis/eval/labels_from_abdel/` (see that folder's README):
 
-- **`labeling_template_round2_done_v02.xlsx` is his own labels, unassisted. Use this one.** Sheets: Instructions, Labeling.
-- `labeling_template_round2_done.xlsx` is the same labels after he ran them through Claude as a self-check. Sheets: Instructions, Labeling, AI_Revision_Log.
+- **`labels_from_abdel/20261014_round2_labels_abdel.xlsx` is his own labels, unassisted. Use this one.** Sheets: Instructions, Labeling.
+- `labels_from_abdel/20261014_round2_labels_abdel_ai_assisted.xlsx` is the same labels after he ran them through Claude as a self-check. Sheets: Instructions, Labeling, AI_Revision_Log.
 
 He explained it himself: he labeled first, then ran a Claude check and kept both versions so we could see the difference and confirm his reasoning was not far off. **Verified, and his account reconciles exactly:**
 
@@ -29,7 +29,7 @@ So there is a clean human set and a genuine AI-assisted sensitivity version, and
 **What to produce:**
 1. Per-field agreement of the Claude v2 extraction against v02, with Wilson 95% intervals, using the existing scorer (`eval/code/04_score_models_vs_human.py` or `eval/code/human_eval_02_score.py`; check which produced `results_and_notes/models_vs_human_agreement.csv`) rather than a new one. An ad-hoc check on 2026-10-14 gave pooled 79.9% (77 to 83) over 11 fields and 79.5% (76 to 83) on the 50 new observations alone, with severity_tier the weak field at 60.0% (48 to 71) and repeat_flag the strongest at 95.7% (88 to 99). Treat those as a sanity target, not as the result: the real scorer may map field values differently.
 2. The same comparison on the 50 new observations separately, since the repeats were chosen for prior coverage and are not a random sample.
-3. Test-retest reliability from the 20 repeats, Abdel against his own round-1 labels, per field. This is the human ceiling and the paper needs it beside every accuracy figure. **First locate the round-1 human labels**: `labels_from_abdel/20260902_round1_labels_abdel.xlsx` may be the blank template, and the round-1 results in `results_and_notes/human_eval_metrics_v2.md` and `models_vs_human_agreement.csv` may be the only surviving record. If the per-observation round-1 labels cannot be found, say so rather than improvising, and ask before proceeding.
+3. Test-retest reliability from the 20 repeats, Abdel against his own round-1 labels, per field. This is the human ceiling and the paper needs it beside every accuracy figure. His round-1 labels are `labels_from_abdel/20260902_round1_labels_abdel.xlsx`, confirmed complete on 2026-10-15 (50 observations, every field filled), and `DO_NOT_SHARE_round2_key.csv` carries `round1_row_id` to join the 20 repeats.
 4. The AI-assisted sensitivity from the v01 file, clearly labelled.
 5. A short note in `eval/results_and_notes/` recording the two-file arrangement and the verification above, so the provenance is documented for the paper.
 
