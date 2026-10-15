@@ -76,6 +76,9 @@ OUT       = EVAL_ROOT / "results_and_notes"
 
 JOIN = ["fei", "insp_date", "obs_num"]
 COLLAPSE = {"major": "major_or_moderate", "moderate": "major_or_moderate"}
+# The split the models actually use (severity_critmajor_share in step02).
+CRITMAJOR = {"critical": "critical_or_major", "major": "critical_or_major",
+             "moderate": "moderate_or_minor", "minor": "moderate_or_minor"}
 
 # 06's strata, same order, same masks (on the model's labels).
 STRATA = [
@@ -146,12 +149,13 @@ def agreement_rows(lab: pd.DataFrame, version: str, subset: str,
     """Per-field rows, plus the row x field hit matrix (raw severity) for pooling."""
     rows, hits = [], {}
     specs = [(f, mc, hc, False) for f, mc, hc, _ in FIELDS]
-    specs.insert(2, ("severity_tier (Major+Moderate collapsed)", "severity_tier", "human_severity_tier", True))
+    specs.insert(2, ("severity_tier (Major+Moderate collapsed)", "severity_tier", "human_severity_tier", COLLAPSE))
+    specs.insert(3, ("severity_tier (Critical+Major vs rest)", "severity_tier", "human_severity_tier", CRITMAJOR))
     for field, mc, hc, collapse in specs:
         h = lab[hc].map(norm)
         m = lab[mc].map(norm)
         if collapse:
-            h, m = h.replace(COLLAPSE), m.replace(COLLAPSE)
+            h, m = h.replace(collapse), m.replace(collapse)
         hit = (h == m).astype(float)
         if not collapse:
             hits[field] = hit
@@ -236,15 +240,17 @@ def main() -> None:
     assert (rep["fei"] == rep["fei_r1"]).all() and (rep["obs_num"] == rep["obs_num_r1"]).all()
     tr, tr_hits = [], {}
     for field, _, hc, _ in FIELDS:
-        for collapse in ([False, True] if field == "severity_tier" else [False]):
+        for collapse in ([False, COLLAPSE, CRITMAJOR] if field == "severity_tier" else [False]):
             a, b = rep[hc].map(norm), rep[hc + "_r1"].map(norm)
             if collapse:
-                a, b = a.replace(COLLAPSE), b.replace(COLLAPSE)
+                a, b = a.replace(collapse), b.replace(collapse)
             k, n = int((a == b).sum()), len(a)
             if not collapse:
                 tr_hits[field] = (a == b).astype(float)
             lo, hi = wilson(k, n)
-            tr.append(dict(field=field + (" (Major+Moderate collapsed)" if collapse else ""),
+            tag = ("" if not collapse else " (Major+Moderate collapsed)" if collapse is COLLAPSE
+                   else " (Critical+Major vs rest)")
+            tr.append(dict(field=field + tag,
                            n=n, agree=k, pct=k / n, ci_lo=lo, ci_hi=hi, kappa=cohen_kappa(a, b),
                            rule_amended_since_round1=field in {"data_integrity_flag", "patient_risk_flag",
                                                                "contamination_flag",

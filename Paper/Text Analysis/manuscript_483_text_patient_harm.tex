@@ -55,7 +55,9 @@ on root-cause type in only 55.5\% (52.5--58.4\%). The contrast limits the
 portability of graded model-coded labels. In a separate, unadjusted analysis
 of 64 feature-lag correlations, data-integrity flags at the inspection
 quarter and the next quarter survived Bonferroni correction. Held-out human
-validation is [PENDING: round-2 blinded labels and test--retest scoring].
+validation on 50 held-out observations gave 79.5\% agreement over 11
+fields (95\% CI 74.7--83.8\%), against a test--retest ceiling of 86.4\%
+(79.5--91.8\%) for the same annotator relabeling 20 observations.
 \end{abstract}
 
 \textbf{Keywords:} FDA Form 483; drug manufacturing; adverse-event reports;
@@ -159,10 +161,65 @@ risk, data integrity, scope, and severity. The rules and code were then
 revised on those same observations. Round 1 is consequently a development
 set, and its agreement figures in Table~\ref{tab:human} are not independent
 validation. The stratified, blinded round-2 set contains 50 new observations
-and 20 embedded repeats. Its labels and test--retest estimates are
-[PENDING: completed round-2 annotation and scoring]. A single annotator
-provides no interrater agreement benchmark; repeated labels will measure
-consistency rather than correctness.
+and 20 embedded repeats, labeled under rules frozen beforehand
+(Table~\ref{tab:round2}). On the 50 new observations Claude agreed with
+the annotator on 79.5\% of 550 field labels (95\% CI 74.7--83.8\%,
+bootstrap over observations). Because the rare-label strata were
+oversampled, we also weighted the 50 rows back to the corpus distribution
+by post-stratification, which gave 81.2\% (76.1--85.8\%). The 20-row
+random stratum alone gave 79.1\%.
+
+The annotator relabeled the 20 repeats four to six weeks after round 1
+without access to his earlier labels and matched himself on 86.4\% of 220
+field labels (79.5--91.8\%). This is the available human ceiling. It
+measures consistency, not correctness, and a single annotator provides no
+interrater benchmark. Four rules (data integrity, patient risk, and the two
+contamination flags) were amended between rounds, so some test--retest
+disagreement on those fields reflects the rule change. For comparison,
+Li et al.\ report about 80\% LLM agreement with expert labels and 76--91\%
+agreement between two human annotators on a comparable regulatory
+extraction task \citep{Li2026LLMDevice}.
+
+Severity was the weakest field: 52.0\% on the four raw tiers (38.5--65.2\%)
+against 80\% test--retest. The errors are directional. Claude graded 10 of
+the 20 observations the annotator called Major as Critical, and 5 of 27
+Moderate observations as Minor; the latter came from the stratum sampled
+because Claude had labeled them Minor. On the Critical-or-Major versus
+Moderate-or-Minor split that the downstream feature uses
+(\texttt{severity\_critmajor\_share}), agreement was 82.0\% (69.2--90.2\%).
+Per-field intervals are wide at $n=50$, and the rarest classes (one Minor
+observation by the annotator's labels) cannot be evaluated.
+
+The annotator also returned a second copy after checking his labels with
+Claude. We do not use it: of its 24 categorical edits, 18 moved his label
+to the Claude extraction's value, so it is not independent of the model
+under evaluation.
+
+\begin{table}[ht]
+\centering\small
+\caption{Round-2 held-out agreement of Claude Sonnet 5 (v2) with the
+blinded annotator, and the annotator's test--retest agreement with his own
+round-1 labels. Wilson 95\% intervals per field; the pooled interval is
+an observation-level bootstrap. Source:
+\texttt{eval/code/08\_score\_round2.py}.}
+\label{tab:round2}
+\begin{tabular}{lll}\toprule
+Field & Claude vs annotator, $n=50$ & Annotator test--retest, $n=20$ \\\midrule
+Violation category & 78.0 (64.8--87.2) & 85 (64.0--94.8) \\
+Severity, four tiers & 52.0 (38.5--65.2) & 80 (58.4--91.9) \\
+Severity, Critical+Major vs rest & 82.0 (69.2--90.2) & 90 (69.9--97.2) \\
+Scope & 68.0 (54.2--79.2) & 80 (58.4--91.9) \\
+Root cause & 68.0 (54.2--79.2) & 75 (53.1--88.8) \\
+Remediation & 80.0 (67.0--88.8) & 100 (83.9--100.0) \\
+Repeat finding & 98.0 (89.5--99.6) & 90 (69.9--97.2) \\
+Patient risk & 78.0 (64.8--87.2) & 85 (64.0--94.8) \\
+Contamination confirmed & 92.0 (81.2--96.8) & 80 (58.4--91.9) \\
+Contamination-control risk & 90.0 (78.6--95.7) & 90 (69.9--97.2) \\
+Investigation failure & 86.0 (73.8--93.0) & 95 (76.4--99.1) \\
+Data integrity & 84.0 (71.5--91.7) & 90 (69.9--97.2) \\\midrule
+Pooled, 11 fields (raw severity) & 79.5 (74.7--83.8) & 86.4 (79.5--91.8) \\
+\bottomrule\end{tabular}
+\end{table}
 
 % Table source: eval/results_and_notes/models_vs_human_agreement.csv.
 \input{generated_tables/human.tex}
@@ -336,8 +393,10 @@ and GPT, while root-cause and remediation labels changed substantially
 with the model. A single-model study should report this dependence before
 interpreting a root-cause distribution as a feature of manufacturing
 practice. Human agreement on a small development set does not settle
-which model is correct on the full corpus. The held-out round-2
-annotations are therefore a submission-critical result.
+which model is correct on the full corpus. On the held-out round-2
+set Claude reached 79.5\% agreement against an 86.4\% human test--retest
+ceiling, with root cause at 68\% for Claude against 75\% for the
+annotator himself.
 
 The data-integrity association is scientifically useful because it is
 specific to a coded observation and a short time horizon, but it is
@@ -427,8 +486,14 @@ verbatim in the observation; otherwise the pipeline clears it.
 The 50-observation round-1 sample was blinded to model predictions and
 spread across facilities. It drove rule changes and is treated as
 development data. Round 2 was prepared with 50 new observations,
-stratified to include rare labels, plus 20 embedded repeats. Results
-are [PENDING: blinded completed round-2 labels]. Agreement intervals
+stratified to include rare labels, plus 20 embedded repeats, shuffled and
+renumbered so the annotator could not identify them. A blank remediation
+label is scored as the value None on both sides, as the annotator
+confirmed it means no remediation was observed. Overall agreement on the
+new observations is weighted back to the corpus by post-stratification:
+each unlabeled observation is assigned to the first sampling stratum it
+matches, and each labeled row is weighted by its stratum's corpus size
+over its labeled count. Agreement intervals
 for proportions use Wilson's method. Cross-model agreement uses exact
 match and Cohen's kappa. The regex baseline applies fixed lexical
 patterns to the Redica text, then compares its flags with Claude's

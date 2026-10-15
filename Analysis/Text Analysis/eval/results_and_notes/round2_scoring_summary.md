@@ -9,6 +9,7 @@ Source: `eval/code/08_score_round2.py`. Claude Sonnet 5 v2 extraction against Ab
                       violation_category  50     39 0.780  0.648  0.872  0.717         0.701 32.721           0.530           0.830
                            severity_tier  50     26 0.520  0.385  0.652  0.315         0.618 32.721           0.448           0.764
 severity_tier (Major+Moderate collapsed)  50     32 0.640  0.501  0.759  0.184         0.779 32.721           0.612           0.888
+  severity_tier (Critical+Major vs rest)  50     41 0.820  0.692  0.902  0.637         0.822 32.721           0.660           0.917
                                    scope  50     34 0.680  0.542  0.792  0.530         0.661 32.721           0.490           0.799
                          root_cause_type  50     34 0.680  0.542  0.792  0.501         0.729 32.721           0.559           0.851
                       remediation_signal  50     40 0.800  0.670  0.888  0.254         0.877 32.721           0.724           0.951
@@ -28,6 +29,7 @@ severity_tier (Major+Moderate collapsed)  50     32 0.640  0.501  0.759  0.184  
                       violation_category  70     55 0.786  0.676  0.866  0.725
                            severity_tier  70     42 0.600  0.483  0.707  0.395
 severity_tier (Major+Moderate collapsed)  70     50 0.714  0.599  0.807  0.226
+  severity_tier (Critical+Major vs rest)  70     58 0.829  0.724  0.899  0.653
                                    scope  70     48 0.686  0.570  0.782  0.550
                          root_cause_type  70     48 0.686  0.570  0.782  0.499
                       remediation_signal  70     58 0.829  0.724  0.899  0.225
@@ -47,6 +49,7 @@ severity_tier (Major+Moderate collapsed)  70     50 0.714  0.599  0.807  0.226
                       violation_category  20     14 0.700  0.481  0.855  0.562
                            severity_tier  20     11 0.550  0.342  0.742  0.331
 severity_tier (Major+Moderate collapsed)  20     14 0.700  0.481  0.855  0.178
+  severity_tier (Critical+Major vs rest)  20     17 0.850  0.640  0.948  0.700
                                    scope  20     13 0.650  0.433  0.819  0.417
                          root_cause_type  20     15 0.750  0.531  0.888  0.587
                       remediation_signal  20     16 0.800  0.584  0.919  0.000
@@ -66,6 +69,7 @@ severity_tier (Major+Moderate collapsed)  20     14 0.700  0.481  0.855  0.178
                       violation_category  50     39 0.780  0.648  0.872  0.718         0.701 32.721           0.530           0.830
                            severity_tier  50     27 0.540  0.404  0.670  0.339         0.655 32.721           0.484           0.794
 severity_tier (Major+Moderate collapsed)  50     33 0.660  0.522  0.776  0.240         0.817 32.721           0.653           0.913
+  severity_tier (Critical+Major vs rest)  50     42 0.840  0.715  0.917  0.676         0.824 32.721           0.662           0.918
                                    scope  50     34 0.680  0.542  0.792  0.531         0.661 32.721           0.490           0.799
                          root_cause_type  50     34 0.680  0.542  0.792  0.501         0.729 32.721           0.559           0.851
                       remediation_signal  50     40 0.800  0.670  0.888  0.254         0.877 32.721           0.724           0.951
@@ -85,6 +89,7 @@ severity_tier (Major+Moderate collapsed)  50     33 0.660  0.522  0.776  0.240  
                       violation_category  20     17 0.850  0.640  0.948  0.803                     False
                            severity_tier  20     16 0.800  0.584  0.919  0.658                     False
 severity_tier (Major+Moderate collapsed)  20     17 0.850  0.640  0.948  0.348                     False
+  severity_tier (Critical+Major vs rest)  20     18 0.900  0.699  0.972  0.800                     False
                                    scope  20     16 0.800  0.584  0.919  0.724                     False
                          root_cause_type  20     15 0.750  0.531  0.888  0.618                     False
                       remediation_signal  20     20 1.000  0.839  1.000    NaN                     False
