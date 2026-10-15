@@ -150,34 +150,50 @@ def _build_outcome_global(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     return df, "ae_high_next4q"
 
 
-def _build_outcome_relative(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
-    """Per-facility relative-change outcome (added 2026-09-16 to fix the
-    confound documented in _build_outcome_global): compare each inspection's
-    facility to ITSELF, pre- vs. post-inspection, instead of splitting
-    against a median pooled across every facility and drug. This cancels
-    out facility/drug size entirely, since both windows come from the same
-    FEI.
+# The single FAERS outcome definition, settled 2026-10-15 and shared with 07
+# (and so with 09). Before this, 02 summed zero-filled quarters while 07
+# averaged the quarters that happened to have a record, and 8 of 143 labels
+# differed between the two.
+FAERS_FIRST_IDX = 2015 * 4 + 1      # 2015Q1, first quarter in the FAERS extract
+FAERS_LAST_IDX  = 2026 * 4 + 1      # 2026Q1, last quarter in the FAERS extract
+ANDA_FEI_MAP = (HERE.parent.parent.parent / "Data" / "08 - Valisure" / "processed" /
+                "propublica_anda_fei_map.csv")
 
-    ae_rise_next4q = 1 if this facility's AE count in the 4 quarters after
-    the inspection is higher than its own AE count in the 4 quarters
-    before it. Requires real (non-imputed) AE data on both sides; an
-    inspection with no real AE record on either side is dropped, not
-    zero-filled, same no-zero-fill standard as the rest of this session's
-    work.
+
+def _build_outcome_relative(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+    """ae_rise_next4q = 1 if the facility's serious FAERS cases in the 4
+    quarters after the inspection exceed those in the 4 quarters before.
+
+    Settled definition (2026-10-15):
+      * Counts are SUMS. A quarter with no record is a true zero, not missing:
+        the quarterly file lists every case for every linked ANDA, so an
+        absent quarter means no case was reported. The old 07 rule averaged
+        only quarters with a record, which treated those zeros as missing.
+      * The facility must hold at least one single-site ANDA in the linkage
+        map, otherwise its zeros mean "not linked", not "no cases".
+      * The full window, 4 quarters before to 4 after, must lie inside the
+        FAERS extract (2015Q1-2026Q1), so a zero is never an unobserved quarter.
+        This drops inspections whose follow-up runs past 2026Q1.
+      * At least one case in the baseline (the 4 quarters before plus the
+        inspection quarter). This uses only information available at the
+        inspection and drops facilities with no reporting history, where
+        0-versus-0 says nothing.
     """
     df = df.copy()
     pre_cols  = ["n_ae_tm4", "n_ae_tm3", "n_ae_tm2", "n_ae_tm1"]
     post_cols = ["n_ae_tp1", "n_ae_tp2", "n_ae_tp3", "n_ae_tp4"]
-    has_pre  = df[pre_cols].notna().any(axis=1)
-    has_post = df[post_cols].notna().any(axis=1)
-    keep = has_pre & has_post
-    dropped = (~keep).sum()
-    if dropped:
-        print(f"  Dropping {dropped} inspections missing real AE data on the "
-              f"pre- or post-inspection side (not zero-filling)")
-    df = df[keep].copy()
+    linked = set(pd.read_csv(ANDA_FEI_MAP).query("n_fei_per_anda == 1")["fei"].astype(int))
+    idx = df["insp_year"] * 4 + df["insp_qtr"]
+    is_linked = df["fei"].astype(int).isin(linked)
+    observable = (idx - 4 >= FAERS_FIRST_IDX) & (idx + 4 <= FAERS_LAST_IDX)
     df["n_ae_pre4q"]  = df[pre_cols].fillna(0).sum(axis=1)
     df["n_ae_post4q"] = df[post_cols].fillna(0).sum(axis=1)
+    baseline = df["n_ae_pre4q"] + df["n_ae_t0"].fillna(0) >= 1
+    keep = is_linked & observable & baseline
+    print(f"  FAERS outcome: {len(df)} inspections -> {int(is_linked.sum())} at linked "
+          f"facilities -> {int((is_linked & observable).sum())} with the full window "
+          f"observable -> {int(keep.sum())} with >= 1 baseline case")
+    df = df[keep].copy()
     df["ae_rise_next4q"] = (df["n_ae_post4q"] > df["n_ae_pre4q"]).astype(int)
     return df, "ae_rise_next4q"
 

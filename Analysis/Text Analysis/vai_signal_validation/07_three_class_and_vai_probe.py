@@ -42,25 +42,21 @@ HERE = Path(__file__).resolve().parent
 PANEL = HERE / "outputs" / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
 OUT = HERE / "outputs" / "tables"
 
-TEXT_FEATURES = [
-    "severity_critmajor_share", "contamination_llm_share", "data_integrity_llm_share",
-    "patient_risk_llm_share", "investigation_llm_share", "repeat_cross_insp_share",
-    "scope_facilitywide_share", "cultural_root_cause_share",
-    "vc_laboratorycontrolssystem_share", "vc_qualitysystem_share",
-    "n_laboratorycontrolssystem_obs", "n_qualitysystem_obs",
-    "joint_labcontrols_qualitysystem", "joint_labcontrols_dataintegrity",
-]
-PRE = ["n_ae_tm4", "n_ae_tm3", "n_ae_tm2", "n_ae_tm1"]
-POST = ["n_ae_tp1", "n_ae_tp2", "n_ae_tp3", "n_ae_tp4"]
+# 2026-10-15: the outcome and the feature list now come from 02, so 07 and 02
+# (and 09, which calls both) use one FAERS definition and the same 17 features.
+# 07 previously averaged available quarters and used 14 features.
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("m02", HERE / "02_vai_signal_model.py")
+m02 = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(m02)
+TEXT_FEATURES = list(m02.TEXT_FEATURES)
 SEED = 42
 
 
 def load() -> pd.DataFrame:
-    p = pd.read_parquet(PANEL)
-    p["pre"] = p[PRE].mean(axis=1)
-    p["post"] = p[POST].mean(axis=1)
-    p = p.dropna(subset=["pre", "post"]).copy()
-    p["rise"] = (p["post"] > p["pre"]).astype(int)
+    p, col = m02._build_outcome_relative(pd.read_parquet(PANEL))
+    p["pre"], p["post"] = p["n_ae_pre4q"], p["n_ae_post4q"]
+    p["rise"] = p[col]
     # continuous outcome: log ratio, which keeps magnitude instead of thresholding
     p["log_ratio"] = np.log((p["post"] + 1) / (p["pre"] + 1))
 

@@ -58,17 +58,28 @@ Caveats recorded for the write-up
     is_anda = True, which is the right basis for attribution.
   * primaryid is de-duplicated within (appl_no, quarter). Counting rows instead
     inflated the old pipeline by about 1%.
+  * Report versions (added 2026-10-15). FAERS issues a new primaryid each time
+    a case is updated, and an update can arrive in a later quarterly file, so
+    primaryid counts a followed-up case several times (Oct 6 review: 61,838
+    primary IDs but 55,225 cases in the serious subset). --count-unit case
+    (the default now) counts each (caseid, appl_no) once, in the first quarter
+    it appears as a serious report. Using the first quarter also keeps later
+    follow-ups, which were not available at that time, out of the count.
+    Outputs carry a _cases suffix; --count-unit primaryid reproduces the
+    earlier files unchanged.
 
 Usage
 ─────
   python 20260930_build_propublica_anda_faers.py
   python 20260930_build_propublica_anda_faers.py --scheme split
   python 20260930_build_propublica_anda_faers.py --scheme single --drop-api-mfr
+  python 20260930_build_propublica_anda_faers.py --count-unit primaryid   (old counts)
 
 Outputs
 ───────
   propublica_anda_fei_map.csv                  ANDA <-> FEI with sharing counts
-  propublica_fei_ae_quarterly_<scheme>.csv     FEI x quarter serious AE counts
+  propublica_fei_ae_quarterly_<scheme>_cases.csv   FEI x quarter serious cases (default)
+  propublica_fei_ae_quarterly_<scheme>.csv     FEI x quarter serious reports (--count-unit primaryid)
 """
 
 from pathlib import Path
@@ -144,10 +155,11 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool,
     return m
 
 
-def load_faers(andas: set[int]) -> pd.DataFrame:
-    """Serious FAERS events per (appl_no, quarter), de-duplicated on primaryid."""
+def load_faers(andas: set[int], count_unit: str = "case") -> pd.DataFrame:
+    """Serious FAERS events per (appl_no, quarter): distinct cases, each in the
+    first quarter it appears (default), or distinct primaryids per quarter."""
     d = pd.read_csv(FAERS, low_memory=False,
-                    usecols=["primaryid", "appl_no", "severity", "period",
+                    usecols=["primaryid", "caseid", "appl_no", "severity", "period",
                              "role_cod", "is_anda"])
     print(f"\nFAERS rows: {len(d):,}")
     print(f"  role_cod values: {d['role_cod'].unique().tolist()}  "
@@ -161,6 +173,17 @@ def load_faers(andas: set[int]) -> pd.DataFrame:
 
     d = d[d["appl_no"].isin(andas)]
     print(f"  matched to our ANDAs: {len(d):,} rows, {d['appl_no'].nunique()} ANDAs")
+
+    if count_unit == "case":
+        n_pid = d.groupby("appl_no")["primaryid"].nunique().sum()
+        first = (d.sort_values("period")
+                   .drop_duplicates(["caseid", "appl_no"], keep="first"))
+        print(f"  report versions: {n_pid:,} distinct (primaryid, ANDA) vs "
+              f"{len(first):,} distinct (case, ANDA); "
+              f"{n_pid - len(first):,} later versions dropped")
+        ae = (first.groupby(["appl_no", "period"], as_index=False)
+                   .agg(n_ae_serious=("caseid", "nunique")))
+        return ae
 
     # count DISTINCT reports: one report naming an ANDA twice must not count twice
     ae = (d.groupby(["appl_no", "period"], as_index=False)
@@ -220,18 +243,22 @@ def main() -> None:
                     help="keep every ProPublica facility, not just text-covered ones")
     ap.add_argument("--drop-api-mfr", action="store_true",
                     help="drop rows ProPublica flags as API-only manufacturers")
+    ap.add_argument("--count-unit", choices=["case", "primaryid"], default="case",
+                    help="case = each FAERS case once, first serious quarter (default); "
+                         "primaryid = every report version (the pre-2026-10-15 files)")
     args = ap.parse_args()
 
     m = load_anda_fei(args.text_only, args.drop_api_mfr, args.clean_ndcs)
     m.to_csv(OUT_MAP, index=False)
     print(f"Saved -> {OUT_MAP.name}")
 
-    ae = load_faers(set(m["appl_no"].unique()))
+    ae = load_faers(set(m["appl_no"].unique()), args.count_unit)
+    tag = "_cases" if args.count_unit == "case" else ""
 
     schemes = ["full", "split", "single"] if args.scheme == "all" else [args.scheme]
     for sc in schemes:
         out = attribute(ae, m, sc)
-        p = HERE / f"propublica_fei_ae_quarterly_{sc}.csv"
+        p = HERE / f"propublica_fei_ae_quarterly_{sc}{tag}.csv"
         out.to_csv(p, index=False)
         print(f"Saved -> {p.name}\n")
 

@@ -69,8 +69,13 @@ ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae
 # list, restricted to NDCs with exactly one FEI and one ANDA so every adverse
 # event traces to a single facility. Built by
 # 08 - Valisure/processed/20260930_build_propublica_anda_faers.py
+# 2026-10-15: counts each FAERS case once, in its first serious quarter, instead
+# of every report version (built by the same script with --count-unit case,
+# its default). The per-version file, propublica_fei_ae_quarterly_single.csv,
+# is kept; the panels built from it are saved in outputs/ with a
+# _saved_before_20261015 suffix.
 PROPUBLICA_AE_QTR_CSV = (DATA / "08 - Valisure" / "processed" /
-                         "propublica_fei_ae_quarterly_single.csv")
+                         "propublica_fei_ae_quarterly_single_cases.csv")
 ANDA_SOURCE = "valisure"   # overridden by --anda-source
 
 OUT_PANEL_INSP      = OUT / "fei_ae_panel_inspection_centered.parquet"

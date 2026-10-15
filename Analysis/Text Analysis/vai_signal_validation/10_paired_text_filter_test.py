@@ -27,6 +27,13 @@ Result (first run 2026-10-08; 119 inspections, 62 FEIs, base rate 55.5%)
   (all systems 0.557 on 143 rows) understates the filter's benefit to LR
   because the extra 24 inspections, not the extra text, carry that difference.
 
+Rerun 2026-10-15 (FAERS cases counted once, single outcome definition in 02;
+117 inspections, 64 FEIs, base rate 58.1%)
+  LR: all systems 0.506, product systems 0.534, filter wins on 77%, gap +0.032
+  RF: all systems 0.582, product systems 0.581, filter wins on 54%, gap +0.005
+  Same conclusion, smaller LR gain. The 2026-10-08 table is kept as
+  outputs/tables/paired_text_filter_saved_before_20261015.csv.
+
 Output
   outputs/tables/paired_text_filter.csv
 """
