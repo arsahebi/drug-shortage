@@ -109,22 +109,22 @@ def count_ndcs(x: pd.DataFrame, label: str) -> None:
           f"{x['appl_no'].nunique():>4} ANDAs  {x['fei'].nunique():>4} FEIs")
 
 
-def load_anda_fei(text_only: bool, drop_api_mfr: bool,
-                  clean_ndcs: bool = True) -> pd.DataFrame:
+def load_anda_fei(text_only: bool, drop_api_mfr: bool) -> pd.DataFrame:
     """ProPublica crosswalk -> one row per (appl_no, fei), with sharing counts.
 
-    Strict rule (2026-10-15): both "is this NDC made at one site" and
-    "is this ANDA made at one site" are checked BEFORE we keep only our
-    483-text facilities. Checking after the restriction hid sites outside our
-    list: an ANDA made at one of our plants and at a plant we do not study
-    looked single-site, and its FAERS reports would mix both plants.
+    Attribution works at the ANDA-FEI level only (2026-10-15). FAERS names
+    the application (ANDA), not the NDC, so the one condition that matters is
+    that the ANDA is made at a single facility. NDCs are used only to decide
+    which ANDAs are in scope (drugs on Valisure's list); no NDC filter is
+    applied.
 
-    The NDC check uses the crosswalk, which already holds every ProPublica
-    facility for each Valisure NDC. The ANDA check uses the FULL ProPublica
-    file, because the crosswalk only has Valisure's NDCs: an ANDA can also be
-    made at another plant under an NDC that is not on Valisure's list.
+    The single-facility check counts facilities per ANDA in the FULL
+    ProPublica file, before we keep only our 483-text facilities. Counting
+    within our facilities, or within Valisure's NDCs, would hide a second
+    plant making the same ANDA, and its FAERS reports would be mixed in.
     """
-    # Step 0. Read the crosswalk: one row per (NDC, facility, application)
+    # Step 0. In-scope (ANDA, facility) pairs: every ProPublica facility for
+    #         every NDC on Valisure's list
     x = pd.read_csv(XWALK, low_memory=False, dtype={"ndc9": str})
     x["appl_no"] = pd.to_numeric(
         x["anda"].astype(str).str.replace(r"^[A-Za-z]+-?", "", regex=True),
@@ -133,12 +133,20 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool,
     x = x.dropna(subset=["appl_no", "fei"])
     x["fei"] = x["fei"].astype(int)
     x["appl_no"] = x["appl_no"].astype(int)
-    print("\nNDC flow")
-    count_ndcs(x, "0. all crosswalk rows with an ANDA (all facilities)")
+    print("\nANDA flow")
+    count_ndcs(x, "0. in-scope ANDAs (Valisure drug list, all facilities)")
 
     if drop_api_mfr:
         x = x[x["api_mfr"].astype(str).str.upper() != "TRUE"]
         count_ndcs(x, "   drop API-only manufacturer rows")
+
+    # Data check only, nothing is dropped: an NDC is normally listed under
+    # one application, but a few list two. It does not affect attribution,
+    # which never uses the NDC, so we just report them.
+    andas_per_ndc = x.groupby("ndc9")["appl_no"].nunique()
+    odd = andas_per_ndc[andas_per_ndc > 1]
+    print(f"   (check) NDCs listed under more than one ANDA: {len(odd)} "
+          f"{list(odd.index)}")
 
     # Step 1. How many facilities make each ANDA, counted in the FULL
     #         ProPublica file (all NDCs), so no site can be hidden.
@@ -151,28 +159,18 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool,
     if drop_api_mfr:
         pp = pp[pp["api_mfr"].astype(str).str.upper() != "TRUE"]
     sites_per_anda = pp.groupby(pp["appl_no"].astype(int))["fei"].nunique()
-    print(f"  1. sites per ANDA counted in full ProPublica file: "
-          f"{pp['ndc'].nunique():,} NDCs, {pp['fei'].nunique()} FEIs")
+    print(f"  1. facilities per ANDA counted in full ProPublica file "
+          f"({pp['ndc'].nunique():,} NDCs, {pp['fei'].nunique()} FEIs)")
 
-    # Step 2. Drop NDCs listed at more than one facility or under more than
-    #         one ANDA, again counted over ALL facilities.
-    if clean_ndcs:
-        sites_per_ndc = x.groupby("ndc9")["fei"].nunique()
-        andas_per_ndc = x.groupby("ndc9")["appl_no"].nunique()
-        one_site = x["ndc9"].map(sites_per_ndc) == 1
-        one_anda = x["ndc9"].map(andas_per_ndc) == 1
-        x = x[one_site & one_anda]
-        count_ndcs(x, "2. NDC has exactly 1 facility and 1 ANDA")
-
-    # Step 3. Keep only facilities whose 483 text we hold.
+    # Step 2. Keep only facilities whose 483 text we hold.
     if text_only:
         x = x[x["in_redica_text"] == True]
-        count_ndcs(x, "3. facility has 483 text")
+        count_ndcs(x, "2. facility has 483 text")
 
-    # Step 4 (shown here, applied in attribute() for the 'single' scheme):
-    #         the ANDA is made at no other facility anywhere in the crosswalk.
+    # Step 3 (shown here, applied in attribute() for the 'single' scheme):
+    #         the ANDA is made at no other facility anywhere in ProPublica.
     count_ndcs(x[x["appl_no"].map(sites_per_anda) == 1],
-               "4. ANDA made at only this facility, full ProPublica (single)")
+               "3. ANDA made at only this facility (single scheme)")
 
     m = x[["appl_no", "fei", "api", "labeler", "registrant", "country",
            "in_redica_text", "in_redica_history"]].drop_duplicates(["appl_no", "fei"])
@@ -269,10 +267,6 @@ def main() -> None:
                     help="attribution scheme; 'all' writes all three and is the "
                          "default so the sensitivity checks stay available. "
                          "single is the one to report.")
-    ap.add_argument("--no-clean-ndcs", dest="clean_ndcs", action="store_false",
-                    default=True,
-                    help="keep NDCs that map to several facilities or several "
-                         "ANDAs (default: drop them)")
     ap.add_argument("--text-only", action="store_true", default=True,
                     help="restrict to facilities whose 483 text we hold (default)")
     ap.add_argument("--all-facilities", dest="text_only", action="store_false",
@@ -284,7 +278,7 @@ def main() -> None:
                          "primaryid = every report version (the pre-2026-10-15 files)")
     args = ap.parse_args()
 
-    m = load_anda_fei(args.text_only, args.drop_api_mfr, args.clean_ndcs)
+    m = load_anda_fei(args.text_only, args.drop_api_mfr)
     m.to_csv(OUT_MAP, index=False)
     print(f"Saved -> {OUT_MAP.name}")
 
@@ -292,7 +286,7 @@ def main() -> None:
     single = m[m["n_fei_per_anda"] == 1]
     in_faers = single[single["appl_no"].isin(set(ae["appl_no"]))]
     n_ndc = len(set(";".join(in_faers["ndc9_list"]).split(";")))
-    print(f"\n  5. ANDA has a serious FAERS case (single scheme): {n_ndc} NDCs  "
+    print(f"\n  4. ANDA has a serious FAERS case (single scheme): {n_ndc} NDCs  "
           f"{in_faers['appl_no'].nunique()} ANDAs  {in_faers['fei'].nunique()} FEIs")
     tag = "_cases" if args.count_unit == "case" else ""
 
