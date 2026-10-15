@@ -5,7 +5,7 @@ Scores Claude Sonnet 5 vs. GPT-5-mini extraction agreement on the full
 redica v2 observation set (1,067 observations, both providers, same prompt).
 
 This is a much larger comparison than the 50-row human-eval sample in
-eval/sent_to_abdul/ and eval/validation_data/ -- a free, at-scale robustness
+eval/labels_from_abdel/ and eval/validation_data/ -- a free, at-scale robustness
 check. Fields where the two models agree closely are lower risk to use
 as-is; fields where they diverge are candidates for a smaller, targeted
 human-review pass instead of a large blind one (see

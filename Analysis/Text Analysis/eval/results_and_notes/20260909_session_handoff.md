@@ -19,7 +19,7 @@ Base path: `Analysis/Text Analysis/`
 eval/                                Human-eval harness + all round-1 artifacts
   human_eval_01_generate_template.py
   human_eval_02_score.py
-  labeling_template_v2.xlsx          Abdul's round-1 labels (50 rows, ground truth)
+  20260902_round1_labels_abdel.xlsx   Abdel's round-1 labels (50 rows, ground truth)
   483_Labeling_Rules_v2.docx         Labeling rules doc (kept in sync with prompt)
   20260902_human_eval_round1_findings_and_fixes.md   Group-facing findings doc
 ```
@@ -58,7 +58,7 @@ preliminary." This session's work was largely that promised validation.
    in `~/.zshenv` with a personal key (backed up the file first). Same for OpenAI
    later. Both verified live before use.
 
-2. **Human eval round 1 validation** (Abdul blind-labeled n=50 against v2 prompt):
+2. **Human eval round 1 validation** (Abdel blind-labeled n=50 against v2 prompt):
    - Found + fixed a real bug: contamination_flag / contamination_risk_flag were
      supposed to be mutually exclusive, weren't — fixed in `_validate()`, code-level
      guarantee now, verified 0/11 co-occurrence.
@@ -75,7 +75,7 @@ preliminary." This session's work was largely that promised validation.
      (model self-agreement only 72-96% run-to-run on identical input) — switched to
      3x majority-vote as the reporting standard.
    - Two items required an actual regulatory judgment call, not just code: escalated
-     to Abdul with FDA-guidance-grounded reasoning (FDA's 2018 Data Integrity
+     to Abdel with FDA-guidance-grounded reasoning (FDA's 2018 Data Integrity
      guidance; FDA's 2004 aseptic processing guidance), resolved as decisions, then
      implemented in the live v2 prompt (both providers), the tool-schema field
      descriptions, and `483_Labeling_Rules_v2.docx`:
@@ -137,7 +137,7 @@ preliminary." This session's work was largely that promised validation.
 6. **Deliverables produced:**
    - `eval/20260902_human_eval_round1_findings_and_fixes.md` — updated 3x across
      the session, is the canonical write-up of the validation work.
-   - Plain-text email to Abdul (delivered in chat, not saved as a file) — thanks
+   - Plain-text email to Abdel (delivered in chat, not saved as a file) — thanks
      him first, covers every flagged item with row IDs, states decisions (not
      open questions) for items 1-2 with FDA-guidance rationale.
    - `Presentation/2026-09-08-Update_Since_INFORMS.html` — 7-slide deck, matches
@@ -176,7 +176,7 @@ check `git status` in the new thread.)
    escalation" story is directionally present but underpowered at n=96 FEIs. Worth
    revisiting once/if facility coverage grows.
 4. **The 483_Labeling_Rules_v2.docx and prompt changes** are live for *future*
-   extraction and labeling; nothing retroactively re-labels Abdul's existing round-1
+   extraction and labeling; nothing retroactively re-labels Abdel's existing round-1
    answer key — that's fine, it was accounted for in the verification step, just
    worth remembering if a round 2 human-eval is planned.
 5. **GPT pdf output filename collision risk** (see "Project structure" above,

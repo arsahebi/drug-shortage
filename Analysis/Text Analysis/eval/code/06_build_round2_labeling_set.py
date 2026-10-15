@@ -45,7 +45,7 @@ recorded in the private key for exactly this reason.
 
 Outputs
 ───────
-  eval/sent_to_abdul/labeling_template_round2.xlsx   <- send this one
+  eval/sent_to_abdel/labeling_template_round2_blank.xlsx   <- send this one
   eval/validation_data/DO_NOT_SHARE_round2_key.csv   <- never send; maps
       row_id to source (new/repeat), original round-1 row_id, stratum,
       and sampling weight
@@ -63,8 +63,8 @@ EVAL_ROOT = HERE.parent
 DATA      = EVAL_ROOT.parent
 
 FULL_CSV   = DATA / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
-ROUND1_XLS = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
-OUT_XLS    = EVAL_ROOT / "sent_to_abdul" / "labeling_template_round2.xlsx"
+ROUND1_XLS = EVAL_ROOT / "labels_from_abdel" / "20260902_round1_labels_abdel.xlsx"
+OUT_XLS    = EVAL_ROOT / "sent_to_abdel" / "labeling_template_round2_blank.xlsx"
 OUT_KEY    = EVAL_ROOT / "validation_data" / "DO_NOT_SHARE_round2_key.csv"
 
 SEED = 20260929
@@ -93,7 +93,7 @@ HUMAN_COLS = [
 ]
 
 
-# ── workbook styling: copied from round 1's labeling_template_v2.xlsx ──────
+# ── workbook styling: copied from round 1's labeling template ─────────────
 # Round 1 was usable because every judgment column was a dropdown and the
 # input columns were visibly shaded. Rebuilding that here by hand, since
 # pandas.to_excel writes a bare grid. The spec below was read back off the

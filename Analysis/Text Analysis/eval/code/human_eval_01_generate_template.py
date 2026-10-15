@@ -2,7 +2,7 @@
 eval/human_eval_01_generate_template.py
 
 Builds the v2 human-labeling kit for a manual reviewer (RA):
-  1. labeling_template_v2.xlsx      -- BLIND (no model predictions visible).
+  1. labeling_template_round1_blank.xlsx -- BLIND (no model predictions visible).
                                         Give this to the RA. Dropdown-validated
                                         input columns; full observation text;
                                         an Instructions tab.
@@ -44,7 +44,10 @@ DATA      = EVAL_ROOT.parent
 # with a larger --sample against a bigger v2 signals file for tier balance.
 DEFAULT_SOURCE = EVAL_ROOT / "validation_data" / "483_observation_context_signals_sample50_claudesonnet5_v2.csv"
 
-TEMPLATE_XLSX  = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
+# Output, not an input: this is the blank round-1 workbook the RA fills in.
+# The original was overwritten once it came back completed, so the path is
+# normally absent; his completed round-1 labels live in labels_from_abdel/.
+TEMPLATE_XLSX  = EVAL_ROOT / "sent_to_abdel" / "labeling_template_round1_blank.xlsx"
 ANSWER_KEY_CSV = EVAL_ROOT / "validation_data" / "DO_NOT_SHARE_answer_key_v2.csv"
 
 VIOLATION_CATEGORIES = ["QualitySystem", "ProductionSystem", "MaterialsSystem",

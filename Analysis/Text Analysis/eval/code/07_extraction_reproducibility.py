@@ -31,7 +31,7 @@ importing it -- that file is script-style and importing it would launch a real
 extraction. Reading rather than copying means this diagnostic cannot silently
 drift away from the prompt it is supposed to be testing.
 
-The 50 observations are the exact rows Abdul labeled in round 1, recovered by
+The 50 observations are the exact rows Abdel labeled in round 1, recovered by
 joining round 1's workbook back to the Redica observation file on
 (fei, insp_date, obs_num).
 
@@ -61,10 +61,10 @@ DATA = EVAL_ROOT.parent
 
 EXTRACT_PY = DATA / "01_extract_observation_signals.py"
 REDICA_OBS = DATA / "step00_redica_483_observations.csv"
-ROUND1_XLS = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
+ROUND1_XLS = EVAL_ROOT / "labels_from_abdel" / "20260902_round1_labels_abdel.xlsx"
 OUT_DIR = EVAL_ROOT / "results_and_notes"
 
-# the fields Abdul labels and the paper reports; rationale/quote free text is
+# the fields Abdel labels and the paper reports; rationale/quote free text is
 # excluded because it is expected to vary in wording without varying in meaning
 COMPARE_FIELDS = [
     "violation_category", "severity_tier", "scope", "root_cause_type",

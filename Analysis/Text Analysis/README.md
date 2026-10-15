@@ -42,7 +42,7 @@ needs no `--model` override — gpt-5-mini is openai's own default.
 ## Current validated outputs (redica source, v2 prompt)
 
 Both step01 files were generated entirely after commit `a74c8cd` (2026-09-04, the last
-prompt fix from Abdul's round-1 feedback — data-integrity "testing into compliance" +
+prompt fix from Abdel's round-1 feedback — data-integrity "testing into compliance" +
 EM Grade A/B patient-risk) — verified by file birth time, and by zero rows showing the
 pre-fix `contamination_flag_llm`/`contamination_risk_flag_llm` co-occurrence bug. Both
 reflect the fully-fixed v2 prompt, not a stale pre-feedback run.
@@ -64,7 +64,7 @@ planned cross-model agreement check (see `eval/results_and_notes/20260909_sessio
 
 | Folder | Purpose |
 |---|---|
-| `eval/` | Human-eval harness — `code/` (scripts), `sent_to_abdul/` (the RA labeling package), `validation_data/` (sample-50 seed data + private answer key), `prompt_debug_reruns/` (re-runs used to separate real prompt fixes from model noise), `results_and_notes/` (scored metrics, findings writeup, handoff docs). |
+| `eval/` | Human-eval harness — `code/` (scripts), `sent_to_abdel/` (the package sent to the RA: rules, guides, blank templates), `labels_from_abdel/` (his completed labels, with a README on which round-2 file is primary), `validation_data/` (sample-50 seed data + private answer key), `prompt_debug_reruns/` (re-runs used to separate real prompt fixes from model noise), `results_and_notes/` (scored metrics, findings writeup, handoff docs). |
 | `vai_signal_validation/` | Inspection-level outcome models. `01_build_inspection_panel.py` builds the FAERS panel; `01b_build_marketscan_outcomes.py` builds the parallel MarketScan switch outcomes (abandonment, ER, failure-mode dx; labeler rows bridged to plants via ProPublica + our NDC-FEI crosswalks); `02_vai_signal_model.py` runs the A-E configurations with `--outcome relative` (FAERS) or `aband_excess` / `aband_raw` / `er_rise` / `dx_rise` (MarketScan, `--cohort CCAE|MDCR`, `--min-switches`, `--common-sample`). `08_product_cell_analysis.py` tests plant 483 text against within-product abandonment / ER / dx percentiles of labeler x exact-product cells (the Qual Score unit), with pre-specified H1-H4 and 2023-24 replication windows. |
 | `old_not_current_pipeline/` | Archived scripts/outputs, including `pdf_source_and_superseded/` (pdf-source runs, pre-v2 redica files, the old `ae_validation/` and `signal_verification/` pipelines — both superseded by `eval/` and the Shortage Prediction `m14`/`m17` models). |
 

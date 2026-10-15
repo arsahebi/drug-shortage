@@ -1,10 +1,10 @@
 # 483 Text Extraction — Human Eval Round 1: Findings, Fixes, and Next Steps
 
-> Date: 2026-09-02  |  For: group update  |  Author: Amirreza, with Abdul's round-1 labels
+> Date: 2026-09-02  |  For: group update  |  Author: Amirreza, with Abdel's round-1 labels
 
 ## Summary
 
-Abdul blind-labeled 50 FDA 483 observations against the v2 LLM extraction prompt. Agreement
+Abdel blind-labeled 50 FDA 483 observations against the v2 LLM extraction prompt. Agreement
 with the model was good on most fields but weak on a few (`scope`, `contamination_risk_flag`).
 Investigating the actual disagreement rows found one real bug and two real prompt gaps, all now
 fixed and pushed. Investigating further also surfaced a more important finding: the model does
@@ -16,7 +16,7 @@ agreement, then move to full-scale extraction and the FAERS/adverse-event linkag
 
 ## Round 1 setup
 
-- 50 observations, blind (Abdul never saw model predictions), stratified round-robin sample
+- 50 observations, blind (Abdel never saw model predictions), stratified round-robin sample
   across 38 FEIs, scored against the v2 prompt's own extraction (Claude Sonnet 5).
 - Labeling kit: `483_Labeling_Rules_v2.docx`, `483_Background_Reference_Guide.docx`,
   `483_Worked_Example_FEI3003342394_obs3.docx`.
@@ -64,7 +64,7 @@ Model self-agreement (run 1 vs. run 2, same prompt, same input):
 | investigation_flag | 96% |
 | repeat_flag | 100% |
 
-Accuracy-vs-Abdul swung by as much as 12–16 points on some fields from this alone (e.g.
+Accuracy-vs-Abdel swung by as much as 12–16 points on some fields from this alone (e.g.
 `data_integrity_flag` 0.960→0.840, `contamination_risk_flag` 0.680→0.840), with zero prompt
 change. **This means single n=50/single-run accuracy numbers are not reliable enough to report
 as point estimates.** It's a real limitation of the current pipeline, worth flagging to the
@@ -106,7 +106,7 @@ cannot be called "confirmed" from this data alone, only "reasonably diagnosed an
 
 All changes are in `01_extract_observation_signals.py`, commits `41eacfc` and `93ca0f3`.
 
-## Why not just have Abdul label more rows
+## Why not just have Abdel label more rows
 
 A bigger human-labeled sample would tighten the confidence interval on *how well the model
 matches a human*, but it does nothing for the deeper problem this round surfaced: the model
@@ -117,7 +117,7 @@ noise problem instead of the sample-size problem.
 
 ## Stabilized numbers (majority vote across 3 runs of the final prompt)
 
-Per the recommendation above, I re-ran the final prompt 3 times on Abdul's same 50 observations
+Per the recommendation above, I re-ran the final prompt 3 times on Abdel's same 50 observations
 and scored the majority (mode) prediction per row — this is the number to actually cite:
 
 | Field | Baseline (pre-fix, 1x) | **Stabilized (3x majority)** | 3/3 agree |
@@ -148,16 +148,16 @@ and scored the majority (mode) prediction per row — this is the number to actu
   something quick-fixable via prompt wording — likely needs a dedicated few-shot calibration pass
   or acceptance as a documented bias.
 - **`data_integrity_flag` regresses consistently across every re-run (0.960→0.78–0.86) despite
-  zero edits to its rules.** Diagnosed: not a model bug. Abdul's own labeling notes independently
+  zero edits to its rules.** Diagnosed: not a model bug. Abdel's own labeling notes independently
   flagged the same gap on 3 rows (7, 29, 49) — retesting/resampling until a passing result, and
   invalidating an OOS result without a documented justified investigation ("testing into
   compliance") — and asked twice for a second opinion, since neither is on the rules doc's
-  explicit list. The model's disagreement with Abdul on these rows wasn't an error on either
+  explicit list. The model's disagreement with Abdel on these rows wasn't an error on either
   side; it was a genuine rules gap. Resolved below.
 
 ## Resolved after group/RA review (2026-09-04)
 
-Two items above were escalated to Abdul by email (with row IDs so he could find each one), and
+Two items above were escalated to Abdel by email (with row IDs so he could find each one), and
 resolved. Both are now implemented in the v2 prompt (OpenAI + Anthropic) and in
 `483_Labeling_Rules_v2.docx`, effective for all extraction and labeling from this point forward:
 
@@ -172,7 +172,7 @@ resolved. Both are now implemented in the v2 prompt (OpenAI + Anthropic) and in
    was contaminated — per FDA's *Sterile Drug Products Produced by Aseptic Processing* (2004)
    guidance, environmental monitoring in the classified critical zone is the primary
    sterility-assurance signal for aseptic processing, not a secondary control. An EM excursion
-   outside a classified Grade A/B area still does not qualify on its own. This confirms Abdul's
+   outside a classified Grade A/B area still does not qualify on its own. This confirms Abdel's
    own row 30 call (patient_risk = TRUE, FEI 3002984011).
 
 Both changes are in `01_extract_observation_signals.py` (prompt text + tool-schema field
@@ -189,7 +189,7 @@ steps below.
 
 ## Recommended next steps
 
-1. **Stabilize the eval number** — re-run the final v2 prompt 2 more times (3 total) on Abdul's
+1. **Stabilize the eval number** — re-run the final v2 prompt 2 more times (3 total) on Abdel's
    same 50 observations, score the majority-vote/modal prediction per row against his labels.
    Cheap (~$0.50 total), gives a defensible number for the paper instead of a single noisy pass.
 2. **Full-scale extraction** — run the fixed v2 prompt across the full observation set (currently
@@ -203,7 +203,7 @@ steps below.
 ## Artifacts
 
 - Metrics (round 1, original prompt): `eval/human_eval_metrics_v2.md`
-- Human labels: `eval/labeling_template_v2.xlsx`
+- Human labels: `eval/labels_from_abdel/20260902_round1_labels_abdel.xlsx`
 - Model answer key (round 1): `eval/DO_NOT_SHARE_answer_key_v2.csv`
 - Re-run CSVs (noise baseline + fix verification):
   `eval/exact50_claudesonnet5_v2_ORIGINAL_PROMPT_RERUN.csv`,

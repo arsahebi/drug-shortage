@@ -114,7 +114,7 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
 - `Paper/Text Analysis/20260805_v2_prompt_calibration_and_model_comparison.docx`
 - `Paper/Text Analysis/20260629_483_LLM_Prompts_Expert_Review_YI.docx` — pharmacist expert review
   that drove the v2 prompt. Cite this as expert validation of the schema.
-- `Analysis/Text Analysis/eval/sent_to_abdul/483_Labeling_Rules_v2.docx` — the human
+- `Analysis/Text Analysis/eval/sent_to_abdel/483_Labeling_Rules_v2.docx` — the human
   annotation protocol, identical in content to the LLM prompt. Appendix material.
 
 **Result tables (authoritative, regenerated 2026-09-30)**
@@ -147,9 +147,9 @@ Do not write from the numbers alone. The reasoning matters and much of it is onl
   produced the improvements. Use them if you need to show the development trajectory.
 - `Analysis/Text Analysis/eval/results_and_notes/human_eval_metrics_v2.md` — round-1
   per-field metrics.
-- `Analysis/Text Analysis/eval/sent_to_abdul/483_Background_Reference_Guide.docx` and
+- `Analysis/Text Analysis/eval/sent_to_abdel/483_Background_Reference_Guide.docx` and
   `483_Worked_Example_FEI3003342394_obs3.docx` — annotator onboarding materials.
-- `Analysis/Text Analysis/eval/sent_to_abdul/20260903_Question_for_Abdul_data_integrity_rule.docx`
+- `Analysis/Text Analysis/eval/sent_to_abdel/20260903_Question_for_Abdel_data_integrity_rule.docx`
   — the escalation that produced the testing-into-compliance rule.
 - `Analysis/Text Analysis/README.md` — pipeline overview.
 

@@ -1,7 +1,7 @@
 """
 eval/code/04_score_models_vs_human.py
 
-Three-way comparison on Abdul's 50 blind-labeled observations: how does
+Three-way comparison on Abdel's 50 blind-labeled observations: how does
 each model (Claude Sonnet 5, GPT-5-mini) score against the human label, not
 just against each other? This is what actually explains a low cross-model
 agreement number: it can mean "both models are genuinely uncertain here" or
@@ -33,7 +33,7 @@ HERE      = Path(__file__).parent
 EVAL_ROOT = HERE.parent
 DATA      = EVAL_ROOT.parent
 
-LABELS_XLSX = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
+LABELS_XLSX = EVAL_ROOT / "labels_from_abdel" / "20260902_round1_labels_abdel.xlsx"
 CLAUDE_CSV  = DATA / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
 GPT_CSV     = DATA / "step01_redica_483_obs_llm_signals_openai_v2.csv"
 OUT_CSV     = EVAL_ROOT / "results_and_notes" / "models_vs_human_agreement.csv"

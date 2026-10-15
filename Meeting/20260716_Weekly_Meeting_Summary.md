@@ -21,7 +21,7 @@
 ### LLM Validation
 - Amirreza found recent papers showing GPT-mini and Claude Haiku are reasonably accurate for text labeling tasks.
 - Will cite those papers to support the extraction methodology, acknowledge no manual benchmark yet.
-- Abdul (newly hired) will do manual labeling once prompts are finalized — future work.
+- Abdel (newly hired) will do manual labeling once prompts are finalized — future work.
 
 ---
 
@@ -99,7 +99,7 @@ John shared findings from an unpublished analysis his team conducted using FDA's
 - First-mover advantage: very few papers use MarketScan for pharmaceutical quality research.
 - He'll work as a separable workstream; team will integrate results once pipeline is established.
 
-### Abdul (New Hire)
+### Abdel (New Hire)
 - Formally hired. John will send onboarding materials this week.
 - Initial task TBD: potentially manual labeling of 483 observations for Amirreza's text analysis, or assisting with Health Affairs Scholar revision.
 
@@ -115,7 +115,7 @@ John shared findings from an unpublished analysis his team conducted using FDA's
 
 ### Funding
 - NIH program manager flagged that the team is not spending grant funds quickly enough.
-- John will invite NEMA and potentially Abdul using available grant funds.
+- John will invite NEMA and potentially Abdel using available grant funds.
 
 ### ProPublica Partnership (Tabled)
 - John floated the idea of partnering with ProPublica: team provides scripts or manual labor to keep their inspection database updated monthly.
@@ -140,7 +140,7 @@ John shared findings from an unpublished analysis his team conducted using FDA's
 | 5 | John + Shailesh | Define and run inspection timing window analysis for HA Scholar | This week |
 | 6 | John + Shailesh | IR/ER split analysis for HA Scholar | This week |
 | 7 | John | Formally invite NEMA; assign MarketScan pipeline task | Immediately |
-| 8 | John | Send Abdul onboarding materials (papers, websites, data) | Same day |
+| 8 | John | Send Abdel onboarding materials (papers, websites, data) | Same day |
 | 9 | John | Follow up with David Light on price data | Ongoing |
 | 10 | John | Re-read Shailesh's email (NADAC / selection bias) before in-person meeting | Same day |
 

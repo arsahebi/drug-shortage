@@ -6,9 +6,9 @@ Paste the section below into a new Claude Code thread.
 
 Continuing the 483 text analysis. Two datasets arrived today and they change what to work on. Read `CLAUDE.md`, `Analysis/Text Analysis/README.md`, and `Analysis/Text Analysis/eval/results_and_notes/20261006_patient_outcome_research_review.md` before touching anything. The last three commits on this workstream are `6bcd1e0`, `478da36` and the ones they reference.
 
-## New data 1: Abdul's round-2 labels (resolved, two files)
+## New data 1: Abdel's round-2 labels (resolved, two files)
 
-Abdul sent two workbooks, both in `Analysis/Text Analysis/eval/sent_to_abdul/`:
+Abdel sent two workbooks, both in `Analysis/Text Analysis/eval/sent_to_abdel/`:
 
 - **`labeling_template_round2_done_v02.xlsx` is his own labels, unassisted. Use this one.** Sheets: Instructions, Labeling.
 - `labeling_template_round2_done.xlsx` is the same labels after he ran them through Claude as a self-check. Sheets: Instructions, Labeling, AI_Revision_Log.
@@ -19,17 +19,17 @@ He explained it himself: he labeled first, then ran a Claude check and kept both
 - A full cell-by-cell diff of the two Labeling tabs shows exactly 33 differing cells, precisely the 33 in the log. Nothing changed that is not logged, and nothing logged failed to change.
 - `fei`, `obs_num` and `observation_text` are identical across both files on all 70 rows.
 
-So there is a clean human set and a genuine AI-assisted sensitivity version, and the log reconciles them. No reconstruction is needed and there is no need to ask Abdul to relabel anything.
+So there is a clean human set and a genuine AI-assisted sensitivity version, and the log reconciles them. No reconstruction is needed and there is no need to ask Abdel to relabel anything.
 
 **Key details:**
 - 70 observations. The key at `eval/validation_data/DO_NOT_SHARE_round2_key.csv` gives `source` (50 new, 20 repeat), `round1_row_id` for the repeats, and `stratum` (20 random_natural, 8 remediation_nonblank, 8 violation_rare, 8 severity_Minor, 3 scope_Unclear, 3 rootcause_Unclear, 20 repeat).
-- `human_remediation_signal` is filled on 2 of 70 rows, both "Partial". Abdul confirmed blank means he observed nothing about remediation. That is the intended convention and matches the LLM, which leaves the field blank on 912 of 1,067 observations. Treat blank as a value, not as missing.
+- `human_remediation_signal` is filled on 2 of 70 rows, both "Partial". Abdel confirmed blank means he observed nothing about remediation. That is the intended convention and matches the LLM, which leaves the field blank on 912 of 1,067 observations. Treat blank as a value, not as missing.
 - Direction of the AI edits, for the sensitivity write-up: of the 24 edits to categorical or flag fields, 18 moved his label to exactly the Claude v2 value, 2 moved away, 4 landed on neither. Pooled agreement rises from 79.9% with his own labels to about 82% with the assisted ones. Report the clean number as primary and this as the sensitivity, and note that an edit made by the model family under evaluation cannot count as independent human judgment even where the rule reading is correct.
 
 **What to produce:**
 1. Per-field agreement of the Claude v2 extraction against v02, with Wilson 95% intervals, using the existing scorer (`eval/code/04_score_models_vs_human.py` or `eval/code/human_eval_02_score.py`; check which produced `results_and_notes/models_vs_human_agreement.csv`) rather than a new one. An ad-hoc check on 2026-10-14 gave pooled 79.9% (77 to 83) over 11 fields and 79.5% (76 to 83) on the 50 new observations alone, with severity_tier the weak field at 60.0% (48 to 71) and repeat_flag the strongest at 95.7% (88 to 99). Treat those as a sanity target, not as the result: the real scorer may map field values differently.
 2. The same comparison on the 50 new observations separately, since the repeats were chosen for prior coverage and are not a random sample.
-3. Test-retest reliability from the 20 repeats, Abdul against his own round-1 labels, per field. This is the human ceiling and the paper needs it beside every accuracy figure. **First locate the round-1 human labels**: `sent_to_abdul/labeling_template_v2.xlsx` may be the blank template, and the round-1 results in `results_and_notes/human_eval_metrics_v2.md` and `models_vs_human_agreement.csv` may be the only surviving record. If the per-observation round-1 labels cannot be found, say so rather than improvising, and ask before proceeding.
+3. Test-retest reliability from the 20 repeats, Abdel against his own round-1 labels, per field. This is the human ceiling and the paper needs it beside every accuracy figure. **First locate the round-1 human labels**: `labels_from_abdel/20260902_round1_labels_abdel.xlsx` may be the blank template, and the round-1 results in `results_and_notes/human_eval_metrics_v2.md` and `models_vs_human_agreement.csv` may be the only surviving record. If the per-observation round-1 labels cannot be found, say so rather than improvising, and ask before proceeding.
 4. The AI-assisted sensitivity from the v01 file, clearly labelled.
 5. A short note in `eval/results_and_notes/` recording the two-file arrangement and the verification above, so the provenance is documented for the paper.
 
@@ -69,7 +69,7 @@ The other three (circular single-facility attribution, inspection date versus de
 ## Hard rules
 
 1. Python is `/Users/asahebi/Projects/drug-shortage-research/venv/bin/python`, called by absolute path. Note that the project `.venv` has a different scikit-learn and gives different GroupKFold splits, so any AUC that gets reported comes from `09_repeated_cv_robustness.py` (100 random facility partitions), never a single split.
-2. Do not rerun the LLM extraction, call any LLM API, or change the v2 prompt or schema. Abdul's labels are scored against that schema.
+2. Do not rerun the LLM extraction, call any LLM API, or change the v2 prompt or schema. Abdel's labels are scored against that schema.
 3. Commit and push after every code change, staging only the files for the task, no Co-Authored-By trailer.
 4. Never delete files. Anything that should go moves to `_TO_DELETE_review/<date>_<topic>/` at the project root with a MANIFEST.md row.
 5. Never invent a number. Every figure comes from a file in the repo, and scripts write their results to `outputs/tables/` so they are reproducible.

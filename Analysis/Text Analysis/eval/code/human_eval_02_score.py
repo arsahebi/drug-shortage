@@ -1,7 +1,7 @@
 """
 eval/human_eval_02_score.py
 
-Scores a completed labeling_template_v2.xlsx (RA labels) against
+Scores a completed round-1 labeling workbook (RA labels) against
 DO_NOT_SHARE_answer_key_v2.csv (model predictions), joined on (fei, obs_num).
 
 Computes per-field accuracy, macro-F1, and per-class precision/recall/F1 for
@@ -30,7 +30,7 @@ import pandas as pd
 
 HERE      = Path(__file__).parent
 EVAL_ROOT = HERE.parent
-DEFAULT_LABELS_XLSX = EVAL_ROOT / "sent_to_abdul" / "labeling_template_v2.xlsx"
+DEFAULT_LABELS_XLSX = EVAL_ROOT / "labels_from_abdel" / "20260902_round1_labels_abdel.xlsx"
 ANSWER_KEY_CSV       = EVAL_ROOT / "validation_data" / "DO_NOT_SHARE_answer_key_v2.csv"
 METRICS_MD           = EVAL_ROOT / "results_and_notes" / "human_eval_metrics_v2.md"
 
@@ -125,7 +125,7 @@ def _load_labels(path: Path) -> pd.DataFrame:
 def main():
     parser = argparse.ArgumentParser(description="Score completed RA labels against the model answer key.")
     parser.add_argument("--labels", type=str, default=str(DEFAULT_LABELS_XLSX),
-                         help="Path to the completed labeling_template_v2.xlsx (or a CSV export of it).")
+                         help="Path to the completed round-1 labeling workbook (or a CSV export of it).")
     args = parser.parse_args()
 
     labels_path = Path(args.labels)
