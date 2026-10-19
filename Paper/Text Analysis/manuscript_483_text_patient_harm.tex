@@ -290,13 +290,23 @@ repeated root-cause labels, and our annotator agreed with himself on 75\%
 of 20 hidden repeats (95\% CI 53--89\%). Kappa, which adjusts for the
 number and balance of categories, gives the same ordering (0.95 for repeat
 finding against 0.37 for root cause). The comparison involves two models,
-so we do not claim it generalizes to every model. All outcome analyses use
-Claude Sonnet 5 with the v2 schema. On the 50 development observations
-Claude matched the annotator on root cause in 92\% of cases against 62\%
-for GPT-5-mini, but those observations informed the prompt; on 50 held-out
-observations Claude matched the annotator on 68\%. One of the 17 outcome
-features, the share of culturally attributed root causes, rests on this
-weakest field.
+so we do not claim it generalizes to every model.
+
+The v2 schema was revised on the 50 round-1 development observations and
+then applied unchanged to both models. A single schema keeps the model
+comparison from becoming a comparison of prompts, but it means agreement
+on the development observations reflects fit to the data used to build the
+instrument, and we report it only as such. Claude Sonnet 5 was designated
+the production model before the held-out round. On the 50 held-out
+observations, which informed neither the schema nor that choice, Claude
+agreed with the annotator on 79.5\% of field-level labels (550 labels;
+95\% CI 74.7--83.8\%) and GPT-5-mini on 76.2\% (71.1--80.9\%). The
+intervals overlap; the largest difference was root cause, 68\% against
+56\%. All outcome analyses use Claude Sonnet 5 with the v2 schema. One of
+the 17 outcome features, the share of culturally attributed root causes,
+rests on the weakest field.
+
+% Source: eval/code/08_score_round2.py -> results_and_notes/round2_agreement_claude_vs_gpt.csv
 
 \subsection{What the observations describe}
 
