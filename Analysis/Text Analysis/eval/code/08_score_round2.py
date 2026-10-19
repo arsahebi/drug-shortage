@@ -47,6 +47,8 @@ Outputs (eval/results_and_notes/)
   round2_test_retest.csv      per field, round 2 vs round 1 on the 20 repeats
   round2_ai_edit_direction.csv  each logged AI edit: did it move toward Claude?
   round2_scoring_summary.md   the tables above in readable form
+  round2_agreement_claude_vs_gpt.csv  both models against Abdel's own labels,
+                              same 50 held-out rows, same weights (2026-10-19)
 
 Run:
   /Users/asahebi/Projects/drug-shortage-research/venv/bin/python 08_score_round2.py
@@ -72,6 +74,9 @@ R2_AI     = LABELS / "20261014_round2_labels_abdel_ai_assisted.xlsx"
 R1        = LABELS / "20260902_round1_labels_abdel.xlsx"
 KEY_CSV   = EVAL_ROOT / "validation_data" / "DO_NOT_SHARE_round2_key.csv"
 CLAUDE    = DATA / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
+# GPT-5-mini with the same final v2 prompt (2026-10-19). Neither model saw the
+# round-2 rows during prompt development, so this is the fair head-to-head.
+GPT       = DATA / "step01_redica_483_obs_llm_signals_openai_v2.csv"
 OUT       = EVAL_ROOT / "results_and_notes"
 
 JOIN = ["fei", "insp_date", "obs_num"]
@@ -232,6 +237,26 @@ def main() -> None:
             rows += rr + [pooled(hits, version, subset, ww)]
     agr = pd.DataFrame(rows)
     agr.to_csv(OUT / "round2_agreement.csv", index=False)
+
+    # ── same held-out rows, GPT-5-mini instead of Claude (2026-10-19) ────────
+    # Weights stay the ones built from Claude's labels: they describe how the
+    # sample was drawn, not which model is being scored.
+    gpt = pd.read_csv(GPT)
+    gpt["insp_date"] = pd.to_datetime(gpt["insp_date"]).dt.strftime("%Y-%m-%d")
+    lab_g = own.drop(columns=model_cols).merge(gpt[JOIN + model_cols], on=JOIN,
+                                               how="left", validate="1:1")
+    assert lab_g["violation_category"].notna().all(), "unmatched rows against GPT step01"
+    lab_g.index = own.index
+    both = []
+    for model, lab in [("claude_sonnet5", own), ("gpt5_mini", lab_g)]:
+        rr, hits = agreement_rows(lab.loc[new_idx], "own", "new50", w)
+        for r in rr + [pooled(hits, "own", "new50", w)]:
+            r["model"] = model
+            both.append(r)
+    both = pd.DataFrame(both)
+    both.to_csv(OUT / "round2_agreement_claude_vs_gpt.csv", index=False)
+    print("\nHeld-out 50, both models vs Abdel:")
+    print(both.pivot(index="field", columns="model", values="pct").round(3).to_string())
 
     # ── test-retest: round 2 (own) vs round 1, on the 20 repeats ──────────────
     rep = own[own["source"] == "repeat"].merge(
