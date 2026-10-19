@@ -21,7 +21,7 @@
 \newcommand{\todo}[1]{\hl{\textbf{[TODO: #1]}}}
 \newcommand{\note}[1]{{\color{blue}\textit{[Note: #1]}}}
 
-\title{FDA Inspection Classifications and Form 483 Text as Signals of Subsequent Serious Adverse Events}
+\title{What Form 483 Observations Record That FDA's Inspection Grade Does Not: Measuring Inspection Text with Large Language Models}
 \author{
   Amirreza Sahebi-Fakhrabad\thanks{Corresponding author.
     Poole College of Management, North Carolina State University.
@@ -37,34 +37,34 @@
 \maketitle
 
 \begin{abstract}
-FDA's categorical inspection outcome carries little predictive signal about
-subsequent serious adverse-event reports in this sample, while the underlying
-Form 483 text carries modestly more. We converted 1,067 observations from 246
-inspections at 98 facilities into structured quality signals with a
-pharmaceutical-expert-informed extraction protocol. In an exploratory
-comparison restricted to 109 inspections with a known FDA class and a usable
-single-site abbreviated new drug application (ANDA) outcome, scored as the
-median over 100 random facility-grouped five-fold partitions, the FDA
-three-class grade yielded an area under the receiver operating characteristic
-curve (AUC) of 0.45 (2.5th--97.5th percentile 0.38--0.51) and the binary
-Official Action Indicated flag 0.48 (0.42--0.54). Text alone yielded 0.58
-(0.51--0.67) under random forest, above the flag on 95\% of partitions, and
-0.53 (0.44--0.61) under logistic regression, above the flag on 78\%. These
-are associations with a change in reports, not evidence that an inspection caused
-harm or prevented it. On 1,067 observations, Claude Sonnet 5 and GPT-5-mini
-agreed on repeat findings in 99.4\% (95\% Wilson interval 98.8--99.7\%) but
-on root-cause type in only 55.5\% (52.5--58.4\%). The contrast limits the
-portability of graded model-coded labels. In a separate, unadjusted analysis
-of 64 feature-lag correlations, laboratory-control and data-integrity
-findings tracked reports in the following quarter ($\rho\approx0.30$), but
-none survived Bonferroni correction. Held-out human
-validation on 50 held-out observations gave 79.5\% agreement over 11
-fields (95\% CI 74.7--83.8\%), against a test--retest ceiling of 86.4\%
-(79.5--91.8\%) for the same annotator relabeling 20 observations.
+FDA summarizes each drug-manufacturing inspection with a three-level grade,
+while the investigator's Form 483 observations record what was actually
+found. We used a large language model to convert 1,067 observations from 246
+inspections at 98 facilities into 11 coded fields and 17 inspection-level
+signals. On 50 held-out observations the model agreed with a blinded
+annotator on 79.5\% of field labels (95\% CI 74.7--83.8\%), against 86.4\%
+(79.5--91.8\%) for the annotator relabeling his own earlier work. Factual
+flags were stable across two models (99.4\% agreement on repeat findings),
+while inferred causes were not (55.5\% on root cause), a difficulty the
+annotator shared. For 160 drug-quality inspections with a known grade, the
+grade ordered the text in the expected direction but explained at most
+8.7\% (median 4.2\%) of the variation in any signal, and 39\% of Voluntary
+Action Indicated inspections had as large a share of critical or major
+findings as the median Official Action Indicated inspection. In exploratory
+analyses, neither the text nor the grade anticipated a rise in serious
+adverse-event reports after an inspection. For reports describing a
+defective product, the text scored a median AUC of 0.54 over 100
+facility-grouped partitions against 0.43 for the grade, and 0.61 against
+0.46 using only findings about the drug itself; this held when the most
+debatable report category was removed. Patient behavior in commercial
+claims and independent laboratory tests showed no association that survived
+correction. The results support the extracted text as a measurement of
+inspection content that the grade does not carry; the outcome associations
+are leads for a pre-specified test, not established effects.
 \end{abstract}
 
-\textbf{Keywords:} FDA Form 483; drug manufacturing; adverse-event reports;
-regulatory text; large language models; inspection outcomes
+\textbf{Keywords:} FDA Form 483; drug manufacturing; inspection outcomes;
+regulatory text; large language models; adverse-event reports
 
 \section{Introduction}
 \label{sec:intro}
@@ -79,28 +79,31 @@ At the close of an inspection, an investigator may issue Form 483, a numbered
 set of narrative observations about conditions that may violate current good
 manufacturing practice. The agency later assigns No Action Indicated (NAI),
 Voluntary Action Indicated (VAI), or Official Action Indicated (OAI), taking
-account of the inspection record and the firm's response. The Establishment
-Inspection Report and the response are not systematically available in our
-data. Thus, the final classification cannot be reconstructed from the Form
-483 alone. The observation text records what an investigator wrote, while
-the classification compresses the agency's subsequent assessment.
+account of the establishment inspection report and the firm's response.
+Those documents are not systematically available in our data, so the grade
+cannot be reconstructed from the Form 483 alone. The observation text
+records what an investigator wrote; the grade compresses the agency's
+subsequent assessment into three levels.
 
-Our question is whether that compression loses information relevant to
-future patient safety. FDA's categorical inspection outcome carries little
-predictive signal about subsequent serious adverse-event reports in the
-cleanly linked sample studied here, while the underlying text carries more.
-The text advantage is modest and depends on the sample and classifier. We
-test it on matched inspection rows, alongside a fully specified three-class
-FDA baseline. We also ask which fields can be measured consistently across
-language models and whether simple lexical rules suffice for some concepts.
+We ask three questions. First, can the content of Form 483 observations be
+measured reliably at scale? We treat a language-model pipeline as a
+measurement instrument and validate it against a blinded annotator, against
+the annotator's own consistency, across two models, and against keyword
+rules. Second, how much of that content does the three-level grade carry?
+This is a question about information, not about whether any grade was
+correct. Third, in exploratory analyses, does the text relate to what
+happens after the inspection: adverse-event reports, patient behavior in
+commercial claims, and independent laboratory tests of the products?
 
-The language-model pipeline is a measurement instrument. Its usefulness
-depends on field-level validation, stability, and attribution of the outcome.
-We therefore present extraction checks before descriptive and predictive
-applications. The prediction analysis is exploratory: spontaneous reports
-do not measure incidence or establish that a product from a specific site
-caused an event. Even an ANDA-level match identifies an approved application,
-not the particular plant that made a reported unit.
+The answers are uneven, and we report them that way. The measurement is
+close to the annotator's own consistency on most fields and weakest where
+the question requires inference. The grade carries little of the text. The
+text does not anticipate general adverse-event reports better than the
+grade, but it does better on reports that a product itself was defective,
+the outcome closest to what an inspection examines. Because we reached that
+outcome after examining others, we present it as a lead for a pre-specified
+test. Spontaneous reports do not measure incidence or establish that a
+product from a specific site caused an event.
 
 \section{Related Work}
 \label{sec:lit}
@@ -132,8 +135,8 @@ policy. We observe none of these, so
 we do not treat disagreement between the text and the grade as an error in
 the grade. We ask instead how much of the content of the observations a
 three-level grade can carry. The third application corresponds to our
-outcome analyses, which relate post-approval inspection findings to later
-safety reports. A keyword comparison tests whether contextual coding
+exploratory outcome analyses, which relate post-approval inspection
+findings to later safety reports, patient behavior and laboratory tests. A keyword comparison tests whether contextual coding
 actually changes what is measured.
 
 \subsection{Inspections and safety outcomes}
@@ -142,40 +145,28 @@ Inspection and citation patterns have been associated with drug shortages
 \citep{Stomberg2018,Wang2025MSOM}. FAERS reports are used for
 pharmacovigilance, but spontaneous reporting, missing product identifiers,
 and reporting differences between products complicate facility-level use
-\citep{Rahman2017FAERS,Alatawi2018,Potter2025}. We use serious FAERS reports
-as a noisy downstream correlate, not a causal patient-harm count. Our
-relative outcome compares each facility with its own preceding reporting
-window; it reduces the pronounced between-facility scale confound identified
-in the analytical audit. It cannot remove changes in exposure, publicity,
-reporting behavior, or the product mix.
+\citep{Rahman2017FAERS,Alatawi2018,Potter2025}. We use FAERS reports as a
+noisy downstream correlate, not a causal patient-harm count, and separate
+reports whose reaction terms describe a defective product from serious
+reports in general. Our relative outcome compares each facility with its
+own preceding reporting window. It cannot remove changes in exposure,
+publicity, reporting behavior, or the product mix.
 
 \section{Results}
 \label{sec:results}
 
-\subsection{Corpus and linked samples}
+\subsection{Corpus and analysis sample}
 
-The Redica-sourced corpus contains 1,067 observations from 246 inspection
-dates at 98 facilities, from 16 January 2018 to 21 April 2026. The initial
-facility list was assembled around 14 ingredients; the later NDC-to-ANDA
-linkage covers products for additional ingredients made at those facilities.
-The single-site ANDA quarterly CSV has 77 facilities and a median of eight
-serious cases per facility-quarter. The observed count is a count of
-reported cases, not an incidence rate.
-
-The NDC-to-facility crosswalk lists 1,070 NDCs with an ANDA across 206
-facilities. Of these, 733 NDCs (272 ANDAs) are made at a facility in our text corpus,
-502 (210 ANDAs) remain after dropping ANDAs that any other facility makes,
-and 456 have a serious FAERS case. The last set contains 186 ANDAs and 77
-facilities. Because FAERS names the application rather than the NDC, the
-attribution rule is applied to ANDA--facility pairs only; NDCs serve only to
-define which drugs are in scope. Facilities per ANDA are counted in the full
-ProPublica file (37,584 NDCs, 723 facilities) before restricting to the
-corpus, since an ANDA can also be made at a plant outside the corpus or
-under an NDC not on Valisure's list. Two Vancomycin NDCs list two ANDAs;
-this does not affect attribution and they are kept.
-Coverage is highly uneven: the final current linkage retains three
-Sertraline NDCs and two Lisinopril NDCs, so their ingredient-specific
-patterns cannot be interpreted with confidence.
+The Redica-sourced corpus contains 1,067 observations from 246 inspections
+at 98 facilities, from 16 January 2018 to 21 April 2026. The facilities are
+those behind the 14 drugs in Valisure's original testing program. All
+extraction and validation results use the full corpus. The grade and
+outcome analyses use the 213 inspections (985 observations, 93 facilities)
+that FDA graded under its Drug Quality Assurance program. The other 33 were
+pre-approval visits for a new product (15), clinical-study or
+adverse-event-reporting audits (7), device inspections (6), blood, vaccine
+or animal-drug inspections (4), or carried no human-drug tag (1). Of the
+213, 125 were graded VAI, 24 OAI and 11 NAI; 53 had no grade posted.
 
 \subsection{Extraction validation and reproducibility}
 \label{sec:validation}
@@ -323,24 +314,6 @@ descriptions conditional on Claude Sonnet 5 and the v2 schema.
 % Table source: step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv.
 \input{generated_tables/descriptive.tex}
 
-\subsection{How much of the text the inspection grade carries}
-
-For the 160 drug-quality inspections with a known grade (125 VAI, 24 OAI,
-11 NAI; 87 facilities), the grade orders the text in the expected direction.
-OAI inspections had the highest mean share of Critical or Major observations
-(0.69, against 0.52 for VAI and 0.30 for NAI) and of confirmed
-contamination (0.17, 0.06 and 0.02). Yet the grade explained little of the
-variation. Across the 17 inspection-level signals, the between-grade share
-of variance was at most 8.7\% (multi-domain findings) and had a median of
-4.2\%. Inspections with the same grade differed widely: 39\% of VAI
-inspections had a Critical-or-Major share at or above the OAI median, and
-48\% had findings spanning three or more systems, as 88\% of OAI
-inspections did.
-This is a descriptive statement about information content. It does not
-imply that any grade was assigned incorrectly.
-
-% Source: vai_signal_validation/12_within_grade_spread.py -> outputs/tables/within_grade_spread.csv
-
 Data-integrity findings were concentrated in laboratory controls. Of the
 208 observations Claude flagged for data integrity, 109 (52.4\%) were
 laboratory-control observations, and 39.1\% of all laboratory-control
@@ -372,170 +345,188 @@ annotations, including the cases where regex is more accurate.}
 % Table source: eval/results_and_notes/semantic_lift_vs_regex.csv.
 \input{generated_tables/regex.tex}
 
-\subsection{Exploratory application: inspection text and subsequent reports}
+\subsection{How much of the text the inspection grade carries}
+\label{sec:grade}
 
-The primary matched comparison uses 109 inspections at 55 facilities
-with both a usable single-site ANDA outcome and a known FDA grade
-(Table~\ref{tab:models}). Each AUC is the median over 100 random
-facility-grouped five-fold partitions, with all feature sets scored on the
-same partitions. FDA three-class dummies returned 0.45 under logistic
-regression (2.5th--97.5th percentile 0.38--0.51) and 0.46 under random
-forest, and the binary OAI flag 0.48 (0.42--0.54). Text alone returned 0.58
-under random forest (0.51--0.67), above the OAI flag on 95\% of partitions
-and above the three-class grade on all of them. Under logistic regression
-text returned 0.53 (0.44--0.61), above the OAI flag on 78\% of partitions
-and the three-class grade on 91\%. The text advantage in this known-grade
-sample is modest and clearer under random forest.
-The share of partitions is a robustness summary, not a significance test
-of the AUC difference.
+For the 160 drug-quality inspections with a known grade (125 VAI, 24 OAI,
+11 NAI; 87 facilities), the grade orders the text in the expected direction.
+OAI inspections had the highest mean share of Critical or Major observations
+(0.69, against 0.52 for VAI and 0.30 for NAI) and of confirmed
+contamination (0.17, 0.06 and 0.02). Yet the grade explained little of the
+variation. Across the 17 inspection-level signals, the between-grade share
+of variance was at most 8.7\% (multi-domain findings) and had a median of
+4.2\%. Inspections with the same grade differed widely: 39\% of VAI
+inspections had a Critical-or-Major share at or above the OAI median, and
+48\% had findings spanning three or more systems, as 88\% of OAI
+inspections did.
+This is a descriptive statement about information content. It does not
+imply that any grade was assigned incorrectly.
 
-On the single default partition, adding the three-class grade to text
-changed AUC from 0.520 to 0.498 under logistic regression and left it at
-0.566 under random forest, so the grade added nothing measurable to the
-text here. On the broader clean-ANDA sample of 123 inspections at 60
-facilities, text returned 0.63 under random forest (0.55--0.68) and 0.57
-under logistic regression (0.50--0.62), against 0.48 (0.40--0.54) for the
-OAI flag, and text scored higher than the flag on 100\% and 98\% of
-partitions. This broader baseline codes the 14 unresolved classifications
-as zero; the known-grade comparison above is primary. A drug-name-only outcome construction produced text AUC
-0.514--0.549 on 238 inspections, with no text model exceeding chance by
-its one-sided fold test. Its OAI-only AUC was 0.521 ($p=0.030$), a very
-small above-chance result on a linkage that assigns the same ingredient's
-national reports to multiple facilities. These results limit the claim to
-the clean ANDA analysis.
+% Source: vai_signal_validation/12_within_grade_spread.py -> outputs/tables/within_grade_spread.csv
 
-% Table source: vai_signal_validation/outputs/tables/repeated_cv_summary.csv
-% (09_repeated_cv_robustness.py, scikit-learn 1.6.1), rows F1 and F2.
+\subsection{Exploratory outcome analyses}
+\label{sec:outcomes}
+
+\paragraph{Linking inspections to adverse-event reports.} FAERS names the
+approved application (ANDA) of a reported product, not the facility that
+made it. We kept only ANDAs that a single facility makes anywhere in the
+ProPublica product-to-facility file (37,584 NDCs, 7,507 ANDAs, 723
+facilities). Of 6,522 single-facility ANDAs, 2,958 are made at 90 corpus
+facilities and 2,262, at 88 facilities, have at least one serious FAERS
+case (median 29 ANDAs per facility). We defined two kinds of reports. All
+serious reports are dominated by side effects and other patient outcomes.
+Product-defect reports are those whose MedDRA reaction terms describe the
+product itself, such as contamination, odour, colour, physical defects,
+potency, packaging, counterfeiting or recall; 88,019 reports carried at
+least one such term. For each inspection, the outcome is whether reports at
+the facility rose in the four quarters after the inspection compared with
+the four before. Of the 213 drug-quality inspections, 163 qualified for the
+serious-report outcome (129 with a known grade) and 131 for the
+product-defect outcome (102 with a known grade). Each AUC below is the
+median over 100 random facility-grouped five-fold partitions, with all
+feature sets scored on the same partitions.
+
+\paragraph{General serious reports.} Neither the text nor the grade
+anticipated a rise in serious reports (Table~\ref{tab:models}). Where the
+grade was known, the OAI flag returned 0.539 (2.5th--97.5th percentile
+0.523--0.555) and text 0.497 under logistic regression (0.427--0.576) and
+0.453 under random forest (0.385--0.529); text exceeded the flag on 19\%
+and 3\% of partitions. On all 163 inspections text returned 0.523 and
+0.510 against 0.525. Counting each ANDA separately, so that one large
+product cannot decide a facility's outcome, gave no text advantage where
+the grade was known (0.489 and 0.506 against 0.539); on all 163
+inspections the random forest reached 0.574 against 0.524. We do not read
+this mixed pattern as support.
+
+Laboratory-control findings tracked the level of reports. In 64 unadjusted
+feature-by-quarter Spearman tests, 34 had $p<0.05$ and 4 passed the
+Bonferroni threshold; the strongest was the count of laboratory-control
+observations against reports nine to twelve months later ($\rho=0.321$,
+$n=154$). Holding fixed the number of the facility's single-site ANDAs left
+3 significant after correction ($\rho=0.332$). Holding fixed the facility's
+own reports in the four quarters before the inspection left none, and only
+3 below 0.05 ($\rho=0.178$, $p=0.027$). Laboratory findings therefore mark
+facilities with many reports, not facilities whose reports are about to
+rise. Reports rose after 53.0\% of VAI inspections (53 of 100), 68.4\% of
+OAI inspections (13 of 19) and 50.0\% of NAI inspections (5 of 10); VAI and
+OAI did not differ (Fisher exact $p=0.31$), and the direction of the gap has
+changed with earlier counting choices. Within VAI, the text did not separate
+rises from non-rises (random-forest AUC 0.385, permutation $p=0.93$).
+
+% Table source: vai_signal_validation/outputs/tables/repeated_cv_summary.csv (rows F1, F2)
+% and outputs/_quality_variants/repeated_cv_summary_quality.csv (rows F1, F3).
 \begin{table}[ht]
 \centering\small
 \caption{Exploratory facility-grouped five-fold cross-validation, median AUC
-over 100 random partitions with the 2.5th--97.5th percentile across
-partitions. ``Text $>$ OAI'' is the share of partitions on which text scored
-higher than the OAI flag on the identical split. The 123-inspection sample
-codes 14 unresolved classifications as not OAI.}
+over 100 random partitions with the 2.5th--97.5th percentile. ``Text $>$
+OAI'' is the share of partitions on which text scored higher than the OAI
+flag on the identical split. LR, logistic regression; RF, random forest.}
 \label{tab:models}
 \begin{tabular}{llrrll}\toprule
 Sample & Features & Classifier & AUC & 2.5--97.5 pct & Text $>$ OAI \\\midrule
-Known grade ($n=109$) & FDA three class & LR & 0.449 & 0.378--0.513 & \\
- & FDA three class & RF & 0.455 & 0.368--0.513 & \\
- & FDA OAI flag & LR & 0.478 & 0.415--0.536 & \\
- & FDA OAI flag & RF & 0.483 & 0.404--0.536 & \\
- & 483 text & LR & 0.530 & 0.443--0.608 & 78\% \\
- & 483 text & RF & 0.583 & 0.506--0.666 & 95\% \\\midrule
-All ($n=123$) & FDA OAI flag & LR & 0.476 & 0.403--0.538 & \\
- & FDA OAI flag & RF & 0.479 & 0.397--0.538 & \\
- & 483 text & LR & 0.568 & 0.497--0.618 & 98\% \\
- & 483 text & RF & 0.633 & 0.551--0.682 & 100\% \\
+\multicolumn{6}{l}{\textit{All serious reports}} \\
+Known grade ($n=129$) & FDA three class & LR & 0.516 & 0.482--0.555 & \\
+ & FDA OAI flag & LR & 0.539 & 0.523--0.555 & \\
+ & 483 text & LR & 0.497 & 0.427--0.576 & 19\% \\
+ & 483 text & RF & 0.453 & 0.385--0.529 & 3\% \\
+All ($n=163$) & FDA OAI flag & LR & 0.525 & 0.464--0.535 & \\
+ & 483 text & LR & 0.523 & 0.467--0.573 & 52\% \\
+ & 483 text & RF & 0.510 & 0.437--0.554 & 27\% \\\midrule
+\multicolumn{6}{l}{\textit{Product-defect reports}} \\
+Known grade ($n=102$) & FDA three class & LR & 0.422 & 0.352--0.486 & \\
+ & FDA OAI flag & LR & 0.433 & 0.385--0.487 & \\
+ & 483 text & LR & 0.535 & 0.454--0.601 & 97\% \\
+ & 483 text & RF & 0.488 & 0.390--0.582 & 84\% \\
+Product systems ($n=112$) & FDA OAI flag & RF & 0.458 & 0.408--0.506 & \\
+ & 483 text & LR & 0.574 & 0.515--0.652 & 100\% \\
+ & 483 text & RF & 0.613 & 0.559--0.666 & 100\% \\
 \bottomrule\end{tabular}
 \end{table}
 
-Serious reports rose after 58.4\% of VAI inspections (45 of 77), 50.0\%
-of OAI inspections (11 of 22), and 60.0\% of NAI inspections (6 of 10);
-VAI and OAI do not differ (Fisher exact $p=0.63$). Within the VAI group,
-a separate probe tested 12 text features against the continuous log
-post/pre report ratio. Only the investigation share had $p<0.05$
-($\rho=-0.226$, $p=0.048$, $n=77$), and it did not survive Bonferroni
-correction at $0.05/12=0.0042$. The random-forest within-VAI AUC on the
-default partition was 0.669 with permutation $p=0.040$ over 200 shuffles;
-we treat this single-partition result as a lead. These analyses do not show individual risk separation within
-VAI. At this sample size, the approximate 80\% detectable AUC is 0.63;
-the null result is less informative about smaller effects.
+\paragraph{Product-defect reports.} For reports describing a defective
+product, the text did better than the grade (Table~\ref{tab:models}).
+Where the grade was known, text returned 0.535 under logistic regression
+against 0.433 for the OAI flag and 0.422 for the three-class grade, higher
+than the flag on 97\% of partitions; random forest returned 0.488, higher
+on 84\%. Restricting the text to findings in the product-facing systems
+(Production, Laboratory Controls, Materials, Packaging and Labeling)
+before aggregation sharpened the result: on 112 inspections, random forest
+returned 0.613 (0.559--0.666) against 0.458, higher on every partition. On
+the same 112 inspections, the restriction raised random forest from 0.502
+to 0.613 and logistic regression from 0.496 to 0.574, higher on 99\% and
+98\% of partitions. For serious reports in general the same restriction
+helped on only 36\% of partitions.
 
-In the clean-ANDA panel, 23 of 64 unadjusted text-feature by quarter
-Spearman tests had $p<0.05$, compared with 3.2 expected under 64
-independent true nulls. None survived the Bonferroni threshold
-$p<0.00078125$ (Table~\ref{tab:lag}). The closest was the count of
-laboratory-control observations one quarter after the inspection
-($\rho=0.314$, $n=111$, $p=0.0008$), followed by data-integrity share one
-quarter later ($\rho=0.304$, $n=111$, $p=0.001$). These
-correlations use raw report counts and neither adjust for each facility's
-baseline volume nor account for repeated inspections at the same site;
-they do not establish a within-facility effect.
+The grade scored below 0.5 for this outcome: product-defect reports tended
+not to rise after an OAI grade. The result held when we removed the most
+debatable report category, problems attributed to a switch between
+manufacturers, which may reflect patient perception. Without it, text
+returned 0.569 against 0.429 where the grade was known (higher on every
+partition) and 0.554 against 0.469 for product-system findings (93\%).
+Removing reports of patches that do not adhere changed nothing, because no
+such reports fall on these facilities' products. These AUCs are modest, and
+we reached this outcome after the general serious-report analyses above;
+it should be pre-specified and tested on new inspections before it is
+treated as a finding.
 
-% Table source: vai_signal_validation/outputs/tables/lag_correlation_table_anda_pp.csv.
-\begin{table}[ht]
-\centering\small
-\caption{The five strongest of 64 feature-lag Spearman correlations. None
-passes Bonferroni correction ($p<0.00078125$). Outcomes are raw
-serious-case counts in the clean ANDA panel; repeated facilities and
-baseline volume are not adjusted for.}
-\label{tab:lag}
-\begin{tabular}{llrrr}\toprule
-Text feature & Quarter & $n$ & Spearman $\rho$ & $p$ \\\midrule
-Lab controls (count) & Q+1 (0--3 mo after) & 111 & 0.314 & 0.0008 \\
-Data integrity flag & Q+1 (0--3 mo after) & 111 & 0.304 & 0.0012 \\
-Lab controls (count) & Q+4 (9--12 mo after) & 115 & 0.288 & 0.0018 \\
-Patient risk flag & Q0 (inspection qtr) & 117 & 0.284 & 0.0019 \\
-Data integrity flag & Q0 (inspection qtr) & 117 & 0.275 & 0.0027 \\
-\bottomrule\end{tabular}
-\end{table}
+Following the design of \citet{Li2026LLMDevice}, we also modeled the time
+from each inspection to a product's first defect report, for 2,748
+ANDA-inspection pairs at 78 facilities (875 events). No text signal
+survived Holm correction across 17 signals, and the OAI flag was not
+associated with timing either (hazard ratio 1.14, 95\% CI 0.88--1.50).
 
-Restricting observations after extraction to Production, Laboratory
-Controls, Materials, and Packaging and Labeling kept 501 of 1,067
-observations (47.0\%), 91 of 98 facilities, and 199 of 246 inspection
-snapshots. Over 100 partitions, product-only text returned 0.59 under
-random forest (0.49--0.66) and 0.57 under logistic regression
-(0.49--0.65) on 100 inspections, against 0.63 and 0.57 with all systems on
-123. On the 100 inspections common to both versions, scored on the same
-partitions, the filter raised logistic regression from 0.48 to 0.57
-(higher on 98\% of partitions) and left random forest unchanged (0.59 and
-0.59; higher on 49\%). Filtering therefore does not sharpen the stronger
-classifier, though half the text gives about the same score. The lag
-results put laboratory and record-keeping findings near the center of the
-measured signal;
-they do not establish that governance findings contain none.
-
-% Table sources: vai_signal_validation/outputs/tables/repeated_cv_summary.csv
-% (rows F2 and F3) and paired_text_filter.csv.
-\begin{table}[ht]
-\centering\small
-\caption{Text-only robustness to the product-system filter, median AUC over
-100 facility-grouped five-fold partitions with the 2.5th--97.5th
-percentile. The two samples differ; the paired comparison on the 100
-common inspections is in the text.}
-\label{tab:robustness}
-\begin{tabular}{llrrl}\toprule
-Text set & Classifier & $n$ & AUC & 2.5--97.5 pct \\\midrule
-All systems & LR & 123 & 0.568 & 0.497--0.618 \\
-All systems & RF & 123 & 0.633 & 0.551--0.682 \\
-Product systems & LR & 100 & 0.573 & 0.490--0.645 \\
-Product systems & RF & 100 & 0.585 & 0.486--0.662 \\
-\bottomrule\end{tabular}
-\end{table}
+\paragraph{Patient behavior and laboratory tests.} Two further outcomes did
+not support the text. In commercial and Medicare claims (MarketScan), we
+ranked each company's exact product by how often patients stopped refilling
+after being switched to it, against other companies making the same
+product. Across 136 products bridged to 31 corpus facilities, a one-SD
+higher data-integrity share went with a 11.7 percentile-point worse rank
+(95\% CI 5.2--18.2; Holm $p=0.002$) and a laboratory-control share with
+9.9 points (3.4--16.5). The data-integrity estimate fell to 9.0 points
+(0.3--17.6) without the adjustment for patients who lost coverage, did not
+carry into 2023--2024 (2.0 points, $-7.9$ to 11.9), and was 1.4 points
+($-1.9$ to 4.7) against the MarketScan team's own product quality score,
+for which none of the 17 signals survived Holm correction. Against
+Valisure's laboratory scores for 619 tested samples linked to 64 corpus
+facilities, none of 85 signal-outcome tests survived correction, and adding
+the text did not improve prediction of the laboratory score.
 
 \section{Discussion}
 \label{sec:discussion}
 
-The matched three-class comparison indicates that FDA's NAI/VAI/OAI
-classification contains little information about a subsequent rise in
-serious FAERS reports, while the observation text contains modest
-predictive information in the clean ANDA sample, more clearly under a
-random forest than under logistic regression. The comparison does not
-imply an error in FDA's grading: the classification serves a regulatory
-decision, not this reporting outcome, and draws on an inspection file and
-firm response that we cannot observe. Neither AUC comparison is causal.
+The clearest results concern measurement. A language model can code Form
+483 observations close to the consistency of a trained annotator, and the
+fields that resist it are the ones that resist the annotator too. Factual
+flags such as repeat findings and confirmed contamination transfer across
+models; inferred causes do not, so a root-cause distribution from one
+model should not be read as a property of manufacturing practice without
+this check. Held-out agreement, not agreement on the observations used to
+write the rules, is the relevant accuracy figure, and it places the
+production model a few points from the human ceiling.
 
-Model portability matters as much as average extraction performance.
-Repeat and confirmed-contamination flags were consistent across Claude
-and GPT, while root-cause and remediation labels changed substantially
-with the model. A single-model study should report this dependence before
-interpreting a root-cause distribution as a feature of manufacturing
-practice. Human agreement on a small development set does not settle
-which model is correct on the full corpus. On the held-out round-2
-set Claude reached 79.5\% agreement against an 86.4\% human test--retest
-ceiling, with root cause at 68\% for Claude against 75\% for the
-annotator himself.
+The grade carries little of what the investigator wrote. It orders the
+text sensibly, with more severe and more contamination-related findings at
+OAI inspections, but three levels cannot represent the spread within each
+level. Many VAI inspections read like OAI ones. This does not imply an
+error in FDA's grading: the grade serves a regulatory decision and draws on
+the establishment inspection report, the firm's response and agency
+policy, none of which we observe. It does mean that research using the
+grade as a measure of what an inspection found discards most of the
+recorded content.
 
-The laboratory-control and data-integrity associations would be
-scientifically useful because they are specific to a coded observation and
-a short time horizon, but neither survives correction for 64 tests once
-ANDAs shared with facilities outside the corpus are removed, and both are
-conditional on an unadjusted count outcome. Reports can follow a product's
-market size, stimulated reporting, and the FDA's risk-based site selection.
-The temporal ordering of an inspection and an adverse report cannot by
-itself separate these processes. Likewise, the product-system restriction
-is an exploratory model comparison on fewer observations, not proof that
-excluded systems are irrelevant.
+The outcome analyses are exploratory. For serious adverse-event reports in
+general, neither the text nor the grade anticipated a rise; the
+laboratory-control association with report levels disappears once each
+facility is compared with its own history, which points to facility size
+and product mix rather than an early warning. For reports describing a
+defective product, the outcome closest to what an inspection examines, the
+text did better than the grade, and most clearly with findings about the
+product-facing systems. That pattern is what one would expect if the text
+measures product quality, but we chose this outcome after the general
+analyses, the AUCs are modest, and the result needs a pre-specified test on
+new inspections. Patient behavior after a switch and independent laboratory
+tests did not support the text once counting choices and multiple testing
+were accounted for.
 
 The main limitation is outcome attribution. FAERS records suspected
 products and application numbers, not the manufacturing site for a given
@@ -543,36 +534,34 @@ patient's unit. The single-site restriction removes known multi-site ANDAs,
 but a matched report is still not verified manufacturing-caused harm.
 FAERS is passive surveillance, lacks a population denominator, and may
 change with reporting practices. The restriction also selects facilities
-with uniquely linked products and adequate report history. We have not
-established whether these facilities differ systematically from the
-unlinked group. Unresolved inspection grades and the current crosswalk
-version discrepancy add further selection and reproducibility concerns.
-
-Claims-based replication would improve the outcome design by measuring
-utilization and clinical events in a defined population. The project has
-requested an aggregated MarketScan extract, but no result from it is part
-of this paper. We cannot anticipate whether it would increase or decrease
-the observed association. A second annotator on a subset, formal
-calibration and discrimination intervals from held-out facilities, and
-adjusted longitudinal tests are also needed before stronger claims.
-The text corpus covers only the facilities behind the original 14
-ingredients. Valisure has since tested 43 ingredients, and adding Form 483
-text for the facilities on that larger list is the most direct way to
-enlarge the sample.
+with uniquely linked products and adequate report history, and the
+product-to-facility file is itself incomplete. The text corpus covers only
+the facilities behind the original 14 ingredients; Valisure has since
+tested 43, and adding Form 483 text for the facilities on that larger list
+is the most direct way to enlarge the sample. A second annotator, held-out
+calibration, and a pre-registered product-defect analysis are needed before
+stronger claims.
 
 \section{Methods}
 \label{sec:methods}
 
 \subsection{Sources and observation extraction}
 
-The facility universe was assembled from the Valisure API-to-FEI map.
-Redica Systems supplied licensed, digitized Form 483 narratives for 98
-of the facilities. FDA inspection classifications came primarily from
-\texttt{Inspections Details.xlsx}, matched on FEI and exact inspection
-end date. The code used Redica's classification as its first fallback,
-then an FDA match within 30 days. Forty of the 246 inspection snapshots
-had no resolved grade and were coded as zero in the original binary OAI
-panel. The primary head-to-head comparison excluded unknown grades.
+The facility universe was assembled from the Valisure API-to-FEI map for
+14 ingredients. Redica Systems supplied licensed, digitized Form 483
+narratives for 98 of the facilities. Each inspection is a facility and the
+483's issue date. Its grade comes from Redica's site event file: the
+``Drug Quality Assurance'' classification on an inspection event at the
+same site and exact date. Inspections graded only under another FDA
+program (devices, bioresearch monitoring, pre-approval evaluation, blood
+products, animal drugs) or whose 483 carried no human-drug tag were
+excluded from the grade and outcome analyses, following the rule used in
+earlier work on this facility set. Inspections with no grade posted were
+kept as unknown grade. Extraction and validation used all 1,067
+observations; the grade and outcome analyses used the 985 observations of
+the 213 retained inspections.
+
+\subsection{Observation extraction and validation}
 
 The production extraction used Claude Sonnet 5 and the v2 prompt in
 the observation-extraction script; GPT-5-mini received the
@@ -635,84 +624,76 @@ flags on the same 1,067 observations. An earlier Redica export had all
 regex fields defaulted to false because the input lacked those columns;
 the baseline was recomputed directly from text before this comparison.
 
-\subsection{Facility panel and serious adverse-event outcome}
+\subsection{Facility panel and outcomes}
 
-\texttt{02\_aggregate\_fei\_features.py} computes each facility's text
-features from observations on that inspection date. Although legacy
-comments call the snapshots cumulative, the code filters to exactly
-the current FEI and date. The inspection-centered panel attaches
-quarters before and after the visit by FEI. It retains serious FAERS
-categories (death, hospitalization, life-threatening event, disability,
-congenital anomaly, required intervention, and other serious) and excludes
-nonserious reports.
+\texttt{02\_aggregate\_fei\_features.py} computes each inspection's 17 text
+features from that inspection's observations. The inspection-centered panel
+attaches FAERS counts for the four quarters before and after the visit.
+FAERS reports were limited to primary-suspect drugs with an ANDA number.
 
-The drug-name sensitivity path assigns a facility every national report
-for each ingredient mapped to it, using a first-token ingredient key.
-It can conflate combination products such as Ampicillin and
-Ampicillin; Sulbactam, and counts a \texttt{primaryid} more than once
-when one report joins twice to a facility. The audit measured 24,479
-excess rows among 2,848,865 joined rows (0.9\%). This path is an
-ingredient-level exposure analysis, not site attribution.
-\todo{Change drug-level \texttt{primaryid} aggregation to distinct count
-and regenerate the sensitivity analysis.}
+Attribution uses the ProPublica product-to-facility file. An ANDA is kept
+only if a single facility makes it anywhere in that file, judged before
+restricting to the corpus, so a second plant outside the corpus cannot be
+hidden. Each FAERS case is counted once, in the first quarter it appears;
+later versions of the same case (65,781 of 554,509 report-ANDA pairs at
+corpus facilities, 11.9\%) are dropped. The serious-report outcome keeps
+death, hospitalization, life-threatening event, disability, congenital
+anomaly, required intervention and other serious outcomes. The
+product-defect outcome keeps reports of any seriousness whose MedDRA
+preferred terms (FAERS REAC files, 2015Q1--2026Q1) contain the word
+``product'' and are not use or medication-error terms, plus three
+manufacturing terms without that word and two manufacturer-side terms the
+exclusion would otherwise remove. Of 186 candidate terms, 85 were kept;
+the full list with report counts is in the supplement.
 
-The primary path links serious primary-suspect FAERS reports by ANDA
-number to an NDC-to-FEI crosswalk and keeps only ANDAs made at a single facility in the full ProPublica
-file, judged before restricting to the text corpus. No NDC-level filter is
-applied.
-Each FAERS case is counted once, in the first quarter it appears as a
-serious report; later versions of the same case (4,855 of 46,934
-report-ANDA pairs on the single-site ANDAs, 10.3\%) are dropped. This excludes shared
-applications for which the producing site cannot be identified. The
-development audit found 37 shared ANDAs: 27 across plants of one firm,
-seven involving contract manufacturing, and three involving an API
-supplier and finisher. The source code also produces full-assignment
-and equal-split sensitivity files, but the reported AUCs use the
-single-site construction. Its current quarterly CSV has a median of
-eight serious cases per facility-quarter. None of these counts prove
-that the manufacturing site caused a reported event.
-
-For each inspection, the binary target is whether the mean serious
-report count over available quarters $+1$ through $+4$ exceeds the
-mean over available quarters $-4$ through $-1$ at the same facility.
-Missing facility-quarters inside the window are treated as zero cases.
-An inspection is kept only if its facility holds a single-site ANDA, the
-full window from quarter $-4$ to $+4$ lies within the FAERS extract
-(2015Q1--2026Q1), and the baseline window has at least one case. Of 246
-text snapshots, 192 are at linked facilities, 172 have the full window,
-and 123 have at least one baseline case; the known-grade comparison
-contains 109. Thus the predictive sample
-is selected for both ANDA linkage and observed pre/post windows.
+For each inspection, the binary target is whether the facility's report
+count summed over quarters $+1$ to $+4$ exceeds the sum over quarters
+$-4$ to $-1$. A quarter with no record is a true zero. An inspection is
+kept only if its facility holds a single-site ANDA, the full window lies
+within the FAERS extract (2015Q1--2026Q1), and at least one report falls in
+the baseline (quarters $-4$ to $0$). For serious reports, 198 of the 213
+inspections are at linked facilities, 178 have the full window, and 163
+have a baseline report. In the product-by-product variant, each ANDA with a
+baseline report counts as rising or not, and the inspection is scored as a
+rise if more than half of them rose.
 
 \subsection{Statistical analysis}
 
-We compared logistic regression and a random forest in five-fold
-GroupKFold cross-validation, grouping by FEI to keep all inspections
-from a facility in one fold. The text models use shares and counts of
-severity, flags, inspection systems, scope, root cause, and joint
-features, as listed in the inspection-panel script.
-Classification-only models use the binary OAI flag, three-class dummies,
-or an ordinal NAI/VAI/OAI encoding. The source CSV reports mean fold AUC,
-population SD across folds, and a one-sided t test of fold AUCs against
-0.5. Because a single five-fold split moved AUCs by up to 0.05 between
-library versions, Tables~\ref{tab:models} and \ref{tab:robustness}
-report the median over 100 random facility-grouped partitions with the
-2.5th--97.5th percentile, scoring every feature set on the same
-partitions. These percentiles describe partition sensitivity, not
-sampling uncertainty.
+The grade comparison uses the 160 inspections with a known grade. For each
+of the 17 signals, the share of variance explained by grade is the
+between-grade sum of squares over the total; differences are tested with
+Kruskal-Wallis.
 
-The within-VAI probe correlates 12 text features with the log ratio of
-post- to pre-inspection counts and uses a 200-shuffle permutation check
-for multivariate AUC. Separately, the lag analysis correlates 16 text
-features with raw serious-event counts at the inspection quarter and
-three later quarters, 64 Spearman tests in all. Bonferroni correction
-sets $\alpha=0.05/64$. This bivariate grid is distinct from the
-relative-outcome AUC models and does not adjust for facility clustering.
-Product-system robustness retains Production, Laboratory Controls,
-Materials, and Packaging and Labeling observations after extraction;
-the other categories are omitted before feature aggregation. The
-smaller product-only sample is refit and rescored rather than compared
-on fixed test folds.
+We compared logistic regression and a random forest in facility-grouped
+five-fold cross-validation, so that all inspections from a facility fall in
+one fold. Because a single split moved AUCs by up to 0.05 between library
+versions, we report the median over 100 random facility-grouped partitions
+with the 2.5th--97.5th percentile, scoring every feature set on the same
+partitions. These percentiles describe partition sensitivity, not sampling
+uncertainty, and the share of partitions on which text beats a baseline is
+a robustness summary, not a significance test. FDA baselines are the binary
+OAI flag and three-class dummies. The product-system analysis drops
+observations outside Production, Laboratory Controls, Materials, and
+Packaging and Labeling before aggregation; the paired comparison scores
+both versions on the inspections they share.
+
+The lag analysis correlates 16 text features with report counts at the
+inspection quarter and three later quarters, 64 Spearman tests with a
+Bonferroni threshold of $0.05/64$. Partial Spearman correlations hold fixed
+either the number of the facility's single-site ANDAs or its reports in
+the four quarters before the inspection. The time-to-event analysis fits a
+Cox model per signal for each ANDA at an inspected facility, from the
+inspection to its first product-defect report, censored at the next
+inspection, eight quarters or 2026Q1, with controls for prior reports and
+standard errors clustered by facility; Holm correction runs over the 17
+signals. The within-VAI probe uses a 200-shuffle permutation test of the
+random-forest AUC.
+
+The MarketScan product analysis regresses a product's within-product
+percentile of post-switch abandonment on facility-level text shares with
+product fixed effects and facility-clustered standard errors. The Valisure
+analysis relates the same 17 signals to the DoD laboratory score and its
+components within product. Both apply Holm correction across signals.
 
 \section*{Data availability}
 
