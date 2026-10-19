@@ -37,7 +37,10 @@ OUT = BASE / "processed" / "faers_product_quality_reactions.csv"
 OUT_TERMS = BASE / "processed" / "faers_product_quality_terms.csv"
 
 ALSO_KEEP = {"poor quality drug administered", "counterfeit drug administered",
-             "manufacturing materials contamination"}
+             "manufacturing materials contamination",
+             # manufacturer-side terms the EXCLUDE pattern would otherwise catch
+             "inappropriate release of product for distribution",
+             "manufacturing product storage issue"}
 EXCLUDE = (r"error|use issue|use in |misuse|exposure|administered at|administered to|"
            r"dose omission|prescri|dispens|wrong |incorrect|inappropriate|schedule|"
            r"accidental|intentional|technique|monitoring|preparation|storage|"
@@ -63,7 +66,7 @@ KEPT_GROUPS = [
     ("General quality or potency", r"quality|potency|formulation|dosage form|ineffective|"
                                    r"reconstitution|raw material|process control|complaint"),
     ("Product mix-up at the maker", r"commingling"),
-    ("Distribution, shipping, temperature", r"distribution|shipping|temperature"),
+    ("Distribution, shipping, temperature", r"distribution|shipping|temperature|storage"),
 ]
 REMOVED_GROUPS = [
     ("Borderline: packaging or design", r"difficult to open|package associated injury|design issue|"
@@ -108,7 +111,7 @@ def main() -> None:
     r["pt"] = r["pt"].str.strip().str.lower()
 
     keep = r["pt"].str.contains(r"\bproduct\b") | r["pt"].isin(ALSO_KEEP)
-    drop = r["pt"].str.contains(EXCLUDE)
+    drop = r["pt"].str.contains(EXCLUDE) & ~r["pt"].isin(ALSO_KEEP)
     q = r[keep & ~drop].drop_duplicates()
 
     print("\nterms kept (reports per term):")
@@ -120,7 +123,7 @@ def main() -> None:
 
     cand = r[keep].drop_duplicates()
     terms = (cand.groupby("pt")["primaryid"].nunique().rename("reports").reset_index())
-    terms["kept"] = ~terms["pt"].str.contains(EXCLUDE)
+    terms["kept"] = ~terms["pt"].str.contains(EXCLUDE) | terms["pt"].isin(ALSO_KEEP)
     terms["category"] = [category(t, KEPT_GROUPS if k else REMOVED_GROUPS)
                          for t, k in zip(terms["pt"], terms["kept"])]
     terms = terms.sort_values(["kept", "reports"], ascending=[False, False])

@@ -185,6 +185,16 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool) -> pd.DataFrame:
     return m
 
 
+# Robustness variants of the quality-defect outcome (2026-10-19). The primary
+# definition is "quality"; the others drop one group of terms.
+QUALITY_VARIANTS = {
+    "quality": None,
+    "quality_nosub": r"substitution",
+    "quality_nopatch": r"adhesion",
+    "quality_core": r"substitution|adhesion",
+}
+
+
 def load_faers(andas: set[int], count_unit: str = "case",
                reactions: str = "all") -> pd.DataFrame:
     """Serious FAERS events per (appl_no, quarter): distinct cases, each in the
@@ -196,10 +206,13 @@ def load_faers(andas: set[int], count_unit: str = "case",
     print(f"  role_cod values: {d['role_cod'].unique().tolist()}  "
           f"(PS only = primary suspect, correct for attribution)")
 
-    if reactions == "quality":
+    if reactions in QUALITY_VARIANTS:
         # product-quality reports of ANY seriousness: a defect report is the
         # signal itself, and most are not serious
-        q = set(pd.read_csv(QUALITY_REACTIONS, usecols=["primaryid"])["primaryid"])
+        qr = pd.read_csv(QUALITY_REACTIONS)
+        if QUALITY_VARIANTS[reactions]:
+            qr = qr[~qr["pt"].str.contains(QUALITY_VARIANTS[reactions])]
+        q = set(qr["primaryid"])
         d = d[d["primaryid"].isin(q)]
         d["severity"] = d["severity"].fillna("Not serious")
         print(f"  product-quality reports only: {len(d):,} rows")
@@ -278,7 +291,7 @@ def main() -> None:
                     help="keep every ProPublica facility, not just text-covered ones")
     ap.add_argument("--drop-api-mfr", action="store_true",
                     help="drop rows ProPublica flags as API-only manufacturers")
-    ap.add_argument("--reactions", choices=["all", "quality"], default="all",
+    ap.add_argument("--reactions", choices=["all"] + list(QUALITY_VARIANTS), default="all",
                     help="all = every serious report (default); quality = only "
                          "reports with a product-quality reaction term, any seriousness. "
                          "Output files get a _quality suffix.")
@@ -298,8 +311,8 @@ def main() -> None:
     print(f"\n  4. ANDA has a FAERS case (single scheme): {n_ndc} NDCs  "
           f"{in_faers['appl_no'].nunique()} ANDAs  {in_faers['fei'].nunique()} FEIs")
     tag = "_cases" if args.count_unit == "case" else ""
-    if args.reactions == "quality":
-        tag += "_quality"
+    if args.reactions != "all":
+        tag += "_" + args.reactions
 
     # Per-ANDA counts for the single scheme (2026-10-19), so an outcome can
     # look at each product separately instead of the factory total.
