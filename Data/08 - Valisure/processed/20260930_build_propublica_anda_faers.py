@@ -98,6 +98,10 @@ REDICA_TEXT = DATA.parent / "Analysis" / "Text Analysis" / \
 REDICA_HIST = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
 FAERS = DATA / "15 - FDA - Adverse Event" / "processed" / \
     "faers_all_drugs_anda_linked_2015Q1_2026Q1.csv"
+# reports whose reaction terms describe a product-quality problem (2026-10-19),
+# built by 15 - FDA - Adverse Event/processed/code/20261019_faers_product_quality_cases.py
+QUALITY_REACTIONS = DATA / "15 - FDA - Adverse Event" / "processed" / \
+    "faers_product_quality_reactions.csv"
 
 OUT_MAP = HERE / "propublica_anda_fei_map.csv"
 
@@ -181,7 +185,8 @@ def load_anda_fei(text_only: bool, drop_api_mfr: bool) -> pd.DataFrame:
     return m
 
 
-def load_faers(andas: set[int], count_unit: str = "case") -> pd.DataFrame:
+def load_faers(andas: set[int], count_unit: str = "case",
+               reactions: str = "all") -> pd.DataFrame:
     """Serious FAERS events per (appl_no, quarter): distinct cases, each in the
     first quarter it appears (default), or distinct primaryids per quarter."""
     d = pd.read_csv(FAERS, low_memory=False,
@@ -191,11 +196,19 @@ def load_faers(andas: set[int], count_unit: str = "case") -> pd.DataFrame:
     print(f"  role_cod values: {d['role_cod'].unique().tolist()}  "
           f"(PS only = primary suspect, correct for attribution)")
 
-    d = d[d["severity"].isin(SERIOUS)]
+    if reactions == "quality":
+        # product-quality reports of ANY seriousness: a defect report is the
+        # signal itself, and most are not serious
+        q = set(pd.read_csv(QUALITY_REACTIONS, usecols=["primaryid"])["primaryid"])
+        d = d[d["primaryid"].isin(q)]
+        d["severity"] = d["severity"].fillna("Not serious")
+        print(f"  product-quality reports only: {len(d):,} rows")
+    else:
+        d = d[d["severity"].isin(SERIOUS)]
     d["appl_no"] = pd.to_numeric(d["appl_no"], errors="coerce")
     d = d.dropna(subset=["appl_no", "period"])
     d["appl_no"] = d["appl_no"].astype(int)
-    print(f"  serious rows: {len(d):,}")
+    print(f"  rows kept: {len(d):,}")
 
     d = d[d["appl_no"].isin(andas)]
     print(f"  matched to our ANDAs: {len(d):,} rows, {d['appl_no'].nunique()} ANDAs")
@@ -265,6 +278,10 @@ def main() -> None:
                     help="keep every ProPublica facility, not just text-covered ones")
     ap.add_argument("--drop-api-mfr", action="store_true",
                     help="drop rows ProPublica flags as API-only manufacturers")
+    ap.add_argument("--reactions", choices=["all", "quality"], default="all",
+                    help="all = every serious report (default); quality = only "
+                         "reports with a product-quality reaction term, any seriousness. "
+                         "Output files get a _quality suffix.")
     ap.add_argument("--count-unit", choices=["case", "primaryid"], default="case",
                     help="case = each FAERS case once, first serious quarter (default); "
                          "primaryid = every report version (the pre-2026-10-15 files)")
@@ -274,13 +291,15 @@ def main() -> None:
     m.to_csv(OUT_MAP, index=False)
     print(f"Saved -> {OUT_MAP.name}")
 
-    ae = load_faers(set(m["appl_no"].unique()), args.count_unit)
+    ae = load_faers(set(m["appl_no"].unique()), args.count_unit, args.reactions)
     single = m[m["n_fei_per_anda"] == 1]
     in_faers = single[single["appl_no"].isin(set(ae["appl_no"]))]
     n_ndc = len(set(";".join(in_faers["ndc_list"]).split(";")))
-    print(f"\n  4. ANDA has a serious FAERS case (single scheme): {n_ndc} NDCs  "
+    print(f"\n  4. ANDA has a FAERS case (single scheme): {n_ndc} NDCs  "
           f"{in_faers['appl_no'].nunique()} ANDAs  {in_faers['fei'].nunique()} FEIs")
     tag = "_cases" if args.count_unit == "case" else ""
+    if args.reactions == "quality":
+        tag += "_quality"
 
     # Per-ANDA counts for the single scheme (2026-10-19), so an outcome can
     # look at each product separately instead of the factory total.

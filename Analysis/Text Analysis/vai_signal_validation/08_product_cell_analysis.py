@@ -105,6 +105,8 @@ OUT  = HERE / "outputs"
 TABS = OUT / "tables"
 
 STEP01 = ROOT / "Analysis" / "Text Analysis" / "step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv"
+# keep flag per inspection from 00_load_redica_obs.py (2026-10-19): drug-quality inspections only
+REDICA_INSPECTIONS = ROOT / "Analysis" / "Text Analysis" / "step00_redica_inspections.csv"
 PANEL  = OUT / "fei_ae_panel_inspection_centered.parquet"   # OAI/VAI/NAI per inspection, all 246
 
 # Reuse the plant bridge from 01b so both analyses attribute rows identically.
@@ -194,6 +196,9 @@ def _load_cells(cohorts=COHORTS, first_qi=FIRST_QI, last_qi=LAST_QI,
 def _plant_exposures(year_max: int, year_min: int = 2018) -> pd.DataFrame:
     d = pd.read_csv(STEP01)
     d["insp_date"] = pd.to_datetime(d["insp_date"])
+    k = pd.read_csv(REDICA_INSPECTIONS).query("keep")
+    k["insp_date"] = pd.to_datetime(k["insp_date"])
+    d = d.merge(k[["fei", "insp_date"]], on=["fei", "insp_date"], how="inner")
     d = d[(d["insp_date"].dt.year >= year_min) & (d["insp_date"].dt.year <= year_max)].copy()
     t = d["obs_text_clean"].fillna("").str.lower()
     sterile = t.str.contains(STERILE_RE) & ~t.str.contains(ORAL_RE)

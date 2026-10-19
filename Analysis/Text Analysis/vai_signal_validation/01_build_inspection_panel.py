@@ -42,6 +42,7 @@ Outputs
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -71,8 +72,11 @@ ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae
 # its default). The per-version file, propublica_fei_ae_quarterly_single.csv,
 # is kept; the panels built from it are saved in outputs/ with a
 # _saved_before_20261015 suffix.
+# FAERS_REACTIONS=quality (environment, 2026-10-19) switches to product-quality
+# reports only (built with --reactions quality).
+_RX = "_quality" if os.environ.get("FAERS_REACTIONS") == "quality" else ""
 PROPUBLICA_AE_QTR_CSV = (DATA / "08 - Valisure" / "processed" /
-                         "propublica_fei_ae_quarterly_single_cases.csv")
+                         f"propublica_fei_ae_quarterly_single_cases{_RX}.csv")
 ANDA_SOURCE = "valisure"   # overridden by --anda-source
 
 OUT_PANEL_INSP      = OUT / "fei_ae_panel_inspection_centered.parquet"

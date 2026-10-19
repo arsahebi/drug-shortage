@@ -161,7 +161,9 @@ FAERS_LAST_IDX  = 2026 * 4 + 1      # 2026Q1, last quarter in the FAERS extract
 # the factory's ANDAs rose. Set with the FAERS_OUTCOME environment variable.
 FAERS_OUTCOME = os.environ.get("FAERS_OUTCOME", "factory")
 ANDA_AE_PER_ANDA = (HERE.parent.parent.parent / "Data" / "08 - Valisure" / "processed" /
-                    "propublica_fei_anda_ae_quarterly_single_cases.csv")
+                    ("propublica_fei_anda_ae_quarterly_single_cases"
+                     + ("_quality" if os.environ.get("FAERS_REACTIONS") == "quality" else "")
+                     + ".csv"))
 ANDA_FEI_MAP = (HERE.parent.parent.parent / "Data" / "08 - Valisure" / "processed" /
                 "propublica_anda_fei_map.csv")
 
