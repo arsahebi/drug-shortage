@@ -19,16 +19,14 @@ What changed vs. the archived version
   - Everything else (FAERS matching, SDUD volume, OAI/VAI resolution via
     Redica + FDA Drug QA 3-pass fallback) is unchanged from the original.
 
-OAI/VAI/NAI classification source (updated 2026-09-16, matches m19):
-FDA Inspection Details.xlsx (refreshed by the user this month, current
-through early September 2026) is now the PRIMARY source, matched exact-date
-per inspection event. Redica's classification (redica_all_drugs_combined.csv,
-last refreshed 2026-07-15) is the first fallback for rows FDA doesn't cover
-exact-date, then an FDA near-match (+/-30 days) is the second fallback, same
-as before. Previously Redica was primary and FDA was the only fallback; that
-was backwards once FDA's own file became the fresher source (this was the
-stale one when this script was first written, dated November 2025 at the
-time).
+OAI/VAI/NAI classification source (updated 2026-10-19):
+step00_redica_inspections.csv from 00_load_redica_obs.py. The grade is the
+"Drug Quality Assurance" label in column F of Redica's
+Valisure14_Sites_Red_Flag_Events.xlsx, matched on site and exact date, and
+inspections graded only under another FDA program (devices, bioresearch,
+pre-approval, blood, animal drugs) or not tagged Human Drugs are dropped.
+This replaces the FDA Inspections Details / redica_all_drugs_combined /
++-30 day 3-pass used through 2026-10-15.
 
 Usage
 ─────
@@ -60,8 +58,7 @@ TEXT_TS_PRODSYS = DATA.parent / "Analysis" / "Text Analysis" / "step02_483_fei_t
 SYSTEMS = "all"   # overridden by --systems
 FAERS_PARQ   = DATA / "15 - FDA - Adverse Event" / "processed" / "faers_valisure_14_drugs_2026-05-12.parquet"
 VALISURE_FEI = DATA / "08 - Valisure" / "raw" / "FEIs_March 2026.xlsx"
-REDICA_COMBINED = DATA / "07 - Redica" / "processed" / "redica_all_drugs_combined.csv"
-FDA_INSP_XLSX   = DATA / "14 - FDA - Inspection" / "raw" / "Inspections Details.xlsx"
+REDICA_INSPECTIONS_CSV = DATA.parent / "Analysis" / "Text Analysis" / "step00_redica_inspections.csv"
 SDUD_PARQ    = DATA / "04 - Medicaid - SDUD" / "processed" / "2025-12-18-SDUDcanonical.parquet"
 NDC_FEI_CSV  = DATA / "17 - NDC-FEI Linkage" / "processed" / "ndc_fei_from_labels.csv"
 ANDA_AE_QTR_CSV = DATA / "08 - Valisure" / "processed" / "valisure_anda_faers_ae_counts_quarterly.csv"
@@ -202,41 +199,6 @@ def _load_anda_ae_quarterly() -> pd.DataFrame:
 
 # ── Inspection outcomes ───────────────────────────────────────────────────────
 
-def _load_redica_outcomes_by_date() -> pd.DataFrame:
-    """Fallback source (last refreshed 2026-07-15) -- see FDA_INSP_XLSX above."""
-    df = pd.read_csv(REDICA_COMBINED)
-    df.columns = [c.strip() for c in df.columns]
-    df["fei"]       = pd.to_numeric(df["FEI"], errors="coerce").astype("Int64")
-    df["insp_date"] = pd.to_datetime(df["Event Date"], errors="coerce").dt.normalize()
-    df = df.dropna(subset=["fei", "insp_date", "Classification"])
-    cls = df["Classification"].str.upper()
-    df["n_oai"]   = (cls == "OAI").astype(int)
-    df["n_vai"]   = (cls == "VAI").astype(int)
-    df["n_nai"]   = (cls == "NAI").astype(int)
-    df["any_oai"] = df["n_oai"]
-    return df[["fei", "insp_date", "n_oai", "n_vai", "n_nai", "any_oai"]].copy()
-
-
-def _load_fda_outcomes_by_date() -> pd.DataFrame:
-    """Primary source: FDA Inspection Details.xlsx, refreshed by the user 2026-09,
-    the same file m19_shortage_fei_model.py uses directly (see module docstring)."""
-    fda = pd.read_excel(FDA_INSP_XLSX,
-                        usecols=["FEI Number", "Inspection End Date",
-                                 "Classification", "Project Area"])
-    fda = fda[fda["Project Area"] == "Drug Quality Assurance"].copy()
-    fda["fei"]       = pd.to_numeric(fda["FEI Number"], errors="coerce").astype("Int64")
-    fda["insp_date"] = pd.to_datetime(fda["Inspection End Date"], errors="coerce").dt.normalize()
-    fda = fda.dropna(subset=["fei", "insp_date", "Classification"])
-    cls = fda["Classification"].str.upper()
-    fda["n_oai"]   = cls.str.contains("OFFICIAL ACTION").astype(int)
-    fda["n_vai"]   = cls.str.contains("VOLUNTARY ACTION").astype(int)
-    fda["n_nai"]   = cls.str.contains("NO ACTION").astype(int)
-    fda["any_oai"] = fda["n_oai"]
-    return (fda[["fei", "insp_date", "n_oai", "n_vai", "n_nai", "any_oai"]]
-            .drop_duplicates(subset=["fei", "insp_date"])
-            .copy())
-
-
 # ── SDUD volume ───────────────────────────────────────────────────────────────
 
 def _load_sdud_volume(panel_feis: set) -> pd.DataFrame:
@@ -325,67 +287,26 @@ def build_inspection_centered(ts: pd.DataFrame, fei_drug_map: pd.DataFrame,
     panel = pd.DataFrame(rows)
     print(f"  {len(panel)} inspection-event rows built")
 
-    # ── Inspection outcome resolution (3-pass, FDA primary as of 2026-09-16) ──
-    panel["_date_key"] = pd.to_datetime(panel["insp_date"]).dt.normalize()
-    fda = _load_fda_outcomes_by_date()
-    outcomes = fda.rename(columns={"insp_date": "_date_key"})
-    panel = panel.merge(outcomes, on=["fei", "_date_key"], how="left")
-    n_after_fda = panel["any_oai"].isna().sum()
-    print(f"  After FDA exact match: {n_after_fda} unmatched")
-
-    def _apply_fill(panel, rows, label):
-        unmatched_mask = panel["any_oai"].isna()
-        if unmatched_mask.sum() == 0:
-            return panel, 0
-        rows_keyed = rows.rename(columns={"insp_date": "_date_key"})
-        tmp = (panel.loc[unmatched_mask, ["fei", "_date_key"]]
-               .reset_index()
-               .merge(rows_keyed, on=["fei", "_date_key"], how="left")
-               .set_index("index"))
-        n_filled = 0
-        for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
-            hits = tmp.index[tmp[col].notna()]
-            if len(hits):
-                panel.loc[hits, col] = tmp.loc[hits, col]
-                n_filled = max(n_filled, len(hits))
-        if n_filled:
-            print(f"  {label} filled {n_filled} rows")
-        return panel, n_filled
-
-    if n_after_fda > 0:
-        print("  Loading Redica fallback...")
-        redica = _load_redica_outcomes_by_date()
-        panel, _ = _apply_fill(panel, redica, "Redica exact match")
-
-        still_unmatched = panel["any_oai"].isna()
-        if still_unmatched.sum() > 0:
-            near_rows = []
-            for idx, row in panel[still_unmatched].iterrows():
-                fei = row["fei"]; idate = row["_date_key"]
-                candidates = fda[fda["fei"] == fei].copy()
-                if candidates.empty:
-                    continue
-                candidates["gap"] = (candidates["insp_date"] - idate).abs().dt.days
-                best = candidates[candidates["gap"] <= 30].nsmallest(1, "gap")
-                if best.empty:
-                    continue
-                b = best.iloc[0]
-                cls = "OAI" if b["n_oai"] else ("VAI" if b["n_vai"] else "NAI")
-                print(f"    FDA near match: FEI {fei} text={idate.date()} "
-                      f"FDA={b['insp_date'].date()} gap={int(b['gap'])}d -> {cls}")
-                for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
-                    panel.at[idx, col] = b[col]
-                near_rows.append(idx)
-            if near_rows:
-                print(f"  FDA near match (+/-30d) filled {len(near_rows)} rows")
-
-    panel = panel.drop(columns=["_date_key"])
-    n_remaining = panel["any_oai"].isna().sum()
-    if n_remaining:
-        print(f"  {n_remaining} inspections still unresolved after all passes "
-              f"(no FDA or Redica record) -- defaulted to 0")
-    for col in ["n_oai", "n_vai", "n_nai", "any_oai"]:
-        panel[col] = panel[col].fillna(0).astype(int)
+    # ── Inspection grade (2026-10-19) ──
+    # Redica's Valisure14_Sites_Red_Flag_Events.xlsx, column F, "Drug Quality
+    # Assurance" label only, matched on site and exact date in
+    # 00_load_redica_obs.py. Replaces the old FDA/Redica/near-match 3-pass.
+    # Unknown grade stays all zeros, as before; 07 treats it as UNKNOWN.
+    insp = pd.read_csv(REDICA_INSPECTIONS_CSV)
+    insp = insp[insp["keep"]]
+    insp["insp_date"] = pd.to_datetime(insp["insp_date"])
+    insp["dqa_grade"] = insp["dqa_grade"].fillna("")
+    panel["insp_date"] = pd.to_datetime(panel["insp_date"])
+    n0 = len(panel)
+    panel = panel.merge(insp[["fei", "insp_date", "dqa_grade"]],
+                        on=["fei", "insp_date"], how="inner")
+    print(f"  {len(panel)} of {n0} inspections are kept drug-quality inspections")
+    panel["n_oai"] = (panel["dqa_grade"] == "OAI").astype(int)
+    panel["n_vai"] = (panel["dqa_grade"] == "VAI").astype(int)
+    panel["n_nai"] = (panel["dqa_grade"] == "NAI").astype(int)
+    panel["any_oai"] = panel["n_oai"]
+    print(f"  grade: {panel['dqa_grade'].replace('', 'unknown').value_counts().to_dict()}")
+    panel = panel.drop(columns=["dqa_grade"])
 
     print("Loading SDUD volume...")
     panel_feis = set(panel["fei"].dropna().unique())

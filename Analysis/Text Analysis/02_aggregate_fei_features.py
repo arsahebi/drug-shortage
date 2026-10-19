@@ -99,6 +99,9 @@ OUT_CSV     = HERE / "step02_483_fei_text_features_timeseries_fdapdf.csv"
 # Redica pipeline (--source redica) — reads directly from step 01 output, no step 04 needed
 REDICA_SIGNALS_CSV_ANTHROPIC = HERE / "step01_redica_483_obs_llm_signals_anthropic.csv"
 REDICA_SIGNALS_CSV_OPENAI    = HERE / "step01_redica_483_obs_llm_signals_openai.csv"
+# Inspection keep flag from 00_load_redica_obs.py (2026-10-19): drops inspections
+# graded only under another FDA program or not tagged Human Drugs.
+REDICA_INSPECTIONS_CSV = HERE / "step00_redica_inspections.csv"
 OUT_REDICA_CSV      = HERE / "step02_483_fei_text_features_timeseries_redica.csv"
 
 
@@ -654,6 +657,15 @@ def main() -> None:
                      f"Run 01_extract_observation_signals.py --source redica --provider {provider} "
                      f"--prompt-version {version} first.\n")
         df = pd.read_csv(signals_csv)
+        # keep only drug-quality inspections (step00_redica_inspections.csv keep flag)
+        insp = pd.read_csv(REDICA_INSPECTIONS_CSV)
+        kept = set(zip(insp.loc[insp["keep"], "fei"],
+                       pd.to_datetime(insp.loc[insp["keep"], "insp_date"])))
+        before, before_insp = len(df), df[["fei", "insp_date"]].drop_duplicates().shape[0]
+        is_kept = [(f, d) in kept for f, d in zip(df["fei"], pd.to_datetime(df["insp_date"]))]
+        df = df[is_kept]
+        print(f"  drug-quality inspections only: kept {len(df):,} of {before:,} observations, "
+              f"{df[['fei', 'insp_date']].drop_duplicates().shape[0]} of {before_insp} inspections")
         if "extraction_status" not in df.columns:
             df["extraction_status"] = "ok"
         if args.systems == "product":
