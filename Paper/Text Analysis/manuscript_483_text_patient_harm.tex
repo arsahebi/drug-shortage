@@ -111,10 +111,19 @@ Earlier work has applied structured citation counts to drug-manufacturing
 Form 483 records \citep{Pazhayattil2020} and natural-language methods to drug
 labels and regulatory narratives \citep{Bayer2021,Wu2021BERT}. Li and
 colleagues validated language-model extraction against human annotation
-before using it in several medical-device regulatory applications
-\citep{Li2026LLMDevice}. Our design follows that validation-first logic but
-asks whether measured inspection findings add information to an existing
-regulatory outcome. A keyword comparison tests whether contextual coding
+before using it in three medical-device applications: reproducing a manual
+review of device summaries, re-coding adverse event reports whose
+manufacturer-assigned codes were often inconsistent with the narrative, and
+relating pre-market features to the time until a device's first adverse
+event report \citep{Li2026LLMDevice}. Our design follows that
+validation-first logic. The second application has a limited analogue here.
+FDA's inspection classification rests on the full establishment inspection
+report, the firm's response and agency policy, none of which we observe, so
+we do not treat disagreement between the text and the grade as an error in
+the grade. We ask instead how much of the content of the observations a
+three-level grade can carry. The third application corresponds to our
+outcome analyses, which relate post-approval inspection findings to later
+safety reports. A keyword comparison tests whether contextual coding
 actually changes what is measured.
 
 \subsection{Inspections and safety outcomes}
@@ -278,6 +287,23 @@ descriptions conditional on Claude Sonnet 5 and the v2 schema.
 
 % Table source: step01_redica_483_obs_llm_signals_anthropic_claudesonnet5_v2.csv.
 \input{generated_tables/descriptive.tex}
+
+\subsection{How much of the text the inspection grade carries}
+
+For the 160 drug-quality inspections with a known grade (125 VAI, 24 OAI,
+11 NAI; 87 facilities), the grade orders the text in the expected direction.
+OAI inspections had the highest mean share of Critical or Major observations
+(0.69, against 0.52 for VAI and 0.30 for NAI) and of confirmed
+contamination (0.17, 0.06 and 0.02). Yet the grade explained little of the
+variation. Across the 17 inspection-level signals, the between-grade share
+of variance was at most 8.7\% (multi-domain findings) and had a median of
+4.2\%. Inspections with the same grade differed widely: 39\% of VAI
+inspections had a Critical-or-Major share at or above the OAI median, and
+48\% matched the OAI median on findings spanning three or more systems.
+This is a descriptive statement about information content. It does not
+imply that any grade was assigned incorrectly.
+
+% Source: vai_signal_validation/12_within_grade_spread.py -> outputs/tables/within_grade_spread.csv
 
 \subsection{Contextual extraction versus keyword rules}
 
