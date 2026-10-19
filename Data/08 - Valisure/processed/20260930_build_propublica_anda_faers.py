@@ -81,6 +81,7 @@ Outputs
   propublica_anda_fei_map.csv                  ANDA <-> FEI with sharing counts
   propublica_fei_ae_quarterly_<scheme>_cases.csv   FEI x quarter serious cases (default)
   propublica_fei_ae_quarterly_<scheme>.csv     FEI x quarter serious reports (--count-unit primaryid)
+  propublica_fei_anda_ae_quarterly_single_cases.csv  FEI x ANDA x quarter, single scheme
 """
 
 from pathlib import Path
@@ -280,6 +281,15 @@ def main() -> None:
     print(f"\n  4. ANDA has a serious FAERS case (single scheme): {n_ndc} NDCs  "
           f"{in_faers['appl_no'].nunique()} ANDAs  {in_faers['fei'].nunique()} FEIs")
     tag = "_cases" if args.count_unit == "case" else ""
+
+    # Per-ANDA counts for the single scheme (2026-10-19), so an outcome can
+    # look at each product separately instead of the factory total.
+    per_anda = ae.merge(single[["appl_no", "fei"]], on="appl_no", how="inner")
+    per_anda["ae_idx"] = (per_anda["period"].str[:4].astype(int) * 4
+                          + per_anda["period"].str[-1].astype(int))
+    p = HERE / f"propublica_fei_anda_ae_quarterly_single{tag}.csv"
+    per_anda.to_csv(p, index=False)
+    print(f"Saved -> {p.name}  ({len(per_anda):,} FEI-ANDA-quarter rows)\n")
 
     schemes = ["full", "split", "single"] if args.scheme == "all" else [args.scheme]
     for sc in schemes:

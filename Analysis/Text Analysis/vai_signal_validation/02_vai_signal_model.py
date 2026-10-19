@@ -58,6 +58,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import warnings
+import os
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -156,6 +157,11 @@ def _build_outcome_global(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
 # differed between the two.
 FAERS_FIRST_IDX = 2015 * 4 + 1      # 2015Q1, first quarter in the FAERS extract
 FAERS_LAST_IDX  = 2026 * 4 + 1      # 2026Q1, last quarter in the FAERS extract
+# "factory" = total cases at the factory rose (default); "per_anda" = most of
+# the factory's ANDAs rose. Set with the FAERS_OUTCOME environment variable.
+FAERS_OUTCOME = os.environ.get("FAERS_OUTCOME", "factory")
+ANDA_AE_PER_ANDA = (HERE.parent.parent.parent / "Data" / "08 - Valisure" / "processed" /
+                    "propublica_fei_anda_ae_quarterly_single_cases.csv")
 ANDA_FEI_MAP = (HERE.parent.parent.parent / "Data" / "08 - Valisure" / "processed" /
                 "propublica_anda_fei_map.csv")
 
@@ -195,7 +201,42 @@ def _build_outcome_relative(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
           f"observable -> {int(keep.sum())} with >= 1 baseline case")
     df = df[keep].copy()
     df["ae_rise_next4q"] = (df["n_ae_post4q"] > df["n_ae_pre4q"]).astype(int)
+    if FAERS_OUTCOME == "per_anda":
+        df = _per_anda_rise(df)
     return df, "ae_rise_next4q"
+
+
+def _per_anda_rise(df: pd.DataFrame) -> pd.DataFrame:
+    """FAERS_OUTCOME=per_anda (2026-10-19): look at each of the factory's
+    single-site ANDAs separately, so one big product cannot drive the result.
+
+    For each inspection and each ANDA at that factory:
+      pre  = cases in the 4 quarters before, post = cases in the 4 after
+      the ANDA counts only if it had >= 1 case in pre + inspection quarter
+    Outcome = 1 if MORE THAN HALF of the counted ANDAs rose (post > pre).
+    Inspections with no counted ANDA are dropped.
+    """
+    q = pd.read_csv(ANDA_AE_PER_ANDA)
+    rows = []
+    for i, r in df.iterrows():
+        idx = r["insp_year"] * 4 + r["insp_qtr"]
+        a = q[(q["fei"] == r["fei"]) & q["ae_idx"].between(idx - 4, idx + 4)]
+        pre  = a[a["ae_idx"] < idx].groupby("appl_no")["n_ae_serious"].sum()
+        base = a[a["ae_idx"] <= idx].groupby("appl_no")["n_ae_serious"].sum()
+        post = a[a["ae_idx"] > idx].groupby("appl_no")["n_ae_serious"].sum()
+        counted = base[base >= 1].index
+        rose = [post.get(k, 0) > pre.get(k, 0) for k in counted]
+        rows.append({"i": i, "n_anda_counted": len(counted),
+                     "share_anda_rose": np.mean(rose) if rose else np.nan})
+    s = pd.DataFrame(rows).set_index("i")
+    df = df.join(s)
+    n0 = len(df)
+    df = df[df["n_anda_counted"] >= 1].copy()
+    df["ae_rise_next4q"] = (df["share_anda_rose"] > 0.5).astype(int)
+    print(f"  per-ANDA outcome: {len(df)} of {n0} inspections, median "
+          f"{df['n_anda_counted'].median():.0f} ANDAs counted, "
+          f"rise rate {df['ae_rise_next4q'].mean():.3f}")
+    return df
 
 
 def _build_outcome_marketscan(df: pd.DataFrame, outcome: str, cohort: str,

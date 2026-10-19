@@ -50,6 +50,8 @@ OUT_FIGS = OUT / "figures"
 PANEL      = OUT / "fei_ae_panel_inspection_centered.parquet"
 PANEL_ANDA = OUT / "fei_ae_panel_inspection_centered_anda.parquet"
 PANEL_PP   = OUT / "fei_ae_panel_inspection_centered_anda_propublica.parquet"
+ANDA_FEI_MAP = (HERE.parent.parent.parent / "Data" / "08 - Valisure" / "processed" /
+                "propublica_anda_fei_map.csv")
 
 # v2 schema: severity_majmod_share replaces severity_critmajor_share (the
 # INFORMS-era feature); vc_laboratorycontrolssystem_share and
@@ -113,6 +115,21 @@ def _spearman(x: pd.Series, y: pd.Series) -> tuple[float, float]:
     return float(r), float(p)
 
 
+def _partial_spearman(x: pd.Series, y: pd.Series, z: pd.Series) -> tuple[float, float]:
+    """Spearman of x and y holding z fixed: rank all three, remove the linear
+    effect of rank(z) from rank(x) and rank(y), correlate what is left."""
+    mask = x.notna() & y.notna() & z.notna()
+    if mask.sum() < 10:
+        return np.nan, np.nan
+    rx, ry, rz = (v[mask].rank().values for v in (x, y, z))
+    res_x = rx - np.polyval(np.polyfit(rz, rx, 1), rz)
+    res_y = ry - np.polyval(np.polyfit(rz, ry, 1), rz)
+    r = float(np.corrcoef(res_x, res_y)[0, 1])
+    n = int(mask.sum())
+    t = r * np.sqrt((n - 3) / max(1 - r * r, 1e-12))
+    return r, float(2 * stats.t.sf(abs(t), n - 3))
+
+
 def _sig_label(p: float) -> str:
     if np.isnan(p):
         return ""
@@ -125,14 +142,19 @@ def _sig_label(p: float) -> str:
     return ""
 
 
-def build_correlation_table(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def build_correlation_table(df: pd.DataFrame, features: list[str],
+                            control: str | None = None) -> pd.DataFrame:
+    """control = column to hold fixed (partial Spearman), or None."""
     rows = []
     for feat in features:
         if feat not in df.columns:
             print(f"  [WARN] feature not in panel: {feat} -- skipping")
             continue
         for ae_col, lag_label in AE_LAGS.items():
-            r, p = _spearman(df[feat], df[ae_col])
+            if control:
+                r, p = _partial_spearman(df[feat], df[ae_col], df[control])
+            else:
+                r, p = _spearman(df[feat], df[ae_col])
             n = (df[feat].notna() & df[ae_col].notna()).sum()
             rows.append({
                 "feature":       feat,
@@ -141,6 +163,7 @@ def build_correlation_table(df: pd.DataFrame, features: list[str]) -> pd.DataFra
                 "lag_label":     lag_label,
                 "spearman_r":    round(r, 4) if not np.isnan(r) else np.nan,
                 "p_value":       round(p, 4) if not np.isnan(p) else np.nan,
+                "p_exact":       p,
                 "sig":           _sig_label(p),
                 "n":             n,
             })
@@ -228,6 +251,26 @@ def main() -> None:
     OUT_TABS.mkdir(parents=True, exist_ok=True)
     corr_tbl.to_csv(OUT_TABS / f"lag_correlation_table{_sfx}.csv", index=False)
     print(f"  Saved -> {OUT_TABS / 'lag_correlation_table.csv'}")
+
+    # Size control (2026-10-19): a factory that makes more products tends to get
+    # more 483 observations AND more FAERS cases. Two controls, each held fixed
+    # with a partial Spearman:
+    #   n_andas      number of the factory's single-site ANDAs
+    #   n_ae_pre4q   the factory's own cases in the 4 quarters before inspection
+    if args.anda_ae and args.anda_source == "propublica":
+        m = pd.read_csv(ANDA_FEI_MAP).query("n_fei_per_anda == 1")
+        df["n_andas"] = df["fei"].map(m.groupby("fei")["appl_no"].nunique())
+        df["n_ae_pre4q"] = df[["n_ae_tm4", "n_ae_tm3", "n_ae_tm2", "n_ae_tm1"]].fillna(0).sum(axis=1)
+        n_tests = len(corr_tbl)
+        print(f"\nunadjusted: {(corr_tbl['p_exact'] < 0.05).sum()} of {n_tests} p<0.05, "
+              f"{(corr_tbl['p_exact'] < 0.05 / n_tests).sum()} survive Bonferroni")
+        for control in ["n_andas", "n_ae_pre4q"]:
+            adj = build_correlation_table(df, TEXT_FEATURES, control=control)
+            adj.to_csv(OUT_TABS / f"lag_correlation_table{_sfx}_adj_{control}.csv", index=False)
+            print(f"holding {control} fixed: {(adj['p_exact'] < 0.05).sum()} p<0.05, "
+                  f"{(adj['p_exact'] < 0.05 / n_tests).sum()} survive Bonferroni")
+            print(adj.sort_values("p_exact").head(5)[["feature_label", "lag_label",
+                  "spearman_r", "p_exact", "n"]].to_string(index=False))
 
     print("\nCorrelations at Q+4 / 1-year-after (sorted by |rho|):")
     top = (corr_tbl[corr_tbl["lag"] == "n_ae_tp4"]
