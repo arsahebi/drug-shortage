@@ -38,7 +38,7 @@ from docx.oxml import OxmlElement
 import tempfile
 
 BASE    = Path("/Users/asahebi/Library/CloudStorage/GoogleDrive-asahebi@ncsu.edu/My Drive/North Carolina State University/Project - Drug Shortage")
-OLD_FIG = BASE / "Paper/Metformin"
+OLD_FIG = BASE / "Paper/Metformin/_Archive/Health Affairs and HA Scholar (2026 May-Aug)"
 NEW_FIG = BASE / "Analysis/Metformin Paper/processed/outputs"
 OUT_DOC = NEW_FIG / "comparison_prerevision_vs_july2026.docx"
 
