@@ -172,7 +172,7 @@ def supplementary_table(tab, d, path):
     ds.p(doc, f"Notes: NDC-years in the analysis sample with a prior FDA inspection on record "
               f"({n_out} of {len(d)}). Prior outcome is the classification of the facility's "
               "most recent FDA inspection before the test year (NAI, no action indicated; VAI, "
-              "voluntary action indicated; OAI, official action indicated); the second panel "
+              "voluntary action indicated; OAI, official action indicated); the second section "
               "keeps only inspections within 36 months of the test year, as in Figure 1b. DMF "
               "and NDMA are daily exposures in ng/day; 96 ng/day is the FDA acceptable intake "
               "limit for NDMA. NDMA was tested in 2020 and 2022 and dissolution in 2024. No "
