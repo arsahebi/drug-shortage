@@ -19,6 +19,7 @@ Outputs (processed/outputs/jpi_revision/):
   R2_28_outcome_vs_attributes.png    three panels, all prior inspections
   R2_28_stats_log.txt                pairwise tests
   20261118_R2_28_outcome_vs_attributes.docx   note for the team
+  Supplementary_Table_S1_inspection_vs_attributes.docx   table for the paper
 """
 # %%
 import numpy as np
@@ -151,6 +152,36 @@ def team_doc(tab, d, png, path):
     doc.save(path)
 
 
+def supplementary_table(tab, d, path):
+    """Supplementary Table S1 for the manuscript (option A chosen by the team)."""
+    doc = ds.new_document()
+    ds.p(doc, "Supplementary Table S1. Tested product attributes by the facility's most "
+              "recent FDA inspection outcome", bold=True)
+    rows = []
+    for label in tab.inspection.unique():
+        rows.append([label, "", "", "", "", "", ""])
+        for _, r in tab[tab.inspection == label].iterrows():
+            dec = 3 if r.attribute.startswith("Dissolution") else 0
+            rows.append([r.attribute, r.outcome, str(int(r.n)), fmt(r["median"], dec),
+                         f"{fmt(r.q1, dec)} to {fmt(r.q3, dec)}" if r.n else "",
+                         "" if pd.isna(r.above_limit) else f"{int(r.above_limit)} of {int(r.n)}",
+                         fmt(r.kruskal_p, 2) if r.outcome == "NAI" else ""])
+    ds.table(doc, ["Attribute", "Prior outcome", "n", "Median", "Interquartile range",
+                   "NDMA > 96 ng/day", "Kruskal-Wallis p"], rows, size=9, align_right_from=2)
+    n_out = int(d.prior_outcome.notna().sum())
+    ds.p(doc, f"Notes: NDC-years in the analysis sample with a prior FDA inspection on record "
+              f"({n_out} of {len(d)}). Prior outcome is the classification of the facility's "
+              "most recent FDA inspection before the test year (NAI, no action indicated; VAI, "
+              "voluntary action indicated; OAI, official action indicated); the second panel "
+              "keeps only inspections within 36 months of the test year, as in Figure 1b. DMF "
+              "and NDMA are daily exposures in ng/day; 96 ng/day is the FDA acceptable intake "
+              "limit for NDMA. NDMA was tested in 2020 and 2022 and dissolution in 2024. No "
+              "product linked to a facility with an OAI outcome had dissolution testing. "
+              "Kruskal-Wallis tests compare the outcome groups for each attribute; products "
+              "sharing a facility are not independent, so the tests are descriptive.", size=9)
+    doc.save(path)
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     d, recent = sample()
@@ -161,6 +192,7 @@ def main():
     figure(d, png)
     stats_log(d, recent, OUT / "R2_28_stats_log.txt")
     team_doc(tab, d, png, OUT / "20261118_R2_28_outcome_vs_attributes.docx")
+    supplementary_table(tab, d, OUT / "Supplementary_Table_S1_inspection_vs_attributes.docx")
     print(tab.to_string(index=False))
 
 
